@@ -21,7 +21,7 @@ echo ""
 if [ "$1" != "--no-update" ] && [[ "$REPO" == */* ]]; then
   printf '%s' "$REPO" > .ghost/repo
   REMOTE=$(curl -fsSL --max-time 15 "https://raw.githubusercontent.com/$REPO/main/VERSION?$(date +%s)" 2>/dev/null | tr -d '[:space:]')
-  LOCAL=$(tr -d '[:space:]' < VERSION 2>/dev/null)
+  LOCAL=$(cat VERSION 2>/dev/null | tr -d '[:space:]')
   if [ -n "$REMOTE" ] && { [ "$REMOTE" != "$LOCAL" ] || [ ! -f app/server.py ]; }; then
     echo "  Getting Ghost Studio $REMOTE…"
     rm -rf .ghost/new && mkdir -p .ghost/new
