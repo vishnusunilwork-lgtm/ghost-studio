@@ -1,3 +1,4 @@
+2.2.1: Shows the picture-model download (about 8 GB) with a progress bar, instead of downloading it silently during the first ad.
 2.2.0: Install progress bar for free AI pictures. Ghost icon in the browser tab. New glowing-dots loading animation.
 2.1.0: Version shown at the top. Clear update notice. Updates keep your ads, settings and whatever you are typing.
 2.0.0: No Terminal: click the Ghost Studio icon and the browser opens. Stop button under the gear.

@@ -484,7 +484,7 @@ async function status(){try{ST=await api('/api/status');const mk=ST.makers||{},t
   catch(e){$('#sDot').className='dot';$('#sText').textContent='App not running'}}
 function kv(){if(!ST)return;const m=ST.models||{},mk=ST.makers||{},a=ST.api||{};
   $('#kv').innerHTML=[['Pictures',MK.image[mk.image]||mk.image],['Video',MK.video[mk.video]||mk.video],['Narrator',MK.voice[mk.voice]||mk.voice],['Script AI',ST.llm?'On ('+m.llm+')':'Simple templates — install Ollama for real scripts'],['Computer',ST.gpu.name+(ST.gpu.vram_gb?` · ${ST.gpu.vram_gb} GB`:'')],['App version',ST.version||'dev']].map(([k,v])=>`<span>${esc(k)}</span><b>${esc(v)}</b>`).join('');
-  const ia=ST.image_ai;$('#iaBox').classList.toggle('hidden',(ia&&ST.image_ai_install!=='done')||mk.image==='nvidia');
+  const ia=ST.image_ai;$('#iaBox').classList.toggle('hidden',(ia&&ST.image_ai_install!=='done')||mk.image==='nvidia');if(!ia&&ST.image_ai_install==='idle')$('#iaBtn').textContent=ST.image_ai_pkgs?'Finish setup: download the picture model (~8 GB)':'Install free image AI';
   $('#apiOff').classList.toggle('hidden',!!a.on);$('#apiOn').classList.toggle('hidden',!a.on);
   if(a.on){$('#apiInfo').textContent=`Connected (key …${a.key_end}) · this month: $${(a.spent||0).toFixed(2)} of $${a.limit} · about $${(a.price*30).toFixed(2)} per 30-second ad`;$('#apiLimit').value=a.limit}}
 async function saveApi(body){try{await api('/api/settings/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});$('#apiKey').value='';await status();kv();toast(body.remove?'Key removed — back to free photo motion':'Saved')}catch(e){toast(e.message)}}
@@ -493,7 +493,7 @@ $('#apiLimitSave').onclick=()=>saveApi({monthly_limit_usd:+$('#apiLimit').value}
 $('#apiRemove').onclick=()=>{if(confirm('Remove the video service key from this computer?'))saveApi({remove:true})};
 let IA_T=0;
 function iaShow(s){const run=s.state==='running',err=s.state==='error',ok=s.state==='done';
-  $('#iaProg').classList.toggle('hidden',s.state==='idle');$('#iaBtn').classList.toggle('hidden',run||ok);$('#iaBtn').textContent=err?'Try again':'Install free image AI';
+  $('#iaProg').classList.toggle('hidden',s.state==='idle');$('#iaBtn').classList.toggle('hidden',run||ok);$('#iaBtn').textContent=err?'Try again':(ST&&ST.image_ai_pkgs?'Finish setup: download the picture model (~8 GB)':'Install free image AI');
   $('#iaStep').textContent=s.step||'';$('#iaPct').textContent=Math.round(s.pct||0)+'%';$('#iaBar').style.width=(s.pct||0)+'%';$('#iaProg').classList.toggle('err',err);$('#iaProg').classList.toggle('ok',ok);
   const mins=s.started?Math.floor((Date.now()/1000-s.started)/60):0;$('#iaLog').textContent=(s.detail||'')+(run?(s.detail?' · ':'')+'running for '+mins+' min · you can keep working':'');
   if(run){$('#sText').textContent='Installing AI '+Math.round(s.pct||0)+'%'}}

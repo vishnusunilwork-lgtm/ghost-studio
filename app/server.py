@@ -54,7 +54,7 @@ def status():
     f = RUNNER.eng.fal
     m = E.Spend.month()
     return {"engine": RUNNER.eng.name, "gpu": E.gpu_info(), "llm": llm.available(), "models": CFG["models"],
-            "makers": RUNNER.eng.plan(), "image_ai": E.image_ai_installed() and INSTALL["state"] != "running", "image_ai_install": INSTALL["state"],
+            "makers": RUNNER.eng.plan(), "image_ai": E.image_ai_installed() and _model_cached() and INSTALL["state"] != "running", "image_ai_pkgs": E.image_ai_installed(), "image_ai_install": INSTALL["state"],
             "api": {"on": f.on, "key_end": f.key[-4:] if f.on else "", "limit": f.limit, "spent": m["usd"],
                     "price": f.price, "model": f.video_model},
             "moves": MOVES, "steps": STEPS, "labels": LABEL, "language": CFG.get("language", "Hindi"),
@@ -188,6 +188,7 @@ def _image_model() -> str:
 def install_image_ai(body: ImageAIBody):
     """One-time: installs the free image AI and downloads its model, with real progress."""
     import importlib
+    import importlib.util
     import subprocess
     import sys
     import threading
@@ -203,6 +204,10 @@ def install_image_ai(body: ImageAIBody):
             for i, (pkg, w) in enumerate(PKGS, 1):
                 name = pkg.split(">")[0]
                 INSTALL.update(step=f"Installing {name}", detail=f"Part {i} of {len(PKGS)}")
+                if importlib.util.find_spec(name.replace("-", "_")) is not None:
+                    done += w
+                    INSTALL["pct"] = round(30 * done / total, 1)
+                    continue
                 r = subprocess.run([sys.executable, "-m", "pip", "install", "-q", pkg], capture_output=True, text=True)
                 if r.returncode != 0:
                     raise RuntimeError(f"Could not install {name}: " + r.stderr[-400:])
@@ -236,6 +241,15 @@ def install_image_ai(body: ImageAIBody):
     threading.Thread(target=work, daemon=True).start()
     _t.sleep(0.2)
     return INSTALL
+
+
+def _model_cached() -> bool:
+    """True when the picture model's files are on this computer."""
+    import os
+    base = Path(os.environ.get("HF_HUB_CACHE") or os.environ.get("HUGGINGFACE_HUB_CACHE")
+                or Path(os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface")) / "hub")
+    snap = base / ("models--" + _image_model().replace("/", "--")) / "snapshots"
+    return snap.exists() and any(f.suffix == ".safetensors" for f in snap.rglob("*"))
 
 
 def _dl(fn, mid, err):
