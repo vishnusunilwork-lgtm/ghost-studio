@@ -1,0 +1,8 @@
+.venv/
+projects/
+config.local.yaml
+.ghost/
+__pycache__/
+*.pyc
+.DS_Store
+_to_delete/

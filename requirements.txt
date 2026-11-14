@@ -1,0 +1,16 @@
+# Core app
+fastapi==0.115.*
+uvicorn[standard]==0.32.*
+python-multipart>=0.0.12
+pyyaml>=6.0
+pillow>=10.0
+# AI models (installed by the installer; GPU builds of torch come from the PyTorch index)
+diffusers>=0.43.0
+transformers>=4.46
+accelerate>=1.0
+sentencepiece
+imageio[ffmpeg]
+av
+kokoro>=0.9.4
+soundfile
+faster-whisper>=1.1

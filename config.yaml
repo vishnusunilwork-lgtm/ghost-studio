@@ -1,0 +1,44 @@
+# AI Film Studio Local - settings
+# Everything runs on this computer. No accounts, no API keys, no cloud.
+# Change a model here, restart the app, and it is used from then on.
+
+engine: auto            # auto = real models if an NVIDIA GPU is found, otherwise "mock" (fake test media)
+
+brand:
+  name: ShareChat
+  spoken: ShareChat
+  about: "ShareChat lets people share devotional greetings, mantras and wishes with their own photo and name, in their own language."
+
+language: Hindi
+
+models:
+  # Writes scripts, splits lines, writes every prompt (runs in Ollama)
+  llm: qwen2.5:14b
+  # Looks at reference-ad frames (runs in Ollama)
+  vision: qwen2.5vl:7b
+  # First-frame images (Hugging Face, diffusers)
+  image: black-forest-labs/FLUX.2-klein-base-4B   # Apache 2.0 (the 9B is non-commercial)
+  # Video WITH speech and lip-sync, from the first-frame image (Hugging Face, diffusers)
+  # LICENSE: LTX-2 is free below US$10M yearly revenue; bigger companies need a Lightricks commercial agreement.
+  # AI-made videos must be labelled as AI-generated.
+  video: Lightricks/LTX-2
+  # Narration voice (Kokoro, runs locally). Hindi voices: hf_alpha, hf_beta (female), hm_omega, hm_psi (male)
+  tts_voice: hm_omega
+  # Speech to text for reference ads (faster-whisper)
+  whisper: medium
+
+quality:
+  # Generated at this size, then upscaled to 1080x1920 for export
+  video_width: 576
+  video_height: 1024
+  fps: 24
+  video_steps: 30
+  image_steps: 50
+  # Draft mode: quick low-res preview to check the idea, then "Make it final" re-renders the same takes
+  video_steps_draft: 12
+  image_steps_draft: 20
+  export_crf: 16          # lower = better quality, bigger file (16 is visually lossless)
+  clip_seconds: 7.5       # longest line per clip
+
+paths:
+  projects: projects
