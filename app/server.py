@@ -49,12 +49,20 @@ def _local() -> dict:
     return (yaml.safe_load(LOCAL.read_text(encoding="utf-8")) or {}) if LOCAL.exists() else {}
 
 
+def _addon_summary() -> dict:
+    from . import addons
+    try:
+        return {a["id"]: {"installed": a["installed"], "state": a["state"], "pct": a["pct"]} for a in addons.listing(CFG)}
+    except Exception:
+        return {}
+
+
 @app.get("/api/status")
 def status():
     f = RUNNER.eng.fal
     m = E.Spend.month()
     return {"engine": RUNNER.eng.name, "gpu": E.gpu_info(), "llm": llm.available(), "models": CFG["models"],
-            "makers": RUNNER.eng.plan(), "image_ai": E.image_ai_installed() and _model_cached() and INSTALL["state"] != "running", "image_ai_pkgs": E.image_ai_installed(), "image_ai_install": INSTALL["state"],
+            "makers": RUNNER.eng.plan(), "addons": _addon_summary(), "image_ai": E.image_ai_installed() and _model_cached() and INSTALL["state"] != "running", "image_ai_pkgs": E.image_ai_installed(), "image_ai_install": INSTALL["state"],
             "api": {"on": f.on, "key_end": f.key[-4:] if f.on else "", "limit": f.limit, "spent": m["usd"],
                     "price": f.price, "model": f.video_model},
             "moves": MOVES, "steps": STEPS, "labels": LABEL, "language": CFG.get("language", "Hindi"),
@@ -71,15 +79,20 @@ def projects():
 async def create(idea: str = Form(""), dialogue: str = Form(""), seconds: int = Form(30),
                  voice_mode: str = Form("oncamera"), language: str = Form(""), title: str = Form(""),
                  aspect: str = Form("9:16"), quality: str = Form("final"), kind: str = Form("video"), count: int = Form(4),
+                 music_style: str = Form("bollywood"), vocals: str = Form("ai"), music_seconds: int = Form(60), ai_music: str = Form(""),
                  reference: UploadFile | None = File(None), music: UploadFile | None = File(None),
                  refs: list[UploadFile] | None = File(None)):
+    if kind == "music" and not idea.strip() and not dialogue.strip():
+        raise HTTPException(400, "Describe the song (mood, story, occasion), or paste your lyrics")
     if not idea.strip() and not dialogue.strip() and not reference:
         raise HTTPException(400, "Write an idea, paste a dialogue or add a reference video")
     p = STORE.new(idea=idea.strip(), dialogue=dialogue.strip(), seconds=max(8, min(180, seconds)),
                   voice_mode=voice_mode, language=language or CFG.get("language", "Hindi"), title=title.strip() or "New ad",
                   mode="reference" if reference else "idea",
                   aspect=aspect if aspect in ASPECTS else "9:16", quality="draft" if quality == "draft" else "final",
-                  kind="images" if kind == "images" else "video", count=max(1, min(8, count)))
+                  kind=kind if kind in ("images", "music") else "video", count=max(1, min(8, count)),
+                  music_style=music_style, vocals=vocals if vocals in ("ai", "mine", "instrumental") else "ai",
+                  music_seconds=max(10, min(600, music_seconds)), ai_music=ai_music == "1")
     d = STORE.dir(p["id"])
     for up, key in ((reference, "reference"), (music, "music")):
         if up and up.filename:
@@ -319,6 +332,29 @@ def redo_image(pid: str, i: int):
         raise HTTPException(404, "No such image")
     RUNNER.submit(pid, "redo_still", i=i)
     return {"ok": True}
+
+
+@app.post("/api/projects/{pid}/music/more")
+def more_music(pid: str):
+    p = _get(pid)
+    if p.get("kind") != "music":
+        raise HTTPException(400, "Not a music project")
+    RUNNER.submit(pid, "more_music")
+    return {"ok": True}
+
+
+@app.get("/api/addons")
+def addons_list():
+    from . import addons
+    return {"addons": addons.listing(CFG), "memory_gb": addons.memory_gb(), "disk_gb": addons.free_disk_gb()}
+
+
+@app.post("/api/addons/{aid}/install")
+def addons_install(aid: str):
+    from . import addons
+    if aid not in addons.ADDONS:
+        raise HTTPException(404, "Unknown add-on")
+    return addons.install(aid, CFG)
 
 
 @app.get("/api/projects/{pid}/zip")

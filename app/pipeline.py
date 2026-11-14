@@ -32,9 +32,9 @@ def sizes(p: dict) -> tuple[tuple[int, int], tuple[int, int], bool]:
     return gen, out, draft
 
 
-STEPS = ["analyse", "plan", "images", "videos", "voice", "edit"]
+STEPS = ["analyse", "plan", "images", "videos", "voice", "music", "edit"]
 LABEL = {"analyse": "Reading the reference", "plan": "Writing script and prompts", "images": "Making the first frames",
-         "videos": "Making the video clips", "voice": "Making the narration", "edit": "Editing and exporting"}
+         "videos": "Making the video clips", "voice": "Making the narration", "music": "Making the music", "edit": "Editing and exporting"}
 
 
 class Store:
@@ -148,6 +148,9 @@ class Runner:
         if p.get("kind") == "images":
             self._images_only(pid, ref)
             return
+        if p.get("kind") == "music":
+            self._music_only(pid)
+            return
         # 2 plan
         self._say(p, "plan", "Writing the script and every prompt", 10)
         pl = planner.plan(self.cfg, idea=p.get("idea", ""), dialogue=p.get("dialogue", ""), reference=ref,
@@ -165,6 +168,8 @@ class Runner:
         self._videos(pid)
         # 5 narration
         self._voice(pid)
+        # 6 AI background music (if chosen and the music add-on is installed)
+        self._music_for_ad(pid)
         # 6 edit
         self._edit(pid)
 
@@ -302,6 +307,82 @@ class Runner:
 
     def _reedit(self, pid):
         self._edit(pid)
+
+    # ------------------------------------------------------------ music
+    def _music_for_ad(self, pid):
+        from . import addons
+        p = self.store.load(pid)
+        if not p.get("ai_music") or p.get("music") or not addons.music_installed():
+            p["steps"]["music"] = "skipped"
+            self.store.save(p)
+            return
+        E.free()
+        total = sum(float(c.get("seconds", 0)) for c in p["clips"]) + 1
+        style = (p.get("plan") or {}).get("music_style") or "warm festive Indian background music"
+        self._say(p, "music", "Composing background music to fit the ad", 88)
+        try:
+            tr = addons.MusicServer.generate(caption=style + ". Instrumental background, leaves room for voice.", lyrics="[Instrumental]",
+                                             seconds=max(10, total), language="unknown", out_dir=self.store.dir(pid), takes=1,
+                                             log=lambda m: self._say(self.store.load(pid), "music", m))
+            p = self.store.load(pid)
+            p["music"] = tr[0]["file"]
+            p["music_ai"] = True
+            self._done(p, "music")
+        except Exception as e:
+            p = self.store.load(pid)
+            p["log"].append(time.strftime("%H:%M:%S ") + "Music skipped: " + str(e)[:200])
+            p["steps"]["music"] = "skipped"
+            self.store.save(p)
+        finally:
+            addons.MusicServer.stop()
+
+    def _music_only(self, pid):
+        from . import addons
+        p = self.store.load(pid)
+        for st in ("analyse", "images", "videos", "voice", "edit"):
+            p["steps"][st] = "skipped"
+        self._say(p, "plan", "Writing the song" if p.get("vocals") != "instrumental" else "Planning the music", 8)
+        pl = planner.plan_music(self.cfg, idea=p.get("idea", ""), style=p.get("music_style", "bollywood"), vocals=p.get("vocals", "ai"),
+                                lyrics=p.get("dialogue", ""), seconds=int(p.get("music_seconds", 60)), language=p.get("language"))
+        if p.get("title") in (None, "", "New ad"):
+            p["title"] = pl.get("title") or "Song"
+        p["song"] = pl
+        if pl.get("note"):
+            p["log"].append(pl["note"])
+        p["tracks"] = p.get("tracks") or []
+        self._done(p, "plan")
+        self._compose(pid, takes=2)
+
+    def _compose(self, pid, takes=1):
+        from . import addons
+        p = self.store.load(pid)
+        if not addons.music_installed():
+            raise RuntimeError("Install the Music & songs add-on first (⚙ → Add-ons).")
+        pl = p["song"]
+        E.free()
+        self._say(p, "music", "Starting the music engine", 20)
+        try:
+            out = addons.MusicServer.generate(caption=pl["caption"], lyrics=pl.get("lyrics", ""), seconds=pl.get("seconds", 60),
+                                              language=pl.get("language", "unknown"), out_dir=self.store.dir(pid), takes=takes,
+                                              bpm=pl.get("bpm"), describe=pl.get("describe", ""),
+                                              log=lambda m: self._say(self.store.load(pid), "music", m))
+        finally:
+            addons.MusicServer.stop()
+        p = self.store.load(pid)
+        for t in out:
+            p["tracks"].append({**t, "n": len(p["tracks"]) + 1})
+        if not pl.get("lyrics") and out and out[0].get("lyrics"):
+            p["song"]["lyrics"] = out[0]["lyrics"]
+        p["steps"]["music"] = "done"
+        p["status"], p["progress"] = "done", 100
+        p["log"].append(time.strftime("%H:%M:%S ") + f"Finished {len(out)} take{'s' if len(out) > 1 else ''}")
+        self.store.save(p)
+
+    def _more_music(self, pid):
+        p = self.store.load(pid)
+        p["steps"]["music"] = "waiting"
+        self.store.save(p)
+        self._compose(pid, takes=1)
 
     # ------------------------------------------------------------ images only
     def _images_only(self, pid, ref=None):

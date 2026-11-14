@@ -100,7 +100,7 @@ def render(clips: list[dict], out: str | Path, fps: int = 24, crf: int = 16,
         info = probe(c["video"])
         dur = float(c.get("duration") or info["duration"] or 1)
         args += ["-i", str(c["video"])]
-        fc.append(f"[{i}:v]trim=0:{dur:.3f},setpts=PTS-STARTPTS,{camera_chain(c.get('move','none'), dur, fps, c.get('amount',1), c.get('shake',0), size[0], size[1])}[v{i}]")
+        fc.append(f"[{i}:v]tpad=stop_mode=clone:stop_duration={dur:.3f},trim=0:{dur:.3f},setpts=PTS-STARTPTS,{camera_chain(c.get('move','none'), dur, fps, c.get('amount',1), c.get('shake',0), size[0], size[1])}[v{i}]")
         vol = 0.0 if c.get("mute") else float(c.get("volume", 1.0))
         if info["has_audio"]:
             fc.append(f"[{i}:a]atrim=0:{dur:.3f},asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo,volume={vol}[a{i}]")

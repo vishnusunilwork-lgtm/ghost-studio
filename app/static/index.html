@@ -206,6 +206,21 @@ details.log pre{font:11.5px/1.6 ui-monospace,Menlo,monospace;color:var(--mute);w
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 
 /* ---------- Glass layer: frosted surfaces over the molecule field ---------- */
+.addons{display:flex;flex-direction:column;gap:10px;margin-top:6px}
+.addon{padding:14px;border-radius:18px;background:var(--glass-soft);border:1px solid var(--edge);box-shadow:var(--hi);display:flex;flex-direction:column;gap:2px}
+.addon.is-on{border-color:rgba(134,227,176,.28)}.addon .ad-h{display:flex;align-items:center;gap:8px;justify-content:space-between}.addon .ad-h b{font-size:14.5px}
+.addon .note{padding:2px 0;margin:0}.addon .meta{color:var(--faint);font-size:12px}.addon .why{color:#e6c66e}.addon .btn{margin-top:8px;height:38px}.addon .prog{margin-top:8px}
+.tag.ok{color:var(--ok);border-color:rgba(134,227,176,.35)}
+.music-wrap{margin-top:8px;max-width:760px}.tracks{display:flex;flex-direction:column;gap:12px}
+.track{padding:14px 16px;border-radius:20px;background:var(--glass);-webkit-backdrop-filter:var(--frost);backdrop-filter:var(--frost);border:1px solid var(--edge);box-shadow:var(--hi);display:flex;flex-direction:column;gap:10px;animation:enter .5s var(--ease) both}
+.track .tk-h{display:flex;align-items:center;gap:10px}.track .tk-h small{color:var(--faint);margin-left:auto;font-size:12px}
+.track audio{width:100%;height:40px;filter:invert(.92) hue-rotate(180deg) saturate(.4);border-radius:99px}
+.track .row2{display:flex;gap:8px}.track .row2 .btn{height:36px;font-size:13px}
+.eq{display:inline-flex;align-items:flex-end;gap:2px;height:16px;width:18px}.eq i{width:3px;height:30%;background:var(--ink);border-radius:2px;opacity:.6}
+.eq.on i{animation:eq 1s ease-in-out infinite}.eq.on i:nth-child(2){animation-delay:.15s}.eq.on i:nth-child(3){animation-delay:.3s}.eq.on i:nth-child(4){animation-delay:.45s}
+@keyframes eq{0%,100%{height:25%}50%{height:100%}}
+.lyrics{margin-top:16px;padding:14px 16px;border-radius:18px;background:var(--glass-soft);border:1px solid var(--edge)}.lyrics summary{cursor:pointer;color:var(--mute)}
+.lyrics pre{white-space:pre-wrap;font:14px/1.7 var(--font);color:var(--ink);margin:10px 0 0}
 .gallery-wrap{margin-top:8px}.galbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}.galbar .btn{height:42px}
 .gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px}
 .tile{display:flex;flex-direction:column;gap:8px;padding:8px;border-radius:20px;background:var(--glass-soft);border:1px solid var(--edge);box-shadow:var(--hi);animation:enter .5s var(--ease) both;min-width:0}
@@ -301,10 +316,14 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
           </button>
         </div>
         <div class="opts">
-          <label class="opt" title="What to make"><select id="kind"><option value="video">Video ad</option><option value="images">Images only</option></select></label>
+          <label class="opt" title="What to make"><select id="kind"><option value="video">Video ad</option><option value="images">Images only</option><option value="music">Music / song</option></select></label>
           <label class="opt hidden" id="countOpt" title="How many images"><select id="count"><option value="1">1 image</option><option value="2">2 images</option><option value="4" selected>4 images</option><option value="6">6 images</option><option value="8">8 images</option></select></label>
+          <label class="opt hidden" id="mstyleOpt" title="Music style"><select id="mstyle"><option value="bollywood">Bollywood pop</option><option value="bhajan">Devotional bhajan</option><option value="festive">Festive celebration</option><option value="sufi">Sufi</option><option value="bhangra">Punjabi bhangra</option><option value="ghazal">Ghazal</option><option value="classical">Indian classical fusion</option><option value="acoustic">Indie acoustic</option><option value="lofi">Lo-fi chill</option><option value="cinematic">Cinematic score</option><option value="edm">EDM / dance</option><option value="hiphop">Hip-hop / rap</option></select></label>
+          <label class="opt hidden" id="mvocalOpt" title="Vocals"><select id="mvocal"><option value="ai">Song · AI writes lyrics</option><option value="mine">Song · my lyrics</option><option value="instrumental">Instrumental</option></select></label>
+          <label class="opt hidden" id="mlenOpt" title="Song length"><select id="mlen"><option value="30">30 s</option><option value="60" selected>1 min</option><option value="90">1.5 min</option><option value="120">2 min</option><option value="180">3 min</option></select></label>
           <label class="opt" id="lenOpt" title="Length"><select id="len"><option value="15">15 s</option><option value="30" selected>30 s</option><option value="45">45 s</option><option value="60">60 s</option><option value="90">90 s</option><option value="120">2 min</option></select></label>
-          <label class="opt" title="Shape"><select id="aspect"><option value="9:16">9:16 Reels</option><option value="4:5">4:5 Feed</option><option value="1:1">1:1 Square</option><option value="16:9">16:9 YouTube</option></select></label>
+          <label class="opt" id="aspectOpt" title="Shape"><select id="aspect"><option value="9:16">9:16 Reels</option><option value="4:5">4:5 Feed</option><option value="1:1">1:1 Square</option><option value="16:9">16:9 YouTube</option></select></label>
+          <label class="opt" id="vmusicOpt" title="Background music"><select id="vmusic"><option value="">No AI music</option><option value="1">AI background music</option></select></label>
           <label class="opt" id="voiceOpt" title="Voice"><select id="voice"><option value="oncamera">People talk</option><option value="narrator">Narrator</option><option value="both">Both</option></select></label>
           <label class="opt" title="Language"><select id="lang"><option>Hindi</option><option>English</option><option>Marathi</option><option>Tamil</option><option>Telugu</option><option>Bengali</option><option>Gujarati</option><option>Kannada</option><option>Malayalam</option><option>Punjabi</option></select></label>
           <button class="opt tog" id="exact" title="Use my words exactly, as the dialogue"><span class="tg"></span>Exact words</button>
@@ -342,6 +361,11 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
         <details class="log"><summary>Show what it's doing</summary><pre id="pLog"></pre></details>
       </div>
     </div>
+    <div class="music-wrap hidden" id="musWrap">
+      <div class="galbar"><button class="btn" id="mMore">Make another take</button><button class="btn" id="mRerun">Start again</button></div>
+      <div class="tracks" id="tracks"></div>
+      <details class="lyrics hidden" id="lyrBox"><summary>Lyrics</summary><pre id="lyrics"></pre></details>
+    </div>
     <div class="gallery-wrap hidden" id="galWrap">
       <div class="galbar"><a class="btn solid" id="gZip" download><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 4v12M6 11l6 6 6-6M5 20h14"/></svg>Download all</a><button class="btn hidden" id="gUp">Make them final · full quality</button><button class="btn" id="gRerun">Start again</button></div>
       <div class="gallery" id="gallery"></div>
@@ -361,10 +385,9 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
 <aside class="drawer right" id="settings" aria-label="Settings">
   <div class="dhead"><h3>This computer</h3><button class="icon" data-close aria-label="Close">✕</button></div>
   <div class="dbody"><div class="kv" id="kv"></div>
-    <div class="sect" id="iaBox"><h4>Free AI pictures on this Mac</h4>
-      <p class="note">Without it, ads use your own photos (add them with +) or simple colour cards. One-time download of about 10 GB; needs an Apple M-chip Mac with 16 GB memory or more.</p>
-      <button class="btn" id="iaBtn">Install free image AI</button>
-      <div class="prog hidden" id="iaProg"><div class="ptop2"><b id="iaStep">Starting</b><span id="iaPct">0%</span></div><div class="ptrack"><i id="iaBar"></i></div><p class="note" id="iaLog"></p></div></div>
+    <div class="sect" id="addBox"><h4>Add-ons <span class="tag">free · runs on this computer</span></h4>
+      <p class="note" id="addSys">Install once. Ghost then uses them by itself.</p>
+      <div class="addons" id="addList"></div></div>
     <div class="sect"><h4>Video service <span class="tag">optional</span></h4>
       <div id="apiOff"><p class="note">Free mode makes <b>photo-motion</b> ads: pictures + your camera moves + narrator. Add a <b>fal.ai</b> key to make <b>real moving video where people speak</b> (Veo 3.1). You pay fal.ai per video; this app stops at your monthly limit.</p>
         <input type="password" id="apiKey" class="inp" placeholder="Paste your fal.ai key" autocomplete="off" spellcheck="false">
@@ -447,8 +470,11 @@ function grow(){prompt_.style.height='auto';prompt_.style.height=Math.min(240,pr
 function ready(){const ok=prompt_.value.trim()||A.ref;$('#send').classList.toggle('ready',!!ok);$('#sugs').classList.toggle('dim',!!(prompt_.value.trim()||A.ref||A.pics.length))}
 prompt_.addEventListener('input',grow);
 prompt_.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();go()}});
-function kindUI(){const im=$('#kind').value==='images';$('#countOpt').classList.toggle('hidden',!im);$('#lenOpt').classList.toggle('hidden',im);$('#voiceOpt').classList.toggle('hidden',im);$('#exact').classList.toggle('hidden',im);
-  prompt_.placeholder=im?'Describe the images, or drop a reference ad to copy its look…':(EXACT?'Paste the exact dialogue. Two people? Start lines with “Name: …”':'Describe the ad, or drop a reference video…')}
+function kindUI(){const k=$('#kind').value,im=k==='images',mu=k==='music',vi=k==='video';
+  const show=(id,on)=>$('#'+id).classList.toggle('hidden',!on);
+  show('countOpt',im);show('lenOpt',vi);show('voiceOpt',vi);show('vmusicOpt',vi);show('exact',vi);show('aspectOpt',!mu);show('mstyleOpt',mu);show('mvocalOpt',mu);show('mlenOpt',mu);
+  prompt_.placeholder=mu?($('#mvocal').value==='mine'?'Paste your lyrics (you can add [Verse] and [Chorus] lines)…':'Describe the song: mood, story, occasion… e.g. a warm Diwali song about family'):im?'Describe the images, or drop a reference ad to copy its look…':(EXACT?'Paste the exact dialogue. Two people? Start lines with “Name: …”':'Describe the ad, or drop a reference video…')}
+$('#mvocal').onchange=kindUI;
 $('#kind').onchange=kindUI;
 $('#exact').onclick=()=>{EXACT=!EXACT;$('#exact').classList.toggle('on',EXACT);prompt_.placeholder=EXACT?'Paste the exact dialogue. Two people? Start lines with “Name: …”':'Describe the ad, or drop a reference video…';prompt_.focus()};
 
@@ -486,40 +512,48 @@ $$('.sug').forEach(b=>b.onclick=()=>{const s=b.dataset.s;
 $('#send').onclick=go;
 async function go(){const text=prompt_.value.trim();$('#goErr').textContent='';
   if(!text&&!A.ref){$('#goErr').textContent='Write an idea, paste your dialogue, or add a reference ad.';prompt_.focus();return}
-  const imgs=$('#kind').value==='images';
+  const imgs=$('#kind').value==='images',mus=$('#kind').value==='music',ao=ST&&ST.addons||{};
+  const needAddon=(name,what)=>{$('#goErr').innerHTML=`${what} needs the free <b>${name}</b> add-on. <button class="linkbtn" id="goSet">Open ⚙ → Add-ons to install it</button>`;$('#goSet').onclick=()=>{kv();drawer('settings')}};
+  if(mus&&!(ao.music&&ao.music.installed)){needAddon('Music & songs','Music');return}
+  if(!mus&&$('#kind').value==='video'&&$('#vmusic').value&&!(ao.music&&ao.music.installed)&&!A.music){needAddon('Music & songs','AI background music');return}
   if(imgs&&ST&&ST.makers&&ST.makers.image==='photos'&&!A.pics.length){$('#goErr').innerHTML='Images only needs AI pictures. <button class="linkbtn" id="goSet">Open ⚙ to install the free image AI</button> (or add your own photos with +).';$('#goSet').onclick=()=>{kv();drawer('settings')};return}
-  const fd=new FormData();fd.append('kind',$('#kind').value);fd.append('count',$('#count').value);fd.append(imgs?'idea':(EXACT?'dialogue':'idea'),text);fd.append('seconds',$('#len').value);fd.append('aspect',$('#aspect').value);fd.append('voice_mode',$('#voice').value);fd.append('language',$('#lang').value);fd.append('quality',QUAL);
+  const fd=new FormData();fd.append('kind',$('#kind').value);fd.append('count',$('#count').value);fd.append('music_style',$('#mstyle').value);fd.append('vocals',$('#mvocal').value);fd.append('music_seconds',$('#mlen').value);fd.append('ai_music',$('#kind').value==='video'?$('#vmusic').value:'');
+  fd.append(mus?($('#mvocal').value==='mine'?'dialogue':'idea'):imgs?'idea':(EXACT?'dialogue':'idea'),text);fd.append('seconds',$('#len').value);fd.append('aspect',$('#aspect').value);fd.append('voice_mode',$('#voice').value);fd.append('language',$('#lang').value);fd.append('quality',QUAL);
   if(A.ref)fd.append('reference',A.ref);if(A.music)fd.append('music',A.music);A.pics.forEach(f=>fd.append('refs',f));
   $('#send').classList.remove('ready');const r0=comp.getBoundingClientRect();F.impulse(r0.left+r0.width/2,r0.top+r0.height/2,9);F.set(.9);
   try{const r=await api('/api/projects',{method:'POST',body:fd});comp.classList.add('sent');setTimeout(()=>{comp.classList.remove('sent');prompt_.value='';A.ref=null;A.pics=[];A.music=null;chips();grow();saveDraft();open(r.id)},380)}
   catch(e){$('#goErr').textContent=e.message;F.set(.18);ready()}}
 
 /* ---------- status / settings / history ---------- */
-const MK={image:{nvidia:'AI images (NVIDIA)',local:'AI images (this Mac)',service:'AI images (video service)',photos:'Your photos / colour cards'},video:{service:'Real video + speech (video service)',nvidia:'Real video + speech (NVIDIA)',photo_motion:'Photo motion: pictures + camera moves'},voice:{mac:'Mac voice (free, offline)',windows:'Windows voice (free, offline)',kokoro:'Kokoro voice',tone:'Test tone'}};
+const MK={image:{nvidia:'AI images (NVIDIA)',local:'AI images (this Mac)',service:'AI images (video service)',photos:'Your photos / colour cards'},video:{service:'Real video + speech (video service)',nvidia:'Real video + speech (NVIDIA)',motion:'AI motion (add-on) + narrator',photo_motion:'Photo motion: pictures + camera moves'},voice:{mac:'Mac voice (free, offline)',windows:'Windows voice (free, offline)',kokoro:'Kokoro voice',tone:'Test tone'}};
 async function status(){try{ST=await api('/api/status');const mk=ST.makers||{},talk=mk.video!=='photo_motion';
   $('#sDot').className='dot '+(ST.engine==='mock'?'warn':'ok');
-  $('#sText').textContent=ST.engine==='mock'?'Test mode':mk.video==='service'?'Real video · service':mk.video==='nvidia'?'Real video · NVIDIA':'Photo motion';
+  $('#sText').textContent=ST.engine==='mock'?'Test mode':mk.video==='service'?'Real video · service':mk.video==='nvidia'?'Real video · NVIDIA':mk.video==='motion'?'AI motion':'Photo motion';
   $('#voice').querySelector('[value=oncamera]').textContent=talk?'People talk':'People talk (needs video service)';
   if(ST.language&&!$('#lang').dataset.set){$('#lang').value=ST.language;$('#lang').dataset.set=1}}
   catch(e){$('#sDot').className='dot';$('#sText').textContent='App not running'}}
 function kv(){if(!ST)return;const m=ST.models||{},mk=ST.makers||{},a=ST.api||{};
   $('#kv').innerHTML=[['Pictures',MK.image[mk.image]||mk.image],['Video',MK.video[mk.video]||mk.video],['Narrator',MK.voice[mk.voice]||mk.voice],['Script AI',ST.llm?'On ('+m.llm+')':'Simple templates — install Ollama for real scripts'],['Computer',ST.gpu.name+(ST.gpu.vram_gb?` · ${ST.gpu.vram_gb} GB`:'')],['App version',ST.version||'dev']].map(([k,v])=>`<span>${esc(k)}</span><b>${esc(v)}</b>`).join('');
-  const ia=ST.image_ai;$('#iaBox').classList.toggle('hidden',(ia&&ST.image_ai_install!=='done')||mk.image==='nvidia');if(!ia&&ST.image_ai_install==='idle')$('#iaBtn').textContent=ST.image_ai_pkgs?'Finish setup: download the picture model (~8 GB)':'Install free image AI';
+  addPoll();
   $('#apiOff').classList.toggle('hidden',!!a.on);$('#apiOn').classList.toggle('hidden',!a.on);
   if(a.on){$('#apiInfo').textContent=`Connected (key …${a.key_end}) · this month: $${(a.spent||0).toFixed(2)} of $${a.limit} · about $${(a.price*30).toFixed(2)} per 30-second ad`;$('#apiLimit').value=a.limit}}
 async function saveApi(body){try{await api('/api/settings/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});$('#apiKey').value='';await status();kv();toast(body.remove?'Key removed — back to free photo motion':'Saved')}catch(e){toast(e.message)}}
 $('#apiSave').onclick=()=>{const k=$('#apiKey').value.trim();if(!k){toast('Paste the key first');return}saveApi({fal_key:k})};
 $('#apiLimitSave').onclick=()=>saveApi({monthly_limit_usd:+$('#apiLimit').value});
 $('#apiRemove').onclick=()=>{if(confirm('Remove the video service key from this computer?'))saveApi({remove:true})};
-let IA_T=0;
-function iaShow(s){const run=s.state==='running',err=s.state==='error',ok=s.state==='done';
-  $('#iaProg').classList.toggle('hidden',s.state==='idle');$('#iaBtn').classList.toggle('hidden',run||ok);$('#iaBtn').textContent=err?'Try again':(ST&&ST.image_ai_pkgs?'Finish setup: download the picture model (~8 GB)':'Install free image AI');
-  $('#iaStep').textContent=s.step||'';$('#iaPct').textContent=Math.round(s.pct||0)+'%';$('#iaBar').style.width=(s.pct||0)+'%';$('#iaProg').classList.toggle('err',err);$('#iaProg').classList.toggle('ok',ok);
-  const mins=s.started?Math.floor((Date.now()/1000-s.started)/60):0;$('#iaLog').textContent=(s.detail||'')+(run?(s.detail?' · ':'')+'running for '+mins+' min · you can keep working':'');
-  if(run){$('#sText').textContent='Installing AI '+Math.round(s.pct||0)+'%'}}
-async function iaPoll(){clearInterval(IA_T);const tick=async()=>{try{const s=await api('/api/settings/image-ai');iaShow(s);if(s.state!=='running'){clearInterval(IA_T);await status();kv();if(s.state==='done')toast('Free AI pictures are installed')}}catch(e){}};await tick();IA_T=setInterval(tick,1500)}
-$('#iaBtn').onclick=async()=>{try{iaShow(await api('/api/settings/image-ai',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}))}catch(e){toast(e.message)}iaPoll()};
-async function list(){const ps=await api('/api/projects');$('#plist').innerHTML=ps.length?ps.map(p=>`<button class="prow ${p.id===CUR?'cur':''}" data-id="${p.id}"><span class="sdot ${p.status}"></span><b>${esc(p.title||'Ad')}</b><small>${p.status==='running'?(p.progress||0)+'%':esc(STATUS[p.status]||p.status)}${p.kind==='images'?' · images':''}${p.quality==='draft'?' · draft':''}</small></button>`).join(''):'<p class="note">Your ads appear here.</p>';
+let ADD_T=0;
+function renderAddons(r){const L=r.addons||[];$('#addSys').textContent=`This computer: ${r.memory_gb?r.memory_gb+' GB memory · ':''}${r.disk_gb?r.disk_gb+' GB free disk':''}. Install once; Ghost then uses them by itself.`;
+  $('#addList').innerHTML=L.map(a=>{const run=a.state==='running',err=a.state==='error';
+    const badge=a.installed?'<span class="tag ok">Installed ✓</span>':!a.fits?'<span class="tag">Not for this computer</span>':'';
+    const mins=a.started?Math.floor((Date.now()/1000-a.started)/60):0;
+    return `<div class="addon ${a.installed?'is-on':''}"><div class="ad-h"><b>${esc(a.name)}</b>${badge}</div><p class="note">${esc(a.desc)}</p><p class="note meta">${esc(a.size)} · ${esc(a.time)}</p>
+      ${!a.fits&&!a.installed?`<p class="note why">${esc(a.why)}</p>`:''}
+      ${run||err?`<div class="prog ${err?'err':''}"><div class="ptop2"><b>${esc(a.step)}</b><span>${Math.round(a.pct||0)}%</span></div><div class="ptrack"><i style="width:${a.pct||0}%"></i></div><p class="note">${esc(a.detail||'')}${run?` · running for ${mins} min · you can keep working`:''}</p></div>`:''}
+      ${!a.installed&&!run&&(a.fits||err)?`<button class="btn" data-install="${a.id}">${err?'Try again':'Install'}</button>`:''}</div>`}).join('');
+  $$('[data-install]').forEach(b=>b.onclick=async()=>{b.disabled=true;try{await api(`/api/addons/${b.dataset.install}/install`,{method:'POST'})}catch(e){toast(e.message)}addPoll()});
+  const runA=L.find(a=>a.state==='running');if(runA)$('#sText').textContent=`Installing ${runA.name} ${Math.round(runA.pct||0)}%`;return !!runA}
+async function addPoll(){clearInterval(ADD_T);const tick=async()=>{try{const r=await api('/api/addons');const busy=renderAddons(r);if(!busy){clearInterval(ADD_T);ADD_T=0;await status()}}catch(e){}};await tick();if(!ADD_T)ADD_T=setInterval(tick,1500)}
+async function list(){const ps=await api('/api/projects');$('#plist').innerHTML=ps.length?ps.map(p=>`<button class="prow ${p.id===CUR?'cur':''}" data-id="${p.id}"><span class="sdot ${p.status}"></span><b>${esc(p.title||'Ad')}</b><small>${p.status==='running'?(p.progress||0)+'%':esc(STATUS[p.status]||p.status)}${p.kind==='images'?' · images':p.kind==='music'?' · music':''}${p.quality==='draft'?' · draft':''}</small></button>`).join(''):'<p class="note">Your ads appear here.</p>';
   $$('.prow').forEach(r=>r.onclick=()=>{drawer(null);open(r.dataset.id)})}
 
 /* ---------- project ---------- */
@@ -544,6 +578,13 @@ async function refresh(force){if(!CUR)return;let p;try{p=await api('/api/project
   if(fin&&(force||LASTFIN!==p.final)){LASTFIN=p.final;const u=fileUrl(p.id,p.final,Math.round(p.updated||0));scr.innerHTML=`<video src="${u}" controls playsinline autoplay muted loop></video>`;$('#pDl').href=u;$('#pDl').setAttribute('download',p.final.split(/[\\/]/).pop())}
   else if(!fin){LASTFIN='';const last=[...(p.clips||[])].reverse().find(c=>c.video);const src=last?fileUrl(p.id,last.video):p.image?fileUrl(p.id,p.image):'';const cur=scr.dataset.src||'';
     if(src&&src!==cur){scr.dataset.src=src;scr.innerHTML=last?`<video src="${src}" playsinline autoplay muted loop></video>`:`<img src="${src}" alt="">`}else if(!src&&!scr.querySelector('.veil')){scr.dataset.src='';scr.innerHTML='<div class="veil">Waiting for the first frame…</div>'}}
+  const mus=p.kind==='music';$('#musWrap').classList.toggle('hidden',!mus);
+  if(mus){$('.stage').classList.add('hidden');$('.shots-h').classList.add('hidden');$('#shots').classList.add('hidden');$('#galWrap').classList.add('hidden');
+    $('#pSteps').innerHTML=['plan','music'].map(s=>`<li class="${p.steps[s]}"><i></i>${esc({plan:p.vocals==='instrumental'?'Planning the music':'Writing the song',music:'Composing and singing'}[s])}</li>`).join('');
+    $('#pTag').textContent=['Music',(p.song&&p.song.seconds?Math.round(p.song.seconds/60*10)/10+' min':''),p.language||''].filter(Boolean).join(' · ');
+    const ms=JSON.stringify((p.tracks||[]).map(t=>t.file))+p.status;if(force||ms!==LAST){LAST=ms;tracks(p)}
+    $('#mMore').disabled=busy;$('#mRerun').classList.toggle('hidden',busy);
+    if(!busy){clearInterval(TIMER);TIMER=setInterval(refresh,8000)}return}
   const imgs=p.kind==='images';$('.stage').classList.toggle('hidden',imgs);$('.shots-h').classList.toggle('hidden',imgs);$('#shots').classList.toggle('hidden',imgs);$('#galWrap').classList.toggle('hidden',!imgs);
   if(imgs){$('#pSteps').innerHTML=['analyse','plan','images'].filter(s=>p.steps[s]!=='skipped'||s!=='analyse').map(s=>`<li class="${p.steps[s]}"><i></i>${esc({analyse:'Reading the reference',plan:'Writing the image prompts',images:'Making the images'}[s])}</li>`).join('');
     const gs=JSON.stringify((p.stills||[]).map(x=>[x.image,x.status]))+p.status+p.quality;if(force||gs!==LAST){LAST=gs;gallery(p)}
@@ -552,6 +593,15 @@ async function refresh(force){if(!CUR)return;let p;try{p=await api('/api/project
   const sig=JSON.stringify((p.clips||[]).map(c=>[c.video,c.status,c.camera_move,c.shake,c.line,c.seconds]))+p.status;
   if(force||sig!==LAST){LAST=sig;shots(p)}
   if(!busy){clearInterval(TIMER);TIMER=setInterval(refresh,8000)}}
+function tracks(p){const busy=p.status==='running'||p.status==='queued';const ts=p.tracks||[];
+  $('#tracks').innerHTML=ts.map((t,i)=>{const u=fileUrl(p.id,t.file);const nm=`${(p.title||'song').replace(/[^\w\s-]/g,'')} - take ${i+1}.mp3`;
+    return `<div class="track" style="animation-delay:${i*60}ms"><div class="tk-h"><span class="eq"><i></i><i></i><i></i><i></i></span><b>Take ${i+1}</b><small>${esc([t.bpm?t.bpm+' BPM':'',t.key||''].filter(Boolean).join(' · '))}</small></div>
+      <audio controls preload="metadata" src="${u}"></audio><div class="row2"><a class="btn" href="${u}" download="${esc(nm)}">Download MP3</a></div></div>`}).join('')+
+    (busy?`<div class="track wait"><div class="tk-h"><span class="eq on"><i></i><i></i><i></i><i></i></span><b>Composing…</b><small>about 5–10 min per song on a Mac</small></div></div>`:'');
+  $$('#tracks audio').forEach(a=>{const eq=a.parentElement.querySelector('.eq');a.onplay=()=>{$$('#tracks audio').forEach(o=>{if(o!==a)o.pause()});eq.classList.add('on')};a.onpause=a.onended=()=>eq.classList.remove('on')});
+  const ly=(p.song&&p.song.lyrics&&p.song.lyrics!=='[Instrumental]')?p.song.lyrics:'';$('#lyrBox').classList.toggle('hidden',!ly);$('#lyrics').textContent=ly}
+$('#mMore').onclick=async()=>{try{await api(`/api/projects/${CUR}/music/more`,{method:'POST'});toast('Making another take');kick()}catch(e){toast(e.message)}};
+$('#mRerun').onclick=async()=>{await api(`/api/projects/${CUR}/rerun`,{method:'POST'});toast('Starting again');kick()};
 function gallery(p){const ar=(p.aspect||'9:16').replace(':','/');$('#gallery').style.setProperty('--ar',ar);const busy=p.status==='running'||p.status==='queued';
   $('#gallery').innerHTML=(p.stills||[]).map((x,i)=>{const u=x.image?fileUrl(p.id,x.image,x.seed):'';const nm=`${String(i+1).padStart(2,'0')} ${x.caption||'image'}.png`;
     return `<div class="tile" style="animation-delay:${i*50}ms"><div class="im ${u?'':'wait'}">${u?`<img src="${u}" alt="${esc(x.caption)}" data-z="${u}">`:''}</div><div class="cap">${i+1}. ${esc(x.caption||'')}</div>
@@ -606,7 +656,7 @@ $('#upGo').onclick=async()=>{if(P&&(P.status==='running'||P.status==='queued')){
 /* draft: what you are typing and choosing is saved as you go, and comes back after an update or reload */
 const DKEY='gs-draft';
 function saveDraft(){const open=$('#clipSheet').classList.contains('on')&&EDIT>=0;
-  lsSet(DKEY,{kind:$('#kind').value,count:$('#count').value,prompt:prompt_.value,len:$('#len').value,aspect:$('#aspect').value,voice:$('#voice').value,lang:$('#lang').value,exact:EXACT,qual:QUAL,pid:CUR,
+  lsSet(DKEY,{kind:$('#kind').value,count:$('#count').value,mstyle:$('#mstyle').value,mvocal:$('#mvocal').value,mlen:$('#mlen').value,vmusic:$('#vmusic').value,prompt:prompt_.value,len:$('#len').value,aspect:$('#aspect').value,voice:$('#voice').value,lang:$('#lang').value,exact:EXACT,qual:QUAL,pid:CUR,
     sheet:open?{i:EDIT,line:$('#csLine').value,prompt:$('#csPrompt').value,move:$('.mv.on')?.dataset.m||'',shake:$('#csShake').value,amt:$('#csAmt').value}:null})}
 let _dt=0;const draftSoon=()=>{clearTimeout(_dt);_dt=setTimeout(saveDraft,250)};
 ['input','change'].forEach(t=>document.addEventListener(t,draftSoon,true));document.addEventListener('click',()=>setTimeout(draftSoon,60),true);
@@ -615,15 +665,16 @@ async function saveAtt(){try{const db=await idb();await new Promise(r=>{const tx
 async function loadAtt(){try{const db=await idb();return await new Promise(r=>{const q=db.transaction('att').objectStore('att').get('cur');q.onsuccess=()=>r(q.result);q.onerror=()=>r(null)})}catch(e){return null}}
 function setSel(id,v){const el=$('#'+id);if(v&&[...el.options].some(o=>o.value===v))el.value=v}
 async function restore(){const d=lsGet(DKEY);
-  if(d){prompt_.value=d.prompt||'';grow();setSel('len',d.len);setSel('aspect',d.aspect);setSel('voice',d.voice);setSel('lang',d.lang);setSel('kind',d.kind);setSel('count',d.count);kindUI();$('#lang').dataset.set=1;
+  if(d){prompt_.value=d.prompt||'';grow();setSel('len',d.len);setSel('aspect',d.aspect);setSel('voice',d.voice);setSel('lang',d.lang);setSel('kind',d.kind);setSel('count',d.count);setSel('mstyle',d.mstyle);setSel('mvocal',d.mvocal);setSel('mlen',d.mlen);setSel('vmusic',d.vmusic);kindUI();$('#lang').dataset.set=1;
     if(d.exact&&!EXACT){EXACT=true;$('#exact').classList.add('on')}if(d.qual){QUAL=d.qual;$('#modeTxt').textContent=QUAL==='draft'?'Draft':'Final'}}
   const a=await loadAtt();if(a&&(a.ref||(a.pics||[]).length||a.music)){A.ref=a.ref||null;A.pics=a.pics||[];A.music=a.music||null;chips()}
   const pid=location.hash.length>1?location.hash.slice(1):d&&d.pid;
   if(pid){await open(pid);if(d&&d.sheet&&d.pid===pid&&P&&P.clips&&P.clips[d.sheet.i]){sheet(d.sheet.i);$('#csLine').value=d.sheet.line;$('#csPrompt').value=d.sheet.prompt;
       if(d.sheet.move)$$('.mv').forEach(x=>x.classList.toggle('on',x.dataset.m===d.sheet.move));$('#csShake').value=d.sheet.shake;$('#csAmt').value=d.sheet.amt;sv()}}
   else setTimeout(()=>prompt_.focus(),300)}
+addEventListener('hashchange',()=>{const h=location.hash.slice(1);if(h&&h!==CUR)open(h);else if(!h&&CUR)goHome()});
 (async()=>{headline();await status();verPill();const u=lsGet('gs-upd');if(u){lsSet('gs-upd',null);if(ST&&ST.version!==u.from)setTimeout(()=>toast('Updated to '+ST.version+'. Everything is where you left it.'),600)}
-  await restore();if(ST&&ST.image_ai_install==='running')iaPoll();checkUpdate();setInterval(status,30000);setInterval(()=>checkUpdate(),10*60*1000);addEventListener('focus',()=>checkUpdate())})();
+  await restore();if(ST&&ST.addons&&Object.values(ST.addons).some(a=>a.state==='running'))addPoll();checkUpdate();setInterval(status,30000);setInterval(()=>checkUpdate(),10*60*1000);addEventListener('focus',()=>checkUpdate())})();
 </script>
 </body>
 </html>

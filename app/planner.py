@@ -74,6 +74,7 @@ Return JSON only:
 {{"title":"short name","character":{{"look":"full description of the main fictional character","voice":"voice description"}},
 "people":[{{"key":"A","look":"","voice":""}}],
 "image_prompt":"first-frame photo prompt, {aspect}, real phone photo, every visible detail",
+"music_style":"background music for this ad: genre, instruments, mood, tempo (no vocals)",
 "clips":[{{"speaker":"A","line":"","seconds":7,"image_prompt":"photo prompt for THIS moment: same people and place, the action of this line, framing","video_prompt":"","camera_move":"none","shake":0.6,"narration":""}}]}}"""
     try:
         if not llm.available():
@@ -141,3 +142,61 @@ Return JSON only: {{"title":"short name","images":[{{"caption":"3-6 words","prom
                             "prompt": f"{aspect} real phone photo, {look}, {idea or 'festive home'}, {SHOTS[i % len(SHOTS)]}, natural light, no text."}
                            for i in range(count)]}
     return data
+
+
+LANG_CODES = {"Hindi": "hi", "English": "en", "Marathi": "mr", "Tamil": "ta", "Telugu": "te", "Bengali": "bn",
+              "Gujarati": "gu", "Kannada": "kn", "Malayalam": "ml", "Punjabi": "pa"}
+
+STYLES = {
+    "bollywood": "Bollywood pop, catchy hook, dholak and tabla with modern drums, strings, warm vocals",
+    "bhajan": "devotional Indian bhajan, harmonium, tabla, manjira, temple bells, calm and uplifting",
+    "sufi": "Sufi qawwali-inspired, harmonium, claps, soulful soaring vocals, building energy",
+    "bhangra": "Punjabi bhangra, dhol, tumbi, high energy, celebratory",
+    "festive": "festive Indian celebration music, shehnai, dhol, joyful, family festival mood",
+    "acoustic": "indie acoustic, guitar and soft percussion, intimate warm vocals",
+    "lofi": "lo-fi chill beat, soft keys, vinyl texture, relaxed",
+    "cinematic": "cinematic orchestral score, emotional strings, piano, big build",
+    "edm": "EDM dance track, punchy kick, synth drops, energetic",
+    "hiphop": "Indian hip-hop, 808 bass, crisp drums, confident rap flow",
+    "classical": "Indian classical fusion, sitar, bansuri flute, tabla, raga feel",
+    "ghazal": "ghazal, soft harmonium, tabla, tender romantic vocals, slow tempo",
+}
+
+
+def plan_music(cfg: dict, *, idea: str = "", style: str = "bollywood", vocals: str = "ai", lyrics: str = "",
+               seconds: int = 60, language: str | None = None) -> dict:
+    """Music / song: a style description (caption) and, for songs, lyrics with [Verse]/[Chorus] tags."""
+    lang = language or cfg.get("language", "Hindi")
+    code = LANG_CODES.get(lang, "unknown")
+    base = STYLES.get(style, style or STYLES["bollywood"])
+    out = {"title": (idea or "Untitled song")[:40], "caption": f"{base}. {idea}".strip(), "lyrics": "", "language": code,
+           "seconds": int(seconds), "describe": ""}
+    if vocals == "instrumental":
+        out["lyrics"] = "[Instrumental]"
+        out["caption"] += ". Instrumental, no vocals."
+        return out
+    if vocals == "mine" and lyrics.strip():
+        out["lyrics"] = lyrics.strip()
+    want_lyrics = vocals != "mine" or not lyrics.strip()
+    try:
+        if not llm.available():
+            raise RuntimeError("no local script AI")
+        verses = max(1, round(seconds / 45))
+        data = llm.ask_json(cfg["models"]["llm"], f"""You are a hit songwriter and music producer.
+Brand context (do not force the name in): {cfg['brand']['about']}
+Song idea: {idea or 'a warm festival song'}
+Style: {base}
+Length: about {seconds} seconds.
+{'Write the lyrics in ' + lang + (' using Devanagari script' if lang in ('Hindi', 'Marathi') else ' in its own script') + f'. Structure with tags on their own lines: [Verse], [Chorus], [Bridge], [Outro]. About {verses} verse(s) and a memorable chorus. Natural singable lines, no brand claims, no real people.' if want_lyrics else 'Lyrics are given; do not change them.'}
+Return JSON only: {{"title":"short song title","caption":"one line for the music model: genre, instruments, mood, tempo, vocal type (e.g. warm female vocals)","bpm":100{', "lyrics":"..."' if want_lyrics else ''}}}""", temperature=0.8)
+        out["title"] = data.get("title") or out["title"]
+        out["caption"] = (data.get("caption") or out["caption"]).strip()
+        if data.get("bpm"):
+            out["bpm"] = int(data["bpm"])
+        if want_lyrics and data.get("lyrics"):
+            out["lyrics"] = data["lyrics"]
+    except Exception as e:
+        if want_lyrics:  # let the music engine write the lyrics itself
+            out["describe"] = f"a {lang} song, {base}, about: {idea or 'a joyful festival'}"
+            out["note"] = f"Lyrics written by the music engine (script AI not available: {e})."
+    return out

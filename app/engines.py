@@ -184,7 +184,7 @@ class Engines:
         local_img = not self.mock and image_ai_installed() and (cuda or gpu_info().get("mps"))
         return {
             "image": "nvidia" if cuda else "local" if local_img else "service" if self.fal.on else "photos",
-            "video": "service" if self.fal.on and not self.mock else "nvidia" if cuda else "photo_motion",
+            "video": "service" if self.fal.on and not self.mock else "nvidia" if cuda else "motion" if (not self.mock and _motion_ready()) else "photo_motion",
             "voice": "mac" if shutil.which("say") else "windows" if platform.system() == "Windows" else "kokoro" if _has("kokoro") else "tone",
         }
 
@@ -283,6 +283,42 @@ class Engines:
             return out
         if how == "nvidia":
             return self._ltx(image, prompt, seconds, out, seed, width, height, steps)
+        if how == "motion":
+            try:
+                return self._wan(image, prompt, seconds, out, seed, aspect)
+            except Exception as e:  # never lose the ad: fall back to photo motion for this shot
+                free()
+                print("AI motion failed, using photo motion:", e)
+        return self.photo_clip(image, seconds, out, width, height)
+
+    def _wan(self, image, prompt, seconds, out, seed, aspect):
+        """AI motion with Wan 2.2 TI2V 5B (Apache 2.0). No speech: a narrator speaks over it."""
+        import torch
+        from diffusers.utils import export_to_video, load_image
+        from . import addons
+
+        def load():
+            import diffusers
+            vae = diffusers.AutoencoderKLWan.from_pretrained(addons.WAN, subfolder="vae", torch_dtype=torch.float32)
+            p = diffusers.WanImageToVideoPipeline.from_pretrained(addons.WAN, vae=vae, torch_dtype=torch.bfloat16)
+            if _device() == "cuda":
+                p.enable_model_cpu_offload()
+            else:
+                p.to(_device())
+            return p
+        pipe = _pipe("motion", load)
+        big = _device() == "cuda" and addons.cuda_vram_gb() >= 20
+        long_side, short_side = (1280, 704) if big else (832, 480)
+        w, h = (short_side, long_side) if aspect in ("9:16", "4:5") else (long_side, short_side) if aspect == "16:9" else (short_side + 64, short_side + 64)
+        frames = int(min(121 if big else 81, 4 * round(min(seconds, 5.0) * 24 / 4) + 1))
+        img = load_image(str(image)).resize((w, h))
+        res = pipe(image=img, prompt=prompt, height=h, width=w, num_frames=frames, guidance_scale=5.0,
+                   negative_prompt="text, subtitles, watermark, logo, blurry, distorted face, extra fingers, static, jittery",
+                   num_inference_steps=30 if big else 20, generator=torch.Generator("cpu").manual_seed(int(seed) % 2**31)).frames[0]
+        export_to_video(res, str(out), fps=24)
+        return out
+
+    def _photo_only(self, image, seconds, out, width, height):
         return self.photo_clip(image, seconds, out, width, height)
 
     def photo_clip(self, image, seconds, out, width=None, height=None):
@@ -370,6 +406,14 @@ class Engines:
         m = _pipe("whisper", lambda: WhisperModel(self.cfg["models"]["whisper"], device="cuda" if has_cuda() else "cpu"))
         segs, _ = m.transcribe(str(media), language=None, vad_filter=True)
         return " ".join(s.text.strip() for s in segs)
+
+
+def _motion_ready() -> bool:
+    try:
+        from . import addons
+        return addons.motion_installed() and addons.motion_fits()[0]
+    except Exception:
+        return False
 
 
 def _has(mod: str) -> bool:
