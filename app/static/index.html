@@ -120,7 +120,9 @@ h1.ask span{display:inline-block;animation:word .9s var(--ease) both}
 .sdot{width:6px;height:6px;border-radius:50%;background:var(--faint);flex:none}
 .sdot.done{background:var(--ok)}.sdot.error{background:var(--bad)}.sdot.running,.sdot.queued{background:var(--ink);animation:breathe 1.2s infinite}
 .kv{display:grid;grid-template-columns:auto 1fr;gap:8px 16px;font-size:13px;padding:6px 6px}
-.kv span{color:var(--mute)}.kv b{font-weight:500;word-break:break-all}
+.kv span{color:var(--mute)}
+.sect{margin:18px 6px 0;padding-top:16px;border-top:1px solid var(--line)}.sect h4{margin:0 0 4px;font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px}.sect .note{padding:6px 0}
+.inp{width:100%;height:42px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:0 12px;outline:0;color:var(--ink)}.inp:focus{border-color:var(--line2)}.kv b{font-weight:500;word-break:break-all}
 .note{font-size:12.5px;color:var(--mute);line-height:1.6;padding:10px 6px}
 
 /* project */
@@ -250,7 +252,7 @@ details.log pre{font:11.5px/1.6 ui-monospace,Menlo,monospace;color:var(--mute);w
     <input type="file" id="fRef" accept="video/*" hidden>
     <input type="file" id="fPics" accept="image/*" multiple hidden>
     <input type="file" id="fMusic" accept="audio/*" hidden>
-    <div class="foot">Runs only on this computer · no keys · no cloud</div>
+    <div class="foot">Free · runs on this computer · add a video service any time under ⚙</div>
   </section>
 
   <!-- PROJECT -->
@@ -287,8 +289,20 @@ details.log pre{font:11.5px/1.6 ui-monospace,Menlo,monospace;color:var(--mute);w
 <aside class="drawer right" id="settings" aria-label="Settings">
   <div class="dhead"><h3>This computer</h3><button class="icon" data-close aria-label="Close">✕</button></div>
   <div class="dbody"><div class="kv" id="kv"></div>
-    <button class="btn" id="sReport" style="margin:10px 6px 0;width:calc(100% - 12px)">Copy problem report</button>
-    <p class="note">Everything is made on this computer. To change models, brand, language or quality, open <b>config.yaml</b> and restart the app.<br><br><b>Draft</b> makes a quick low-resolution preview so you can check the idea fast. <b>Make it final</b> then re-makes the same takes at full quality.<br><br>The LTX-2 video model needs a commercial agreement with Lightricks for companies with US$10M+ yearly revenue. Label AI-made videos as AI-generated.</p>
+    <div class="sect" id="iaBox"><h4>Free AI pictures on this Mac</h4>
+      <p class="note">Without it, ads use your own photos (add them with +) or simple colour cards. One-time download of about 10 GB; needs an Apple M-chip Mac with 16 GB memory or more.</p>
+      <button class="btn" id="iaBtn">Install free image AI</button><p class="note" id="iaLog"></p></div>
+    <div class="sect"><h4>Video service <span class="tag">optional</span></h4>
+      <div id="apiOff"><p class="note">Free mode makes <b>photo-motion</b> ads: pictures + your camera moves + narrator. Add a <b>fal.ai</b> key to make <b>real moving video where people speak</b> (Veo 3.1). You pay fal.ai per video; this app stops at your monthly limit.</p>
+        <input type="password" id="apiKey" class="inp" placeholder="Paste your fal.ai key" autocomplete="off" spellcheck="false">
+        <button class="btn solid" id="apiSave" style="margin-top:8px;width:100%">Save key on this computer</button>
+        <p class="note">The key is kept only on this computer and never shared, uploaded or shown again.</p></div>
+      <div id="apiOn" class="hidden"><p class="note" id="apiInfo"></p>
+        <div class="range"><span class="note" style="padding:0">Monthly limit $</span><input type="number" id="apiLimit" class="inp" min="1" max="5000" style="width:90px;flex:none"><button class="btn" id="apiLimitSave" style="height:38px">Save</button></div>
+        <button class="btn" id="apiRemove" style="margin-top:10px;width:100%">Remove key (back to free mode)</button></div>
+    </div>
+    <button class="btn" id="sReport" style="margin:16px 6px 0;width:calc(100% - 12px)">Copy problem report</button>
+    <p class="note"><b>Draft</b> makes a quick preview; <b>Make it final</b> re-makes the same takes at full quality. Label AI-made videos as AI-generated.</p>
   </div>
 </aside>
 <aside class="drawer right" id="clipSheet" aria-label="Edit shot">
@@ -398,10 +412,24 @@ async function go(){const text=prompt_.value.trim();$('#goErr').textContent='';
   catch(e){$('#goErr').textContent=e.message;F.set(.18);ready()}}
 
 /* ---------- status / settings / history ---------- */
-async function status(){try{ST=await api('/api/status');const real=ST.engine==='real';$('#sDot').className='dot '+(real&&ST.llm?'ok':'warn');
-  $('#sText').textContent=real?ST.gpu.name.replace(/NVIDIA GeForce /,'')+(ST.llm?'':' · script AI off'):'Test mode';if(ST.language&&!$('#lang').dataset.set){$('#lang').value=ST.language;$('#lang').dataset.set=1}}
+const MK={image:{nvidia:'AI images (NVIDIA)',local:'AI images (this Mac)',service:'AI images (video service)',photos:'Your photos / colour cards'},video:{service:'Real video + speech (video service)',nvidia:'Real video + speech (NVIDIA)',photo_motion:'Photo motion: pictures + camera moves'},voice:{mac:'Mac voice (free, offline)',kokoro:'Kokoro voice',tone:'Test tone'}};
+async function status(){try{ST=await api('/api/status');const mk=ST.makers||{},talk=mk.video!=='photo_motion';
+  $('#sDot').className='dot '+(ST.engine==='mock'?'warn':'ok');
+  $('#sText').textContent=ST.engine==='mock'?'Test mode':mk.video==='service'?'Real video · service':mk.video==='nvidia'?'Real video · NVIDIA':'Photo motion';
+  $('#voice').querySelector('[value=oncamera]').textContent=talk?'People talk':'People talk (needs video service)';
+  if(ST.language&&!$('#lang').dataset.set){$('#lang').value=ST.language;$('#lang').dataset.set=1}}
   catch(e){$('#sDot').className='dot';$('#sText').textContent='App not running'}}
-function kv(){if(!ST)return;const m=ST.models||{};$('#kv').innerHTML=[['Mode',ST.engine==='real'?'Real models on GPU':'Test mode (no NVIDIA GPU) — makes sample clips'],['GPU',ST.gpu.name+(ST.gpu.vram_gb?` · ${ST.gpu.vram_gb} GB`:'')],['Script AI',ST.llm?'On ('+m.llm+')':'Off — start Ollama'],['Vision',m.vision],['Images',m.image],['Video + voice',m.video],['Narrator',m.tts_voice],['Brand',ST.brand],['App version',ST.version||'dev']].map(([k,v])=>`<span>${esc(k)}</span><b>${esc(v)}</b>`).join('')}
+function kv(){if(!ST)return;const m=ST.models||{},mk=ST.makers||{},a=ST.api||{};
+  $('#kv').innerHTML=[['Pictures',MK.image[mk.image]||mk.image],['Video',MK.video[mk.video]||mk.video],['Narrator',MK.voice[mk.voice]||mk.voice],['Script AI',ST.llm?'On ('+m.llm+')':'Simple templates — install Ollama for real scripts'],['Computer',ST.gpu.name+(ST.gpu.vram_gb?` · ${ST.gpu.vram_gb} GB`:'')],['App version',ST.version||'dev']].map(([k,v])=>`<span>${esc(k)}</span><b>${esc(v)}</b>`).join('');
+  const ia=ST.image_ai;$('#iaBox').classList.toggle('hidden',ia||mk.image==='nvidia');
+  $('#apiOff').classList.toggle('hidden',!!a.on);$('#apiOn').classList.toggle('hidden',!a.on);
+  if(a.on){$('#apiInfo').textContent=`Connected (key …${a.key_end}) · this month: $${(a.spent||0).toFixed(2)} of $${a.limit} · about $${(a.price*30).toFixed(2)} per 30-second ad`;$('#apiLimit').value=a.limit}}
+async function saveApi(body){try{await api('/api/settings/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});$('#apiKey').value='';await status();kv();toast(body.remove?'Key removed — back to free photo motion':'Saved')}catch(e){toast(e.message)}}
+$('#apiSave').onclick=()=>{const k=$('#apiKey').value.trim();if(!k){toast('Paste the key first');return}saveApi({fal_key:k})};
+$('#apiLimitSave').onclick=()=>saveApi({monthly_limit_usd:+$('#apiLimit').value});
+$('#apiRemove').onclick=()=>{if(confirm('Remove the video service key from this computer?'))saveApi({remove:true})};
+$('#iaBtn').onclick=async()=>{const r=await api('/api/settings/image-ai',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});$('#iaLog').textContent=r.log;$('#iaBtn').disabled=true;
+  const t=setInterval(async()=>{const s=await api('/api/settings/image-ai');$('#iaLog').textContent=s.log;if(s.state!=='running'){clearInterval(t);$('#iaBtn').disabled=false;await status();kv()}},4000)};
 async function list(){const ps=await api('/api/projects');$('#plist').innerHTML=ps.length?ps.map(p=>`<button class="prow ${p.id===CUR?'cur':''}" data-id="${p.id}"><span class="sdot ${p.status}"></span><b>${esc(p.title||'Ad')}</b><small>${p.status==='running'?(p.progress||0)+'%':esc(STATUS[p.status]||p.status)}${p.quality==='draft'?' · draft':''}</small></button>`).join(''):'<p class="note">Your ads appear here.</p>';
   $$('.prow').forEach(r=>r.onclick=()=>{drawer(null);open(r.dataset.id)})}
 

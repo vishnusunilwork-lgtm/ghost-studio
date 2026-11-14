@@ -41,9 +41,21 @@ def home():
     return (ROOT / "app" / "static" / "index.html").read_text(encoding="utf-8")
 
 
+LOCAL = ROOT / "config.local.yaml"
+
+
+def _local() -> dict:
+    return (yaml.safe_load(LOCAL.read_text(encoding="utf-8")) or {}) if LOCAL.exists() else {}
+
+
 @app.get("/api/status")
 def status():
+    f = RUNNER.eng.fal
+    m = E.Spend.month()
     return {"engine": RUNNER.eng.name, "gpu": E.gpu_info(), "llm": llm.available(), "models": CFG["models"],
+            "makers": RUNNER.eng.plan(), "image_ai": E.image_ai_installed(),
+            "api": {"on": f.on, "key_end": f.key[-4:] if f.on else "", "limit": f.limit, "spent": m["usd"],
+                    "price": f.price, "model": f.video_model},
             "moves": MOVES, "steps": STEPS, "labels": LABEL, "language": CFG.get("language", "Hindi"),
             "brand": CFG["brand"]["name"], "aspects": list(ASPECTS),
             "version": VERSION + (" (" + BUILD + ")" if BUILD else "")}
@@ -94,6 +106,69 @@ def _get(pid: str) -> dict:
 @app.get("/api/projects/{pid}")
 def project(pid: str):
     return _get(pid)
+
+
+class ApiSettings(BaseModel):
+    fal_key: str | None = None
+    monthly_limit_usd: float | None = None
+    remove: bool = False
+
+
+@app.post("/api/settings/api")
+def set_api(body: ApiSettings):
+    """The optional video-service key lives only in config.local.yaml on this computer (never uploaded)."""
+    loc = _local()
+    a = loc.setdefault("api", {})
+    if body.remove:
+        a.pop("fal_key", None)
+    elif body.fal_key is not None:
+        k = body.fal_key.strip()
+        if len(k) < 20 or " " in k:
+            raise HTTPException(400, "That does not look like a key. Copy it again from fal.ai → Keys.")
+        a["fal_key"] = k
+    if body.monthly_limit_usd is not None:
+        a["monthly_limit_usd"] = max(1.0, min(5000.0, float(body.monthly_limit_usd)))
+    LOCAL.write_text(yaml.safe_dump(loc, allow_unicode=True), encoding="utf-8")
+    try:
+        LOCAL.chmod(0o600)
+    except Exception:
+        pass
+    CFG.setdefault("api", {}).update(a)
+    if body.remove:
+        CFG["api"].pop("fal_key", None)
+    RUNNER.eng.fal = E.Fal(CFG)
+    return {"ok": True}
+
+
+class ImageAIBody(BaseModel):
+    go: bool = True
+
+
+INSTALL = {"state": "idle", "log": ""}
+
+
+@app.post("/api/settings/image-ai")
+def install_image_ai(body: ImageAIBody):
+    """One-time: installs the free image AI for Macs / PCs (several GB)."""
+    import subprocess
+    import sys
+    import threading
+    if INSTALL["state"] == "running":
+        return INSTALL
+
+    def work():
+        INSTALL.update(state="running", log="Installing image AI (one time, 5-15 min)…")
+        r = subprocess.run([sys.executable, "-m", "pip", "install", "-q", "torch", "diffusers>=0.43.0", "transformers",
+                            "accelerate", "sentencepiece", "safetensors"], capture_output=True, text=True)
+        INSTALL.update(state="done" if r.returncode == 0 else "error",
+                       log="Installed. The first picture also downloads the model (~8 GB)." if r.returncode == 0 else r.stderr[-600:])
+    threading.Thread(target=work, daemon=True).start()
+    return INSTALL
+
+
+@app.get("/api/settings/image-ai")
+def image_ai_state():
+    return {**INSTALL, "installed": E.image_ai_installed()}
 
 
 class ClipEdit(BaseModel):

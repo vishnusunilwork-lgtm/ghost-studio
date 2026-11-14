@@ -172,8 +172,18 @@ class Runner:
         main = d / "frame_main.png"
         refs = [Path(r) for r in p.get("refs") or []]
         self.eng.image(p["plan"]["image_prompt"], main, gw * k, gh * k, seed=int(p.get("image_seed", 7)),
-                       ref_images=refs or None, steps=steps)
+                       ref_images=refs or None, steps=steps, fallback=refs[0] if refs else None)
         p["image"] = str(main)
+        p["engine_plan"] = self.eng.plan()
+        if p["engine_plan"]["video"] == "photo_motion":
+            # Photo motion: every shot gets its own picture, so the ad keeps moving
+            n = len(p["clips"]) or 1
+            for i, c in enumerate(p["clips"]):
+                self._say(p, "images", f"Picture {i + 1} of {n}", 20 + int(8 * i / n))
+                self._shot_image(p, i, gw * k, gh * k, steps, refs, main)
+                self.store.save(p)
+            self._done(p, "images")
+            return
         people = {pp.get("key"): pp for pp in (p["plan"].get("people") or []) if pp.get("key")}
         p["person_images"] = {}
         for k, pp in people.items():
@@ -185,6 +195,14 @@ class Runner:
             p["person_images"][k] = str(f)
         self._done(p, "images")
 
+    def _shot_image(self, p, i, w, h, steps, refs, main):
+        c = p["clips"][i]
+        f = self.store.dir(p["id"]) / f"shot{i + 1:02d}_{c['seed']}.png"
+        prompt = c.get("image_prompt") or f"{p['plan']['image_prompt']} Moment: {c.get('line', '')}"
+        self.eng.image(prompt, f, w, h, seed=int(c["seed"]), ref_images=[main, *refs][:4], steps=steps,
+                       fallback=refs[i % len(refs)] if refs else None)
+        c["image"] = str(f)
+
     def _videos(self, pid, only: int | None = None):
         p = self.store.load(pid)
         d = self.store.dir(pid)
@@ -195,10 +213,10 @@ class Runner:
         for i in idx:
             c = p["clips"][i]
             self._say(p, "videos", f"Clip {i + 1} of {n}: {c.get('line','')[:50]}", 25 + int(55 * i / n))
-            start = p.get("person_images", {}).get(c.get("speaker")) or p["image"]
+            start = c.get("image") or p.get("person_images", {}).get(c.get("speaker")) or p["image"]
             out = d / f"clip{i + 1:02d}_{c['seed']}{'_draft' if draft else ''}.mp4"
             self.eng.video(Path(start), c["video_prompt"], float(c["seconds"]), out, seed=c["seed"],
-                           width=gw, height=gh, steps=steps)
+                           width=gw, height=gh, steps=steps, aspect=p.get("aspect") or "9:16")
             c["video"], c["status"] = str(out), "done"
             self.store.save(p)
         if only is None:
@@ -208,6 +226,9 @@ class Runner:
         p = self.store.load(pid)
         d = self.store.dir(pid)
         mode = p.get("voice_mode", "oncamera")
+        if not self.eng.talks and mode != "narrator":
+            p["log"].append(time.strftime("%H:%M:%S ") + "This computer makes photo-motion ads, so a narrator speaks the lines.")
+            mode = "narrator"
         if mode == "oncamera":
             p["steps"]["voice"] = "skipped"
             self.store.save(p)
@@ -229,10 +250,16 @@ class Runner:
         self._say(p, "edit", "Editing with camera moves and exporting", 92)
         clips, narr, t = [], [], 0.0
         mode = p.get("voice_mode", "oncamera")
+        photo = (p.get("engine_plan") or {}).get("video") == "photo_motion"
+        if photo:
+            mode = "narrator"
         for c in p["clips"]:
             if not c.get("video"):
                 continue
-            clips.append({"video": c["video"], "duration": c["seconds"], "move": c.get("camera_move", "none"),
+            mv = c.get("camera_move", "none")
+            if photo and mv == "none":
+                mv = "push_in"  # a still photo always needs a little life
+            clips.append({"video": c["video"], "duration": c["seconds"], "move": mv,
                           "amount": c.get("amount", 1), "shake": c.get("shake", 0), "mute": mode == "narrator"})
             if c.get("narration_file"):
                 narr.append({"file": c["narration_file"], "at": t + 0.2})
@@ -255,6 +282,13 @@ class Runner:
         p = self.store.load(pid)
         p["clips"][i]["seed"] = random.randint(1, 10**6)
         p["clips"][i]["status"] = "waiting"
+        if (p.get("engine_plan") or {}).get("video") == "photo_motion" and p.get("image"):
+            (gw, gh), _, draft = sizes(p)
+            k = 1 if draft else 2
+            q = self.cfg["quality"]
+            self._say(p, "images", f"New picture for shot {i + 1}")
+            self._shot_image(p, i, gw * k, gh * k, int(q.get("image_steps_draft", 20)) if draft else int(q["image_steps"]),
+                             [Path(r) for r in p.get("refs") or []], Path(p["image"]))
         self.store.save(p)
         self._videos(pid, only=i)
         self._edit(pid)

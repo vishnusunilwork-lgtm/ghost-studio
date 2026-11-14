@@ -74,7 +74,7 @@ Return JSON only:
 {{"title":"short name","character":{{"look":"full description of the main fictional character","voice":"voice description"}},
 "people":[{{"key":"A","look":"","voice":""}}],
 "image_prompt":"first-frame photo prompt, {aspect}, real phone photo, every visible detail",
-"clips":[{{"speaker":"A","line":"","seconds":7,"video_prompt":"","camera_move":"none","shake":0.6,"narration":""}}]}}"""
+"clips":[{{"speaker":"A","line":"","seconds":7,"image_prompt":"photo prompt for THIS moment: same people and place, the action of this line, framing","video_prompt":"","camera_move":"none","shake":0.6,"narration":""}}]}}"""
     try:
         if not llm.available():
             raise RuntimeError("Ollama is not running")
@@ -98,7 +98,10 @@ def _fallback(idea, dialogue, reference, seconds, lang, b, why, aspect="9:16"):
     clips = []
     for i, l in enumerate(lines):
         secs = min(7.5, max(3.0, len(l["line"].split()) / 2.3 + 0.8))
+        shots = ["close-up, looking at camera", "medium shot, warm gesture", "detail of hands and diyas", "wide shot of the home",
+                 "close-up smiling", "medium shot holding a phone"]
         clips.append({"speaker": l["speaker"] or "A", "line": l["line"], "seconds": round(secs, 1), "camera_move": moves[i % len(moves)], "shake": 0.6,
+                      "image_prompt": f"{aspect} real phone photo, {look}, {idea or 'festive home'}, {shots[i % len(shots)]}, natural light, no text.",
                       "video_prompt": f"{look} speaks warmly to a phone camera, small natural gestures, blinks, breath before speaking. Says in {lang}: \"{l['line']}\". Natural pace. Soft ambient sound. No music, no subtitles, no text."})
     return {"title": (idea or "New ad")[:40], "character": {"look": look, "voice": "warm adult voice"}, "people": [],
             "image_prompt": f"{aspect} real phone photo, {look}, {idea or 'festive home'}, natural light, no text.",

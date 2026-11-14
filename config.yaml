@@ -2,7 +2,7 @@
 # Everything runs on this computer. No accounts, no API keys, no cloud.
 # Change a model here, restart the app, and it is used from then on.
 
-engine: auto            # auto = real models if an NVIDIA GPU is found, otherwise "mock" (fake test media)
+engine: auto            # auto = best maker this computer has (see app/engines.py). "mock" = test media only
 
 brand:
   name: ShareChat
@@ -22,6 +22,11 @@ models:
   # LICENSE: LTX-2 is free below US$10M yearly revenue; bigger companies need a Lightricks commercial agreement.
   # AI-made videos must be labelled as AI-generated.
   video: Lightricks/LTX-2
+  # Image AI on Macs (free, optional: install it under the gear). Distilled = only 4 steps. Apache 2.0
+  image_mac: black-forest-labs/FLUX.2-klein-4B
+  # Mac built-in narrator voice. Empty = pick by language (Hindi: Lekha). Add voices in
+  # System Settings > Accessibility > Spoken Content > System voice > Manage voices
+  mac_voice: ""
   # Narration voice (Kokoro, runs locally). Hindi voices: hf_alpha, hf_beta (female), hm_omega, hm_psi (male)
   tts_voice: hm_omega
   # Speech to text for reference ads (faster-whisper)
@@ -34,11 +39,21 @@ quality:
   fps: 24
   video_steps: 30
   image_steps: 50
+  image_steps_mac: 4
   # Draft mode: quick low-res preview to check the idea, then "Make it final" re-renders the same takes
   video_steps_draft: 12
   image_steps_draft: 20
   export_crf: 16          # lower = better quality, bigger file (16 is visually lossless)
   clip_seconds: 7.5       # longest line per clip
+
+# OPTIONAL video service. Leave empty = free photo-motion ads on any computer.
+# Add the key in the app (gear icon); it is saved in config.local.yaml on this computer only.
+api:
+  video_model: fal-ai/veo3.1/lite/image-to-video   # Veo 3.1 Lite: video + speech, ~US$0.05 per second at 720p
+  image_model: fal-ai/flux-2/klein/4b
+  resolution: 720p
+  price_per_second: 0.05
+  monthly_limit_usd: 20
 
 paths:
   projects: projects

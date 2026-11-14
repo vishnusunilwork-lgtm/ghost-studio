@@ -23,6 +23,13 @@ After that you can change any clip's line, camera move or shake. Press **Make th
 - **Shots.** Click a shot to change its words, camera move, shake or move strength. Each camera tile shows its move when you point at it.
 - **Clock icon (top left)** opens all your ads. The **gear** shows what this computer is using.
 
+## Free mode and the optional video service
+
+- **Free (default, no key):** Ghost Studio writes the script, makes one picture per shot, records a narrator (the Mac's built-in voice), and brings every picture to life with your camera moves. The result is a "photo motion" ad.
+  - **Pictures:** under ⚙ press **Install free image AI** for AI pictures (needs an M-chip Mac with 16 GB or more). Otherwise it uses your own photos (+ button) or simple colour cards.
+  - **Hindi narrator voice:** if you hear an English voice, add **Lekha** in System Settings → Accessibility → Spoken Content → System voice → Manage voices.
+- **Video service (optional):** paste a **fal.ai** key under ⚙ to get real moving video where people speak (Veo 3.1 Lite, about US$0.05 per second). The key stays on that computer only, and the app stops at your monthly limit. Press **Remove key** to go back to free mode.
+
 ## For the team (Mac)
 
 1. Unzip **Get Ghost Studio.zip** from Vishnu and move the **Ghost Studio** folder anywhere, for example into Documents.
