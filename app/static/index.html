@@ -418,7 +418,7 @@ async function go(){const text=prompt_.value.trim();$('#goErr').textContent='';
   catch(e){$('#goErr').textContent=e.message;F.set(.18);ready()}}
 
 /* ---------- status / settings / history ---------- */
-const MK={image:{nvidia:'AI images (NVIDIA)',local:'AI images (this Mac)',service:'AI images (video service)',photos:'Your photos / colour cards'},video:{service:'Real video + speech (video service)',nvidia:'Real video + speech (NVIDIA)',photo_motion:'Photo motion: pictures + camera moves'},voice:{mac:'Mac voice (free, offline)',kokoro:'Kokoro voice',tone:'Test tone'}};
+const MK={image:{nvidia:'AI images (NVIDIA)',local:'AI images (this Mac)',service:'AI images (video service)',photos:'Your photos / colour cards'},video:{service:'Real video + speech (video service)',nvidia:'Real video + speech (NVIDIA)',photo_motion:'Photo motion: pictures + camera moves'},voice:{mac:'Mac voice (free, offline)',windows:'Windows voice (free, offline)',kokoro:'Kokoro voice',tone:'Test tone'}};
 async function status(){try{ST=await api('/api/status');const mk=ST.makers||{},talk=mk.video!=='photo_motion';
   $('#sDot').className='dot '+(ST.engine==='mock'?'warn':'ok');
   $('#sText').textContent=ST.engine==='mock'?'Test mode':mk.video==='service'?'Real video · service':mk.video==='nvidia'?'Real video · NVIDIA':'Photo motion';

@@ -19,6 +19,7 @@ echo ""
 
 # ---------- 1) Updates from the team project ----------
 if [ "$1" != "--no-update" ] && [[ "$REPO" == */* ]]; then
+  printf '%s' "$REPO" > .ghost/repo
   get_gh
   if command -v gh >/dev/null 2>&1; then
     if ! gh auth status -h github.com >/dev/null 2>&1; then

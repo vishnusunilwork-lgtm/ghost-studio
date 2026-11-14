@@ -20,6 +20,9 @@ _cache: dict = {"t": 0.0, "data": None}
 
 
 def repo() -> str:
+    f = ROOT / ".ghost" / "repo"
+    if f.exists() and "/" in f.read_text():
+        return f.read_text().strip()
     try:
         m = re.search(r'^REPO="([^"]+/[^"]+)"', (ROOT / "Start Ghost Studio.command").read_text(), re.M)
         return m.group(1) if m else ""
@@ -28,8 +31,11 @@ def repo() -> str:
 
 
 def _gh() -> str:
-    local = ROOT / ".ghost" / "bin" / "gh"
-    return str(local) if local.exists() else (shutil.which("gh") or "")
+    for name in ("gh", "gh.exe"):
+        local = ROOT / ".ghost" / "bin" / name
+        if local.exists():
+            return str(local)
+    return shutil.which("gh") or ""
 
 
 def _api(path: str, timeout=30) -> bytes:

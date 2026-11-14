@@ -185,7 +185,7 @@ class Engines:
         return {
             "image": "nvidia" if cuda else "local" if local_img else "service" if self.fal.on else "photos",
             "video": "service" if self.fal.on and not self.mock else "nvidia" if cuda else "photo_motion",
-            "voice": "mac" if shutil.which("say") else "kokoro" if _has("kokoro") else "tone",
+            "voice": "mac" if shutil.which("say") else "windows" if platform.system() == "Windows" else "kokoro" if _has("kokoro") else "tone",
         }
 
     @property
@@ -334,6 +334,21 @@ class Engines:
             _run(["say"] + (["-v", pick] if pick else []) + ["-r", "175", "-o", str(aiff), text])
             _run([ffmpeg_bin(), "-y", "-loglevel", "error", "-i", str(aiff), "-ar", "48000", "-ac", "1", str(out)])
             aiff.unlink(missing_ok=True)
+            return out
+        if how == "windows" and not self.mock:
+            # Windows built-in voices (Hindi: "Microsoft Kalpana"/"Hemant" after adding Hindi speech in Settings > Time & language > Speech)
+            tf = out.with_suffix(".txt")
+            tf.write_text(text, encoding="utf-8")
+            want = (self.cfg.get("models", {}).get("windows_voice") or "").strip()
+            culture = {"Hindi": "hi-IN", "English": "en-IN", "Tamil": "ta-IN", "Telugu": "te-IN", "Marathi": "mr-IN",
+                       "Bengali": "bn-IN", "Gujarati": "gu-IN", "Kannada": "kn-IN", "Malayalam": "ml-IN", "Punjabi": "pa-IN"}.get(lang, "hi-IN")
+            ps = ("Add-Type -AssemblyName System.Speech; $s=New-Object System.Speech.Synthesis.SpeechSynthesizer; "
+                  f"$v=$s.GetInstalledVoices()|%{{$_.VoiceInfo}}; $w='{want}'; "
+                  f"$p=if($w){{$v|?{{$_.Name -eq $w}}}}else{{$v|?{{$_.Culture.Name -eq '{culture}'}}}}; "
+                  "if($p){$s.SelectVoice(($p|Select -First 1).Name)}; $s.Rate=0; "
+                  f"$s.SetOutputToWaveFile('{out}'); $s.Speak((Get-Content -Raw -Encoding UTF8 '{tf}')); $s.Dispose()")
+            _run(["powershell", "-NoProfile", "-Command", ps])
+            tf.unlink(missing_ok=True)
             return out
         if how == "kokoro" and not self.mock:
             import numpy as np
