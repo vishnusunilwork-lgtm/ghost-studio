@@ -298,6 +298,35 @@ SHOT_SPECS = [
 QUALITY = ("Photo-real, natural skin texture with pores, anatomically correct hands with five relaxed fingers each, "
            "natural symmetrical eyes with catchlights, true-to-life proportions, sharp focus on the subject, "
            "professional colour grade, no text, no watermark, no logos.")
+# Shots for a subject that is not a person (a cat, a product, a temple, food…)
+SUBJECT_SHOTS = [
+    ("Close-up", "Close-up of the main subject filling most of the frame, 85mm lens, sharp detail, softly blurred background"),
+    ("Medium shot", "Medium shot of the whole main subject in the left third of the frame, 50mm lens, background readable but soft"),
+    ("Macro detail", "Macro detail of one striking part of the main subject (texture, eyes, pattern), 100mm macro lens, very shallow depth of field"),
+    ("Wide shot", "Wide shot, 24mm lens, the main subject small in the frame, the whole place around it visible"),
+    ("Low angle", "Low-angle hero shot, 28mm lens, looking up at the main subject with light and sky behind"),
+    ("Side profile", "Side profile of the main subject, 70mm lens, rim light outlining its shape"),
+    ("Top-down", "Top-down view of the main subject and the objects around it, soft even light"),
+    ("Candid moment", "Candid moment of the main subject in motion, 50mm lens, slight motion, three-quarter angle"),
+]
+QUALITY_SUBJECT = ("Photo-real, true-to-life textures and proportions, sharp focus on the subject, natural light, "
+                   "professional colour grade, no text, no watermark, no logos.")
+PEOPLE_WORDS = ("person", "people", "woman", "women", "man", "men", "girl", "girls", "boy", "boys", "lady", "ladies", "guy", "family",
+                "mother", "mom", "mum", "amma", "father", "dad", "papa", "appa", "child", "children", "kid", "kids", "baby", "couple",
+                "bride", "groom", "aunty", "auntie", "uncle", "grandma", "grandmother", "grandpa", "grandfather", "dadi", "nani",
+                "friend", "friends", "student", "students", "teacher", "farmer", "worker", "model", "she", "he", "her", "his", "they",
+                "selfie", "portrait", "face", "dancer", "singer", "priest", "devotee", "shopkeeper", "customer", "doctor", "influencer",
+                "host", "presenter", "anchor", "chef", "cook", "actor", "actress", "hero", "heroine", "character",
+                "wedding", "party", "celebration", "celebrating", "dance", "dancing", "crowd", "team", "audience")
+
+
+def has_people(idea: str) -> bool:
+    """Does the idea ask for people? "cat" -> no (only the cat), "girl with a cat" -> yes."""
+    low = (idea or "").lower()
+    return bool(re.search(r"\b(" + "|".join(PEOPLE_WORDS) + r")\b", low)) or any(
+        w in low for w in ("लड़की", "लड़का", "औरत", "आदमी", "परिवार", "माँ", "बच्चा"))
+
+
 # kept for older code paths
 SHOTS = [s[1] for s in SHOT_SPECS]
 
@@ -306,21 +335,27 @@ def plan_images(cfg: dict, *, idea: str = "", reference: dict | None = None, cou
                 language: str | None = None, style: str = "auto") -> dict:
     """Images only: a set of clearly different still images (close-up, detail, wide…) of the same people and place."""
     count = max(1, min(8, int(count or 4)))
-    shots = [SHOT_SPECS[i % len(SHOT_SPECS)] for i in range(count)]
+    people = bool(reference) or has_people(idea)
+    specs, quality = (SHOT_SPECS, QUALITY) if people else (SUBJECT_SHOTS, QUALITY_SUBJECT)
+    shots = [specs[i % len(specs)] for i in range(count)]
     src = (f"REFERENCE AD to take the look from (same kind of people, place, light and framing, new fictional faces): {reference}"
            if reference else f"IDEA: {idea}")
     shot_list = "\n".join(f"{i + 1}. {c}: {d}" for i, (c, d) in enumerate(shots))
     prompt = f"""You are an art director and prompt engineer for a photo-real image model.
 Make {count} still images for {cfg['brand']['name']} ({cfg['brand']['about']}), {aspect} frame.
 {src}
-Rules: {RULES} {people_note(idea)}
+Rules: {RULES} {people_note(idea) if people else ''}
 {('LOOK AND DIRECTION: ' + STYLES_DIR[style]['guide']) if style in STYLES_DIR else ''}
-First invent ONE fictional main character and ONE place, described precisely (age, face, hair, skin tone, outfit with colours and pattern, jewellery; place, time, light).
-Then write one prompt per shot below. Each prompt MUST start with that shot's framing text, then the character (same words every time),
+{"First invent ONE fictional main character and ONE place, described precisely (age, face, hair, skin tone, outfit with colours and pattern, jewellery; place, time, light)."
+ if people else
+ f"The MAIN SUBJECT is exactly what the idea names: '{idea}'. It is the star of every picture. Do NOT add any person, face, hands or body parts, "
+ "and do not turn it into a statue, toy, drawing or deity unless the idea says so. Describe ONE specific subject precisely "
+ "(for an animal: breed, fur colour and pattern, eye colour; for an object: material, colour, shape) and ONE place (time, light)."}
+Then write one prompt per shot below. Each prompt MUST start with that shot's framing text, then the {"character" if people else "main subject"} (same words every time),
 then a DIFFERENT action/pose/expression for that shot, then the place and light. Shots must look clearly different.
 Shots:
 {shot_list}
-End every prompt with: {QUALITY}
+End every prompt with: {quality}
 Return JSON only: {{"title":"short name","character":"","place":"","images":[{{"caption":"3-5 words","prompt":""}}]}}"""
     try:
         if not llm.available():
@@ -330,11 +365,19 @@ Return JSON only: {{"title":"short name","character":"","place":"","images":[{{"
         if len(imgs) < count:
             raise RuntimeError("too few prompts")
         for i, im in enumerate(imgs):
-            if QUALITY[:30] not in im["prompt"]:
-                im["prompt"] = im["prompt"].rstrip(". ") + ". " + QUALITY
+            if quality[:30] not in im["prompt"]:
+                im["prompt"] = im["prompt"].rstrip(". ") + ". " + quality
+            if not people:
+                im["prompt"] = im["prompt"].rstrip(". ") + ". No people, no human faces or hands in the frame."
         data["images"] = imgs
-        ground_plan(data, idea)
+        if people:
+            ground_plan(data, idea)
     except Exception as e:
+        if not people:
+            subject = idea or "the subject"
+            return {"title": (idea or "Images")[:40], "note": "Written without the script AI (" + str(e)[:80] + "). Install Script AI in ⚙ → Add-ons for better prompts.",
+                    "images": [{"caption": c, "prompt": f"{d}. Main subject: {subject}, photographed for real in a natural Indian setting, soft natural light. "
+                                                        f"No people, no human faces or hands. {quality}"} for c, d in shots]}
         r = region_of(idea)
         who = (f"a fictional young woman, {REGIONS[r].split(';')[0]}, oval face, long dark hair, {REGIONS[r].split(';')[1].strip()}" if r else
                "a fictional Indian woman in her late twenties, oval face, warm brown skin, long dark hair, small red bindi, "

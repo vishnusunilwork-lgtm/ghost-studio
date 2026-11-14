@@ -1,3 +1,4 @@
+3.9.3: Pictures now show exactly what you ask for: "cat" gives a real cat, with no person added. People are added only when your idea mentions them (girl, family, couple, wedding…).
 3.9.2: Fix: Ghost could get stuck on "Starting Ghost Studio…" for a few minutes right after an update (it kept re-downloading). It now only updates when a newer version exists.
 3.9.1: Fix: Update now could stay blocked ("An ad is being made") after a project was deleted or paused mid-picture. Ghost now never gets stuck busy, and jobs cut off by a restart show as Paused with Continue.
 3.9.0: ✨ Change: edit the same picture, shot or song in plain words (shorter hair, brown eyes, make it a man, blue saree, more upbeat, male voice) and keep everything else. Change one or all. ↶ Undo any change. ✨ Rewrite any script line, prompt or lyrics. New take stays separate for something completely different.

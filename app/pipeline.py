@@ -572,8 +572,9 @@ class Runner:
             return
         self._stills(pid)
 
-    LOCK = ("Keep EXACTLY the same person as in the reference image: same face, skin tone, hair, outfit, colours and jewellery, "
-            "and the same place, light and colour mood. Only the framing, pose and action change: ")
+    LOCK = ("Keep EXACTLY the same main subject as in the reference image (the same person: face, skin tone, hair, outfit, colours and "
+            "jewellery; or the same animal or object: same markings, colours and shape), and the same place, light and colour mood. "
+            "Only the framing, pose and action change: ")
 
     def _stills(self, pid, only: int | None = None, mode: str = "same", resume: bool = False):
         from . import addons, llm
