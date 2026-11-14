@@ -13,6 +13,43 @@ RULES = ("No money, income, debt, loan, cure or guaranteed-result claims. No fea
 
 MOVES = ["none", "push_in", "pull_out", "pan_left", "pan_right", "tilt_up", "tilt_down"]
 
+# Direction presets (from how real interview / film / newsroom / phone videos are shot)
+STYLES_DIR = {
+    "interview2": {"name": "Interview · 2 cameras", "grade": "interview",
+        "guide": ("Two-camera seated conversation (interview / podcast). Exactly TWO fictional adults: A (host) and B (guest), seated facing "
+                  "each other at a slight angle in a real office with frosted glass panels and warm wood, soft window key light, natural colours. "
+                  "Camera A = medium close-up of A in the left third, looking screen-right just past the lens. Camera B = medium close-up of B in "
+                  "the right third, looking screen-left. 85mm look, f/2, background softly out of focus. Cut on every line: the speaker alternates "
+                  "A, B, A, B; reactions are allowed. Cameras are locked off with only a tiny drift."),
+        "moves": ["push_in", "none"], "amount": 0.35, "shake": 0.15},
+    "cinematic": {"name": "Cinematic film", "grade": "cinematic",
+        "guide": ("Feature-film scene. Motivated practical lights, warm amber highlights with teal shadows, deep sets with real background "
+                  "action, people walking in depth. Mix wide establishing shots (24mm) with movement toward camera, mediums (35mm) and close-up "
+                  "reactions (85mm). Slow, steady push-ins; composed frames; film grain; no handheld wobble."),
+        "moves": ["push_in", "pull_out", "pan_right", "push_in", "tilt_up"], "amount": 0.7, "shake": 0.1},
+    "news": {"name": "Newsroom explainer", "grade": "news",
+        "guide": ("Newsroom explainer: one fictional presenter in a modern studio with soft screens behind (no logos, no readable text), "
+                  "crisp bright key light, medium shots to camera intercut with detail cutaways that illustrate each point."),
+        "moves": ["push_in", "none", "pan_left"], "amount": 0.5, "shake": 0.05},
+    "ugc": {"name": "Phone UGC", "grade": "",
+        "guide": ("Phone selfie video at arm's length, vertical, natural window light in a real home, casual and authentic, "
+                  "small handheld movement, eye contact with the lens."),
+        "moves": ["none", "push_in"], "amount": 0.5, "shake": 0.9},
+}
+
+
+def style_from_reference(ref: dict | None) -> str:
+    t = " ".join(str(ref.get(k, "")) for k in ("format", "summary", "camera")).lower() if isinstance(ref, dict) else ""
+    if any(w in t for w in ("two people", "interview", "conversation", "podcast", "two person")):
+        return "interview2"
+    if any(w in t for w in ("film", "movie", "cinematic", "scene", "trailer")):
+        return "cinematic"
+    if any(w in t for w in ("news", "anchor", "presenter")):
+        return "news"
+    if any(w in t for w in ("selfie", "phone", "vlog", "ugc")):
+        return "ugc"
+    return ""
+
 
 def split_lines(text: str, max_words: int = 16) -> list[dict]:
     """'Name: words' lines keep their speaker; long speeches split at natural points."""
@@ -54,7 +91,7 @@ Describe it for remaking with new, fictional people. Return JSON only:
 
 
 def plan(cfg: dict, *, idea: str = "", dialogue: str = "", reference: dict | None = None, seconds: int = 30,
-         voice_mode: str = "oncamera", language: str | None = None, aspect: str = "9:16") -> dict:
+         voice_mode: str = "oncamera", language: str | None = None, aspect: str = "9:16", style: str = "auto") -> dict:
     lang = language or cfg.get("language", "Hindi")
     b = cfg["brand"]
     max_s = float(cfg["quality"]["clip_seconds"])
@@ -70,6 +107,7 @@ Make a {seconds} s {aspect} ad for {b['name']} in {lang}. About the brand: {b['a
 {'Write the script yourself: a strong 2-second hook, natural spoken ' + lang + ', a clear call to action to download ' + b['spoken'] + ' at the end.' if need_script else 'Use EXACTLY this dialogue, every word, in order:' + chr(10) + dialogue}
 Voice: {'people speak on camera' if voice_mode == 'oncamera' else 'a narrator speaks over the pictures (people do not talk)' if voice_mode == 'narrator' else 'mostly on camera, with a short narrator line at the end'}.
 Rules: {RULES}
+{('DIRECTION STYLE (follow it exactly): ' + STYLES_DIR[style]['guide']) if style in STYLES_DIR else ''}
 Split the speech into clips of at most {max_s} s each (about 15 {lang} words), at natural pauses, never mid-phrase.
 Make EXACTLY {n_clips} clips so the ad really lasts about {seconds} seconds. Give each clip a different shot (close-up, medium, detail, wide…) and a different camera move.
 The title must be a real 2-5 word name for this ad (never "short name").
@@ -77,7 +115,7 @@ For every clip write an LTX-2 prompt as one rich paragraph: who (same character 
 Pick a camera_move per clip from {MOVES} and a handheld shake 0-1.5 (0 = tripod).
 Return JSON only:
 {{"title":"short name","character":{{"look":"full description of the main fictional character","voice":"voice description"}},
-"people":[{{"key":"A","look":"","voice":""}}],
+"people":[{{"key":"A","look":"","voice":"","single_prompt":"photo prompt of this person alone in their own camera framing, same place and light"}}],
 "image_prompt":"first-frame photo prompt, {aspect}, real phone photo, every visible detail",
 "music_style":"background music for this ad: genre, instruments, mood, tempo (no vocals)",
 "clips":[{{"speaker":"A","line":"","seconds":7,"image_prompt":"photo prompt for THIS moment: same people and place, the action of this line, framing","video_prompt":"","camera_move":"none","shake":0.6,"narration":""}}]}}"""
@@ -98,11 +136,33 @@ Return JSON only:
     if not t or t.lower() in ("short name", "title", "name", "new ad"):
         first = (data.get("clips") or [{}])[0].get("line", "") or idea or "New ad"
         data["title"] = " ".join(first.split()[:5]).strip(" .,!?:;") or "New ad"
+    sd = STYLES_DIR.get(style)
+    alternate = style == "interview2" and (len({x.get("speaker") for x in data.get("clips", [])}) < 2
+                                           or any(x.get("speaker") not in ("A", "B") for x in data.get("clips", [])))
+    for i, c in enumerate(data.get("clips", [])):
+        if sd:
+            c["camera_move"] = c.get("camera_move") if c.get("camera_move") in sd["moves"] else sd["moves"][i % len(sd["moves"])]
+            c["amount"] = sd["amount"]
+            c["shake"] = sd["shake"]
+        if alternate:
+            c["speaker"] = "AB"[i % 2]
+    if style == "interview2" and len(data.get("people") or []) < 2:
+        data["people"] = [
+            {"key": "A", "look": "fictional Indian woman in her early thirties, shoulder-length dark hair, taupe knit top, small earrings",
+             "single_prompt": "Medium close-up, 85mm, a fictional Indian woman in her early thirties with shoulder-length dark hair and a taupe knit top, "
+                              "seated, framed in the left third, looking screen-right just past the camera, frosted-glass office behind, soft window light, shallow depth of field."},
+            {"key": "B", "look": "fictional Indian woman in her late twenties, long dark hair, black shirt, red pendant earrings",
+             "single_prompt": "Medium close-up, 85mm, a fictional Indian woman in her late twenties with long dark hair and a black shirt, "
+                              "seated, framed in the right third, looking screen-left just past the camera, warm wood panel and frosted glass behind, soft window light, shallow depth of field."}]
+        if "seated facing each other" not in data.get("image_prompt", ""):
+            data["image_prompt"] = ("Wide two-shot, 35mm, two fictional Indian women seated facing each other at a slight angle in a modern office with frosted glass "
+                                    "panels and warm wood, soft window light, natural colours, real photo, no text, no logos.")
+    data["style"] = style
     for c in data.get("clips", []):
         c["seconds"] = max(2.0, min(max_s + 0.5, float(c.get("seconds") or max_s)))
         if c.get("camera_move") not in MOVES:
             c["camera_move"] = "none"
-        c["shake"] = max(0.0, min(1.5, float(c.get("shake") or 0)))
+        c["shake"] = max(0.0, min(1.5, float(c.get("shake") if c.get("shake") is not None else 0)))
     return data
 
 
@@ -150,7 +210,7 @@ SHOTS = [s[1] for s in SHOT_SPECS]
 
 
 def plan_images(cfg: dict, *, idea: str = "", reference: dict | None = None, count: int = 4, aspect: str = "9:16",
-                language: str | None = None) -> dict:
+                language: str | None = None, style: str = "auto") -> dict:
     """Images only: a set of clearly different still images (close-up, detail, wide…) of the same people and place."""
     count = max(1, min(8, int(count or 4)))
     shots = [SHOT_SPECS[i % len(SHOT_SPECS)] for i in range(count)]
@@ -161,6 +221,7 @@ def plan_images(cfg: dict, *, idea: str = "", reference: dict | None = None, cou
 Make {count} still images for {cfg['brand']['name']} ({cfg['brand']['about']}), {aspect} frame.
 {src}
 Rules: {RULES}
+{('LOOK AND DIRECTION: ' + STYLES_DIR[style]['guide']) if style in STYLES_DIR else ''}
 First invent ONE fictional main character and ONE place, described precisely (age, face, hair, skin tone, outfit with colours and pattern, jewellery; place, time, light).
 Then write one prompt per shot below. Each prompt MUST start with that shot's framing text, then the character (same words every time),
 then a DIFFERENT action/pose/expression for that shot, then the place and light. Shots must look clearly different.

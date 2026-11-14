@@ -96,7 +96,7 @@ def projects():
 async def create(idea: str = Form(""), dialogue: str = Form(""), seconds: int = Form(30),
                  voice_mode: str = Form("oncamera"), language: str = Form(""), title: str = Form(""),
                  aspect: str = Form("9:16"), quality: str = Form("final"), kind: str = Form("video"), count: int = Form(4),
-                 same_look: str = Form("1"), music_style: str = Form("bollywood"), vocals: str = Form("ai"), music_seconds: int = Form(60), ai_music: str = Form(""),
+                 same_look: str = Form("1"), style: str = Form("auto"), music_style: str = Form("bollywood"), vocals: str = Form("ai"), music_seconds: int = Form(60), ai_music: str = Form(""),
                  reference: UploadFile | None = File(None), music: UploadFile | None = File(None),
                  refs: list[UploadFile] | None = File(None)):
     if kind == "music" and not idea.strip() and not dialogue.strip():
@@ -109,7 +109,7 @@ async def create(idea: str = Form(""), dialogue: str = Form(""), seconds: int = 
                   aspect=aspect if aspect in ASPECTS else "9:16", quality=quality if quality in ("draft", "best") else "final",
                   kind=kind if kind in ("images", "music") else "video", count=max(1, min(8, count)),
                   music_style=music_style, vocals=vocals if vocals in ("ai", "mine", "instrumental") else "ai",
-                  music_seconds=max(10, min(600, music_seconds)), ai_music=ai_music == "1", same_look=same_look != "0")
+                  music_seconds=max(10, min(600, music_seconds)), ai_music=ai_music == "1", same_look=same_look != "0", style=style if style in ("auto", "interview2", "cinematic", "news", "ugc") else "auto")
     d = STORE.dir(p["id"])
     for up, key in ((reference, "reference"), (music, "music")):
         if up and up.filename:

@@ -1,3 +1,4 @@
+3.6.0: Direction styles: Interview · 2 cameras (shot/reverse-shot, 3 pictures only = fast), Cinematic film (amber/teal grade, grain, 2.39 letterbox), Newsroom explainer, Phone UGC. Styles are detected from reference ads. Faster export.
 3.5.0: Video ads get the right number of shots for their length (no more one-shot ads) and a real title. Copying a reference ad now hears its speech (Script AI adds speech-to-text). Songs: shorter singable lyrics sized to the length, a proofread pass for made-up words, and better singing in every mode.
 3.4.0: Big speed-up. Fixed the fast Mac picture engine (it was falling back to the slow one). New Draft / Final / Best choice: Final is now fast, Best uses the most realistic model. Music engine stays ready between songs; Draft songs compose faster.
 3.3.0: Same person and place across all images. Retake keeps the main look; New take starts fresh. Pick any picture as the main look with the star.

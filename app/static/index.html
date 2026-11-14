@@ -323,6 +323,7 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
         </div>
         <div class="opts">
           <label class="opt" title="What to make"><select id="kind"><option value="video">Video ad</option><option value="images">Images only</option><option value="music">Music / song</option></select></label>
+          <label class="opt" id="styleOpt" title="Direction style"><select id="style"><option value="auto">Style: Auto</option><option value="interview2">Interview · 2 cameras</option><option value="cinematic">Cinematic film</option><option value="news">Newsroom explainer</option><option value="ugc">Phone UGC</option></select></label>
           <label class="opt hidden" id="lockOpt" title="Keep the same person and place in every image"><select id="lock"><option value="1">Same person & place</option><option value="0">Different each time</option></select></label>
           <label class="opt hidden" id="countOpt" title="How many images"><select id="count"><option value="1">1 image</option><option value="2">2 images</option><option value="4" selected>4 images</option><option value="6">6 images</option><option value="8">8 images</option></select></label>
           <label class="opt hidden" id="mstyleOpt" title="Music style"><select id="mstyle"><option value="bollywood">Bollywood pop</option><option value="bhajan">Devotional bhajan</option><option value="festive">Festive celebration</option><option value="sufi">Sufi</option><option value="bhangra">Punjabi bhangra</option><option value="ghazal">Ghazal</option><option value="classical">Indian classical fusion</option><option value="acoustic">Indie acoustic</option><option value="lofi">Lo-fi chill</option><option value="cinematic">Cinematic score</option><option value="edm">EDM / dance</option><option value="hiphop">Hip-hop / rap</option></select></label>
@@ -481,7 +482,7 @@ prompt_.addEventListener('input',grow);
 prompt_.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();go()}});
 function kindUI(){const k=$('#kind').value,im=k==='images',mu=k==='music',vi=k==='video';
   const show=(id,on)=>$('#'+id).classList.toggle('hidden',!on);
-  show('countOpt',im);show('songTip',mu&&$('#lang').value!=='English'&&$('#mvocal').value!=='instrumental');show('lockOpt',im);show('lenOpt',vi);show('voiceOpt',vi);show('vmusicOpt',vi);show('exact',vi);show('aspectOpt',!mu);show('mstyleOpt',mu);show('mvocalOpt',mu);show('mlenOpt',mu);
+  show('countOpt',im);show('styleOpt',!mu);show('songTip',mu&&$('#lang').value!=='English'&&$('#mvocal').value!=='instrumental');show('lockOpt',im);show('lenOpt',vi);show('voiceOpt',vi);show('vmusicOpt',vi);show('exact',vi);show('aspectOpt',!mu);show('mstyleOpt',mu);show('mvocalOpt',mu);show('mlenOpt',mu);
   prompt_.placeholder=mu?($('#mvocal').value==='mine'?'Paste your lyrics (you can add [Verse] and [Chorus] lines)…':'Describe the song: mood, story, occasion… e.g. a warm Diwali song about family'):im?'Describe the images, or drop a reference ad to copy its look…':(EXACT?'Paste the exact dialogue. Two people? Start lines with “Name: …”':'Describe the ad, or drop a reference video…')}
 $('#mvocal').onchange=kindUI;$('#lang').addEventListener('change',kindUI);
 $('#kind').onchange=kindUI;
@@ -527,7 +528,7 @@ async function go(){const text=prompt_.value.trim();$('#goErr').textContent='';
   if(mus&&!(ao.music&&ao.music.installed)){needAddon('Music & songs','Music');return}
   if(!mus&&$('#kind').value==='video'&&$('#vmusic').value&&!(ao.music&&ao.music.installed)&&!A.music){needAddon('Music & songs','AI background music');return}
   if(imgs&&ST&&ST.makers&&ST.makers.image==='photos'&&!A.pics.length){$('#goErr').innerHTML='Images only needs AI pictures. <button class="linkbtn" id="goSet">Open ⚙ to install the free image AI</button> (or add your own photos with +).';$('#goSet').onclick=()=>{kv();drawer('settings')};return}
-  const fd=new FormData();fd.append('kind',$('#kind').value);fd.append('count',$('#count').value);fd.append('same_look',$('#lock').value);fd.append('music_style',$('#mstyle').value);fd.append('vocals',$('#mvocal').value);fd.append('music_seconds',$('#mlen').value);fd.append('ai_music',$('#kind').value==='video'?$('#vmusic').value:'');
+  const fd=new FormData();fd.append('kind',$('#kind').value);fd.append('style',$('#style').value);fd.append('count',$('#count').value);fd.append('same_look',$('#lock').value);fd.append('music_style',$('#mstyle').value);fd.append('vocals',$('#mvocal').value);fd.append('music_seconds',$('#mlen').value);fd.append('ai_music',$('#kind').value==='video'?$('#vmusic').value:'');
   fd.append(mus?($('#mvocal').value==='mine'?'dialogue':'idea'):imgs?'idea':(EXACT?'dialogue':'idea'),text);fd.append('seconds',$('#len').value);fd.append('aspect',$('#aspect').value);fd.append('voice_mode',$('#voice').value);fd.append('language',$('#lang').value);fd.append('quality',QUAL);
   if(A.ref)fd.append('reference',A.ref);if(A.music)fd.append('music',A.music);A.pics.forEach(f=>fd.append('refs',f));
   $('#send').classList.remove('ready');const r0=comp.getBoundingClientRect();F.impulse(r0.left+r0.width/2,r0.top+r0.height/2,9);F.set(.9);
@@ -669,7 +670,7 @@ $('#upGo').onclick=async()=>{if(P&&(P.status==='running'||P.status==='queued')){
 /* draft: what you are typing and choosing is saved as you go, and comes back after an update or reload */
 const DKEY='gs-draft';
 function saveDraft(){const open=$('#clipSheet').classList.contains('on')&&EDIT>=0;
-  lsSet(DKEY,{kind:$('#kind').value,count:$('#count').value,lock:$('#lock').value,mstyle:$('#mstyle').value,mvocal:$('#mvocal').value,mlen:$('#mlen').value,vmusic:$('#vmusic').value,prompt:prompt_.value,len:$('#len').value,aspect:$('#aspect').value,voice:$('#voice').value,lang:$('#lang').value,exact:EXACT,qual:QUAL,pid:CUR,
+  lsSet(DKEY,{style:$('#style').value,kind:$('#kind').value,count:$('#count').value,lock:$('#lock').value,mstyle:$('#mstyle').value,mvocal:$('#mvocal').value,mlen:$('#mlen').value,vmusic:$('#vmusic').value,prompt:prompt_.value,len:$('#len').value,aspect:$('#aspect').value,voice:$('#voice').value,lang:$('#lang').value,exact:EXACT,qual:QUAL,pid:CUR,
     sheet:open?{i:EDIT,line:$('#csLine').value,prompt:$('#csPrompt').value,move:$('.mv.on')?.dataset.m||'',shake:$('#csShake').value,amt:$('#csAmt').value}:null})}
 let _dt=0;const draftSoon=()=>{clearTimeout(_dt);_dt=setTimeout(saveDraft,250)};
 ['input','change'].forEach(t=>document.addEventListener(t,draftSoon,true));document.addEventListener('click',()=>setTimeout(draftSoon,60),true);
@@ -678,7 +679,7 @@ async function saveAtt(){try{const db=await idb();await new Promise(r=>{const tx
 async function loadAtt(){try{const db=await idb();return await new Promise(r=>{const q=db.transaction('att').objectStore('att').get('cur');q.onsuccess=()=>r(q.result);q.onerror=()=>r(null)})}catch(e){return null}}
 function setSel(id,v){const el=$('#'+id);if(v&&[...el.options].some(o=>o.value===v))el.value=v}
 async function restore(){const d=lsGet(DKEY);
-  if(d){prompt_.value=d.prompt||'';grow();setSel('len',d.len);setSel('aspect',d.aspect);setSel('voice',d.voice);setSel('lang',d.lang);setSel('kind',d.kind);setSel('count',d.count);setSel('lock',d.lock);setSel('mstyle',d.mstyle);setSel('mvocal',d.mvocal);setSel('mlen',d.mlen);setSel('vmusic',d.vmusic);kindUI();$('#lang').dataset.set=1;
+  if(d){prompt_.value=d.prompt||'';grow();setSel('len',d.len);setSel('aspect',d.aspect);setSel('voice',d.voice);setSel('lang',d.lang);setSel('kind',d.kind);setSel('style',d.style);setSel('count',d.count);setSel('lock',d.lock);setSel('mstyle',d.mstyle);setSel('mvocal',d.mvocal);setSel('mlen',d.mlen);setSel('vmusic',d.vmusic);kindUI();$('#lang').dataset.set=1;
     if(d.exact&&!EXACT){EXACT=true;$('#exact').classList.add('on')}if(d.qual){QUAL=d.qual;$('#modeTxt').textContent=({draft:'Draft',final:'Final',best:'Best'})[QUAL]||'Final'}}
   const a=await loadAtt();if(a&&(a.ref||(a.pics||[]).length||a.music)){A.ref=a.ref||null;A.pics=a.pics||[];A.music=a.music||null;chips()}
   const pid=location.hash.length>1?location.hash.slice(1):d&&d.pid;

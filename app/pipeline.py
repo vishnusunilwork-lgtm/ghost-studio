@@ -159,7 +159,7 @@ class Runner:
         self._say(p, "plan", "Writing the script and every prompt", 10)
         pl = planner.plan(self.cfg, idea=p.get("idea", ""), dialogue=p.get("dialogue", ""), reference=ref,
                           seconds=int(p.get("seconds", 30)), voice_mode=p.get("voice_mode", "oncamera"),
-                          language=p.get("language"), aspect=p.get("aspect") or "9:16")
+                          language=p.get("language"), aspect=p.get("aspect") or "9:16", style=self._style(p, ref))
         p["plan"] = {k: v for k, v in pl.items() if k != "clips"}
         p["title"] = p.get("title") if p.get("title") not in (None, "", "New ad") else pl.get("title") or "New ad"
         p["clips"] = [{**c, "status": "waiting", "seed": random.randint(1, 10**6)} for c in pl.get("clips", [])]
@@ -177,6 +177,15 @@ class Runner:
         # 6 edit
         self._edit(pid)
 
+    def _style(self, p, ref=None) -> str:
+        st = p.get("style") or "auto"
+        if st == "auto" and ref:
+            st = planner.style_from_reference(ref) or "auto"
+            if st != "auto":
+                p["log"].append(time.strftime("%H:%M:%S ") + f"Direction copied from the reference: {planner.STYLES_DIR[st]['name']}")
+        p["style_used"] = st
+        return st
+
     def _images(self, pid):
         from . import addons
         addons.MusicServer.stop()  # pictures need the memory
@@ -193,24 +202,32 @@ class Runner:
                        ref_images=refs or None, steps=steps, fallback=refs[0] if refs else None, best=p.get("quality") == "best")
         p["image"] = str(main)
         p["engine_plan"] = self.eng.plan()
-        if p["engine_plan"]["video"] == "photo_motion":
-            # Photo motion: every shot gets its own picture, so the ad keeps moving
-            n = len(p["clips"]) or 1
-            for i, c in enumerate(p["clips"]):
-                self._say(p, "images", f"Picture {i + 1} of {n}", 20 + int(8 * i / n))
-                self._shot_image(p, i, gw * k, gh * k, steps, refs, main)
-                self.store.save(p)
-            self._done(p, "images")
-            return
+        style = p.get("style_used") or "auto"
+        # One picture per person ("camera A", "camera B"), all in the same place as the main frame
         people = {pp.get("key"): pp for pp in (p["plan"].get("people") or []) if pp.get("key")}
         p["person_images"] = {}
-        for k, pp in people.items():
-            if len(people) < 2:
-                break
-            f = d / f"frame_{k}.png"
-            self.eng.image(f"{p['plan']['image_prompt']} The person in frame: {pp.get('look','')}", f,
-                           gw * k, gh * k, seed=11, ref_images=[main, *refs], steps=steps)
-            p["person_images"][k] = str(f)
+        if len(people) >= 2 or style == "interview2":
+            for n_, (key, pp) in enumerate(people.items()):
+                f = d / f"frame_{key}.png"
+                self._say(p, "images", f"Camera {key}: {pp.get('look', '')[:50]}", 22 + n_)
+                prompt = pp.get("single_prompt") or f"{p['plan']['image_prompt']} Only this person in frame, medium close-up: {pp.get('look', '')}"
+                self.eng.image(prompt, f, gw * k, gh * k, seed=11 + n_, ref_images=[main, *refs][:3], steps=steps)
+                p["person_images"][key] = str(f)
+                self.store.save(p)
+        if p["engine_plan"]["video"] == "photo_motion":
+            n = len(p["clips"]) or 1
+            if style == "interview2" and p["person_images"]:
+                # A real 2-camera shoot: each camera keeps its framing, so every line reuses that camera's picture (fast)
+                for i, c in enumerate(p["clips"]):
+                    c["image"] = p["person_images"].get(c.get("speaker")) or str(main)
+                self.store.save(p)
+            else:
+                # every shot gets its own picture, following its speaker's look, so the ad keeps moving
+                for i, c in enumerate(p["clips"]):
+                    self._say(p, "images", f"Picture {i + 1} of {n}", 20 + int(8 * i / n))
+                    anchor = Path(p["person_images"].get(c.get("speaker")) or main)
+                    self._shot_image(p, i, gw * k, gh * k, steps, refs, anchor)
+                    self.store.save(p)
         self._done(p, "images")
 
     def _shot_image(self, p, i, w, h, steps, refs, main):
@@ -287,8 +304,12 @@ class Runner:
         _, (ow, oh), draft = sizes(p)
         safe = "".join(ch for ch in p["title"] if ch.isalnum() or ch in " -_").strip() or "ad"
         out = d / f"{safe} - {ow}x{oh}{' - draft' if draft else ''}.mp4"
+        style = p.get("style_used") or p.get("style") or "auto"
+        grade = (planner.STYLES_DIR.get(style) or {}).get("grade", "natural") if style in planner.STYLES_DIR else "natural"
         render(clips, out, fps=int(q["fps"]), crf=int(q["export_crf"]) + (4 if draft else 0), narration=narr,
-               music=p.get("music"), log=lambda m: None, size=(ow, oh))
+               music=p.get("music"), log=lambda m: None, size=(ow, oh), grade=grade,
+               letterbox=(style == "cinematic" and p.get("aspect") == "16:9" and p.get("letterbox", True)),
+               preset="veryfast" if draft else "medium")
         p["final"] = str(out)
         p["status"], p["progress"] = "done", 100
         self._done(p, "edit")
@@ -300,7 +321,7 @@ class Runner:
         p = self.store.load(pid)
         p["clips"][i]["seed"] = random.randint(1, 10**6)
         p["clips"][i]["status"] = "waiting"
-        if (p.get("engine_plan") or {}).get("video") == "photo_motion" and p.get("image"):
+        if (p.get("engine_plan") or {}).get("video") == "photo_motion" and p.get("image") and p.get("style_used") != "interview2":
             (gw, gh), _, draft = sizes(p)
             k = 1 if draft else 2
             q = self.cfg["quality"]
@@ -395,7 +416,8 @@ class Runner:
         p = self.store.load(pid)
         self._say(p, "plan", "Writing the image prompts", 8)
         pl = planner.plan_images(self.cfg, idea=p.get("idea", "") or p.get("dialogue", ""), reference=ref,
-                                 count=int(p.get("count", 4)), aspect=p.get("aspect") or "9:16", language=p.get("language"))
+                                 count=int(p.get("count", 4)), aspect=p.get("aspect") or "9:16", language=p.get("language"),
+                                 style=self._style(p, ref))
         if p.get("title") in (None, "", "New ad"):
             p["title"] = pl.get("title") or "Images"
         p.pop("anchor", None); p.pop("anchor_i", None)  # a new set starts a new main look

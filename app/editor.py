@@ -84,9 +84,31 @@ def camera_chain(move: str, dur: float, fps: int, amount: float = 1.0, shake: fl
     return ",".join(parts)
 
 
+GRADES = {
+    # warm highlights + teal shadows (fast curves), gentle contrast; vignette + film grain added for Final
+    "cinematic": ("curves=r='0/0.02 0.5/0.52 1/0.98':g='0/0.01 0.5/0.5 1/0.97':b='0/0.07 0.5/0.47 1/0.9',eq=contrast=1.06:saturation=0.9",
+                  "vignette=PI/5:eval=init,noise=alls=6:allf=t"),
+    # natural, slightly warm, soft
+    "interview": ("curves=r='0/0 0.5/0.51 1/1':b='0/0.01 0.5/0.49 1/0.98',eq=contrast=1.03", "vignette=PI/7:eval=init,noise=alls=3:allf=t"),
+    # clean and crisp
+    "news": ("eq=contrast=1.06:saturation=1.05", "unsharp=5:5:0.35"),
+    # every ad gets a light polish
+    "natural": ("eq=contrast=1.03:saturation=1.02", ""),
+}
+
+
+def finishing(grade: str, letterbox: bool, final: bool = True) -> str:
+    base, extra = GRADES.get(grade or "natural", ("", ""))
+    parts = [x for x in (base, extra if final else "") if x]
+    if letterbox:  # 2.39:1 film bars
+        parts.append("drawbox=x=0:y=0:w=iw:h=(ih-iw/2.39)/2:color=black:t=fill,drawbox=x=0:y=ih-(ih-iw/2.39)/2:w=iw:h=(ih-iw/2.39)/2:color=black:t=fill")
+    return ",".join(parts)
+
+
 def render(clips: list[dict], out: str | Path, fps: int = 24, crf: int = 16,
            narration: list[dict] | None = None, music: str | None = None,
-           music_volume: float = 0.18, log=None, size: tuple[int, int] = (W, H)) -> Path:
+           music_volume: float = 0.18, log=None, size: tuple[int, int] = (W, H), grade: str = "natural", letterbox: bool = False,
+           preset: str = "medium") -> Path:
     """clips: [{video, duration?, move, amount, shake, mute, volume}]
     narration: [{file, at}] seconds from the start; music: path (ducked under speech).
     One ffmpeg run = one encode = no quality loss between steps."""
@@ -110,7 +132,9 @@ def render(clips: list[dict], out: str | Path, fps: int = 24, crf: int = 16,
         starts.append(t)
         t += dur
     n = len(clips)
-    fc.append("".join(vlabels) + f"concat=n={n}:v=1:a=1[vout][speech]")
+    fc.append("".join(vlabels) + f"concat=n={n}:v=1:a=1[vraw][speech]")
+    fin = finishing(grade, letterbox, final=preset != "veryfast")
+    fc.append(f"[vraw]{fin + ',' if fin else ''}format=yuv420p[vout]")
     total = t
     mix = ["[speech]"]
     idx = n
@@ -135,7 +159,7 @@ def render(clips: list[dict], out: str | Path, fps: int = 24, crf: int = 16,
         last = "[voice]"
     fc.append(f"{last}loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000[aout]")
     args += ["-filter_complex", ";".join(fc), "-map", "[vout]", "-map", "[aout]",
-             "-c:v", "libx264", "-preset", "slow", "-crf", str(crf), "-profile:v", "high",
+             "-c:v", "libx264", "-preset", preset, "-crf", str(crf), "-profile:v", "high",
              "-pix_fmt", "yuv420p", "-r", str(fps), "-c:a", "aac", "-b:a", "256k",
              "-movflags", "+faststart", "-t", f"{total:.3f}", str(out)]
     if log:
