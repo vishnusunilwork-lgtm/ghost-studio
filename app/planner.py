@@ -109,38 +109,64 @@ def _fallback(idea, dialogue, reference, seconds, lang, b, why, aspect="9:16"):
             "clips": clips, "note": "Written without the local language model (" + why + "). Start Ollama for real scripts."}
 
 
-SHOTS = ["close-up portrait, looking at camera, warm smile", "medium shot, natural gesture", "detail shot of hands and key object",
-         "wide shot showing the whole place", "over-the-shoulder shot", "low angle, festive light behind",
-         "candid moment, laughing", "top-down flat lay of the key objects"]
+# Each shot = framing + lens + what is in frame + pose/action. Prompts START with this, so shots really differ.
+SHOT_SPECS = [
+    ("Close-up portrait", "Tight close-up portrait, 85mm lens, the face fills most of the frame from forehead to chin, eyes sharp and looking just past the camera, softly blurred background"),
+    ("Medium shot", "Medium shot from the waist up, 50mm lens, the person in the left third of the frame mid-action, background readable but soft"),
+    ("Detail of hands", "Macro detail shot of only the hands and the key object, 100mm macro lens, face NOT visible, very shallow depth of field, the object sharp"),
+    ("Wide establishing shot", "Wide establishing shot, 24mm lens, full body small in the frame, the whole place and its surroundings visible, environmental storytelling"),
+    ("Over-the-shoulder", "Over-the-shoulder shot from behind the person, 35mm lens, looking toward what they look at, their shoulder and hair soft in the foreground"),
+    ("Candid laugh", "Candid moment, 50mm lens, laughing naturally with eyes crinkled, slight motion, three-quarter angle"),
+    ("Low angle", "Low-angle hero shot, 28mm lens, looking up at the person with lights and sky behind, confident pose"),
+    ("Top-down flat lay", "Top-down flat lay of the key objects only, no people, arranged on a textured surface, even soft light"),
+]
+QUALITY = ("Photo-real, natural skin texture with pores, anatomically correct hands with five relaxed fingers each, "
+           "natural symmetrical eyes with catchlights, true-to-life proportions, sharp focus on the subject, "
+           "professional colour grade, no text, no watermark, no logos.")
+# kept for older code paths
+SHOTS = [s[1] for s in SHOT_SPECS]
 
 
 def plan_images(cfg: dict, *, idea: str = "", reference: dict | None = None, count: int = 4, aspect: str = "9:16",
                 language: str | None = None) -> dict:
-    """Images only: a set of still images (ad stills, status posts, thumbnails) with one prompt each."""
+    """Images only: a set of clearly different still images (close-up, detail, wide…) of the same people and place."""
     count = max(1, min(8, int(count or 4)))
+    shots = [SHOT_SPECS[i % len(SHOT_SPECS)] for i in range(count)]
     src = (f"REFERENCE AD to take the look from (same kind of people, place, light and framing, new fictional faces): {reference}"
            if reference else f"IDEA: {idea}")
+    shot_list = "\n".join(f"{i + 1}. {c}: {d}" for i, (c, d) in enumerate(shots))
     prompt = f"""You are an art director and prompt engineer for a photo-real image model.
-Make {count} different still images for {cfg['brand']['name']} ({cfg['brand']['about']}), {aspect} frame.
+Make {count} still images for {cfg['brand']['name']} ({cfg['brand']['about']}), {aspect} frame.
 {src}
 Rules: {RULES}
-Keep the same fictional people, outfits and place across all images, but vary the moment, framing and angle.
-Each prompt: one rich paragraph, real phone-photo look, every visible detail (people, clothes, place, light, colours, framing, lens feel). No text in the image.
-Return JSON only: {{"title":"short name","images":[{{"caption":"3-6 words","prompt":""}}]}}"""
+First invent ONE fictional main character and ONE place, described precisely (age, face, hair, skin tone, outfit with colours and pattern, jewellery; place, time, light).
+Then write one prompt per shot below. Each prompt MUST start with that shot's framing text, then the character (same words every time),
+then a DIFFERENT action/pose/expression for that shot, then the place and light. Shots must look clearly different.
+Shots:
+{shot_list}
+End every prompt with: {QUALITY}
+Return JSON only: {{"title":"short name","character":"","place":"","images":[{{"caption":"3-5 words","prompt":""}}]}}"""
     try:
         if not llm.available():
             raise RuntimeError("Ollama is not running")
-        data = llm.ask_json(cfg["models"]["llm"], prompt)
+        data = llm.ask_json(cfg["models"]["llm"], prompt, temperature=0.7)
         imgs = [i for i in data.get("images", []) if i.get("prompt")][:count]
-        if not imgs:
-            raise RuntimeError("empty")
+        if len(imgs) < count:
+            raise RuntimeError("too few prompts")
+        for i, im in enumerate(imgs):
+            if QUALITY[:30] not in im["prompt"]:
+                im["prompt"] = im["prompt"].rstrip(". ") + ". " + QUALITY
         data["images"] = imgs
     except Exception as e:
-        look = "a fictional Indian adult in festive everyday clothes, real skin texture"
-        data = {"title": (idea or "Images")[:40], "note": "Written without the local language model (" + str(e) + ").",
-                "images": [{"caption": SHOTS[i % len(SHOTS)].split(",")[0].capitalize(),
-                            "prompt": f"{aspect} real phone photo, {look}, {idea or 'festive home'}, {SHOTS[i % len(SHOTS)]}, natural light, no text."}
-                           for i in range(count)]}
+        who = ("a fictional Indian woman in her late twenties, oval face, warm brown skin, long dark hair, small red bindi, "
+               "gold jhumka earrings, deep red silk saree with a gold border")
+        where = idea or "a festive home"
+        actions = ["gently smiling as she looks at the flame", "lighting a brass diya with a matchstick", "holding a brass thali with three lit diyas",
+                   "standing at the balcony railing among rows of lit diyas", "watching the city lights", "laughing with family off-camera",
+                   "holding a sparkler", "arranged marigold flowers, diyas and sweets"]
+        data = {"title": (idea or "Images")[:40], "note": "Written without the script AI (" + str(e)[:80] + "). Install Script AI in ⚙ → Add-ons for better prompts.",
+                "images": [{"caption": c, "prompt": f"{d}. Subject: {who}, {actions[i % len(actions)]}. Setting: {where}, warm practical light, bokeh of string lights, night. {QUALITY}"}
+                           for i, (c, d) in enumerate(shots)]}
     return data
 
 

@@ -216,6 +216,27 @@ def ensure_fast_pictures(cfg):
     subprocess.run([sys.executable, "-m", "pip", "install", "-q", "mflux>=0.18.0"], capture_output=True, text=True)
 
 
+# ---------------------------------------------------------------- add-on: best pictures (Z-Image-Turbo)
+ZIMAGE = "Tongyi-MAI/Z-Image-Turbo"
+
+
+def realism_installed(cfg=None) -> bool:
+    import importlib.util
+    if IS_MAC and platform.machine() == "arm64":
+        ok = importlib.util.find_spec("mflux") is not None
+    else:
+        ok = importlib.util.find_spec("diffusers") is not None
+    return ok and _hf_cached(ZIMAGE)
+
+
+def install_realism(cfg):
+    if IS_MAC and platform.machine() == "arm64":
+        _pip("realism", ["mflux>=0.18.0", "huggingface_hub"], 0, 10)
+    else:
+        _pip("realism", ["torch", "transformers", "diffusers>=0.36.0", "accelerate", "safetensors", "huggingface_hub"], 0, 10)
+    _hf_download("realism", ZIMAGE, 10, 100)
+
+
 # ---------------------------------------------------------------- add-on: script AI (Ollama model)
 def _script_model() -> str:
     m = memory_gb()
@@ -236,12 +257,8 @@ def script_installed(cfg=None) -> bool:
     return any(h.split(":")[0] in ("qwen2.5", "qwen3", "llama3.1", "llama3.2", "gemma2", "gemma3", "mistral") for h in have)
 
 
-def install_script(cfg):
-    aid = "script"
-    if not ollama_up():
-        raise RuntimeError("Ollama is not running. Install it free from ollama.com, open it once, then press Install again.")
-    model = _script_model()
-    _set(aid, step=f"Downloading the script AI ({model})", detail="")
+def _ollama_pull(aid, model, lo, hi):
+    _set(aid, step=f"Downloading {model}", detail="")
     req = urllib.request.Request("http://127.0.0.1:11434/api/pull", data=json.dumps({"model": model, "stream": True}).encode(),
                                  headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=7200) as r:
@@ -254,9 +271,16 @@ def install_script(cfg):
                 raise RuntimeError(d["error"])
             if d.get("total"):
                 done, tot = d.get("completed", 0), d["total"]
-                _set(aid, pct=round(99 * done / tot, 1), detail=f"{done / 1e9:.1f} of {tot / 1e9:.1f} GB")
-            elif d.get("status"):
-                _set(aid, detail=d["status"])
+                _set(aid, pct=round(lo + (hi - lo) * done / tot, 1), detail=f"{done / 1e9:.1f} of {tot / 1e9:.1f} GB")
+
+
+def install_script(cfg):
+    aid = "script"
+    if not ollama_up():
+        raise RuntimeError("Ollama is not running. Install it free from ollama.com, open it once, then press Install again.")
+    model = _script_model()
+    _ollama_pull(aid, model, 0, 75)
+    _ollama_pull(aid, "qwen2.5vl:3b" if memory_gb() < 24 else "qwen2.5vl:7b", 75, 100)  # eyes for the quality check
     cfg["models"]["llm"] = model
 
 
@@ -466,9 +490,13 @@ def install_motion(cfg):
 
 # ---------------------------------------------------------------- registry
 ADDONS = {
-    "script": {"name": "Script AI", "desc": "Writes scripts, lyrics and every prompt (much better than the built-in templates). Qwen 2.5 in Ollama (Apache 2.0).",
-               "size": "about 5 GB", "time": "a few seconds per script", "install": install_script, "installed": script_installed,
+    "script": {"name": "Script AI", "desc": "Writes scripts, lyrics and every prompt, and checks each picture for bad hands and eyes. Qwen 2.5 in Ollama (Apache 2.0).",
+               "size": "about 8 GB", "time": "a few seconds per script", "install": install_script, "installed": script_installed,
                "fits": lambda: (ollama_up(), "" if ollama_up() else "Needs the free Ollama app: get it at ollama.com, open it, then come back.")},
+    "realism": {"name": "Best pictures", "desc": "Most realistic people, hands and eyes for Final pictures. Z-Image-Turbo (Apache 2.0). Draft keeps the fast model.",
+                "size": "about 20 GB", "time": "about 40–70 s per picture on a Mac",
+                "install": install_realism, "installed": realism_installed,
+                "fits": lambda: ((memory_gb() >= 16 or cuda_vram_gb() >= 12), "" if (memory_gb() >= 16 or cuda_vram_gb() >= 12) else "Needs 16 GB memory or more.")},
     "pictures": {"name": "AI pictures", "desc": "Photo-real images for shots and Images only. FLUX.2 klein (Apache 2.0).",
                  "size": "about 10 GB", "time": "1–3 min per picture on a Mac", "install": install_pictures, "installed": pictures_installed,
                  "fits": lambda: ((memory_gb() >= 16 or cuda_vram_gb() >= 8), "" if (memory_gb() >= 16 or cuda_vram_gb() >= 8) else "Needs 16 GB memory or more.")},

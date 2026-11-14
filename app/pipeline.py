@@ -184,7 +184,7 @@ class Runner:
         main = d / "frame_main.png"
         refs = [Path(r) for r in p.get("refs") or []]
         self.eng.image(p["plan"]["image_prompt"], main, gw * k, gh * k, seed=int(p.get("image_seed", 7)),
-                       ref_images=refs or None, steps=steps, fallback=refs[0] if refs else None)
+                       ref_images=refs or None, steps=steps, fallback=refs[0] if refs else None, best=not draft)
         p["image"] = str(main)
         p["engine_plan"] = self.eng.plan()
         if p["engine_plan"]["video"] == "photo_motion":
@@ -420,7 +420,9 @@ class Runner:
             f = d / f"image{i + 1:02d}_{s['seed']}{'_draft' if draft else ''}.png"
             ref_imgs = [*refs]  # only your own photos: an automatic reference doubled the time per image
             self.eng.image(s["prompt"], f, w, h, seed=int(s["seed"]), ref_images=ref_imgs[:4] or None, steps=steps,
-                           fallback=refs[i % len(refs)] if refs else None)
+                           fallback=refs[i % len(refs)] if refs else None, best=not draft)
+            f = self._checked(p, i, f, lambda seed, out: self.eng.image(s["prompt"], out, w, h, seed=seed, ref_images=ref_imgs[:4] or None,
+                                                                        steps=steps, fallback=None, best=not draft), draft)
             s["image"], s["status"] = str(f), "done"
             took.append(time.time() - t0)
             self.store.save(p)
@@ -430,6 +432,24 @@ class Runner:
         p["status"], p["progress"] = "done", 100
         p["log"].append(time.strftime("%H:%M:%S ") + f"Finished {n} image{'s' if n > 1 else ''}")
         self.store.save(p)
+
+    def _checked(self, p, i, f: Path, remake, draft: bool) -> Path:
+        """Final pictures: if the vision check finds bad hands/eyes/face, make one more take and keep the better one."""
+        from . import qc
+        if draft or not qc.available() or self.eng.plan()["image"] == "photos":
+            return f
+        try:
+            r1 = qc.check(f)
+            if r1["ok"]:
+                return f
+            self._say(p, "images", f"Image {i + 1}: {r1.get('problem') or 'small defects'} — making a better take")
+            f2 = f.with_name(f.stem + "_retake.png")
+            remake(random.randint(1, 10**6), f2)
+            r2 = qc.check(f2)
+            return f2 if r2["score"] >= r1["score"] else f
+        except Exception as e:
+            p["log"].append(time.strftime("%H:%M:%S ") + f"Quality check skipped: {str(e)[:120]}")
+            return f
 
     def _redo_still(self, pid, i: int):
         p = self.store.load(pid)

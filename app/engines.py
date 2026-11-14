@@ -199,8 +199,14 @@ class Engines:
 
     # ------------------------------------------------------------ images
     def image(self, prompt: str, out: Path, width: int, height: int, seed: int = 0,
-              ref_images: list[Path] | None = None, steps: int | None = None, fallback: Path | None = None) -> Path:
+              ref_images: list[Path] | None = None, steps: int | None = None, fallback: Path | None = None, best: bool = False) -> Path:
         how = self.plan()["image"]
+        if best and not ref_images and not self.mock and _realism_ready():
+            try:
+                return self._zimage(prompt, out, width, height, seed)
+            except Exception as e:
+                print("Best pictures (Z-Image) failed, using the standard model:", e)
+                free()
         if how in ("nvidia", "local"):
             try:
                 return self._local_image(prompt, out, width, height, seed, ref_images, steps, mac=how == "local")
@@ -265,6 +271,34 @@ class Engines:
         res = model.generate_image(seed=int(seed) % 2**31, prompt=prompt, num_inference_steps=4, width=w, height=h,
                                    guidance=1.0, image_paths=refs or None)
         res.image.save(out)
+        return out
+
+    def _zimage(self, prompt, out, width, height, seed):
+        """Z-Image-Turbo (Apache 2.0): the most realistic free model Ghost can run; 8 steps."""
+        long_side = int(self.cfg["quality"].get("best_long_side", 1344))
+        s = min(1.0, long_side / max(width, height))
+        w, h = int(width * s) // 16 * 16, int(height * s) // 16 * 16
+        if _mflux_ok():
+            from mflux.models.common.config.model_config import ModelConfig
+            from mflux.models.z_image.variants.z_image import ZImage
+            q = int(self.cfg["quality"].get("mac_quantize", 8)) or None
+            m = _pipe("zimage", lambda: ZImage(quantize=q, model_config=ModelConfig.z_image_turbo()))
+            img = m.generate_image(seed=int(seed) % 2**31, prompt=prompt, num_inference_steps=8, width=w, height=h)
+            (img.image if hasattr(img, "image") else img).save(out)
+            return out
+        import torch
+
+        def load():
+            from diffusers import ZImagePipeline
+            p = ZImagePipeline.from_pretrained("Tongyi-MAI/Z-Image-Turbo", torch_dtype=torch.bfloat16)
+            if _device() == "cuda":
+                p.enable_model_cpu_offload()
+            else:
+                p.to(_device())
+            return p
+        pipe = _pipe("zimage", load)
+        pipe(prompt=prompt, height=h, width=w, num_inference_steps=9, guidance_scale=0.0,
+             generator=torch.Generator("cpu").manual_seed(int(seed) % 2**31)).images[0].save(out)
         return out
 
     def warm(self):
@@ -449,6 +483,14 @@ def _mflux_ok() -> bool:
     if _MFLUX.get("broken") or platform.system() != "Darwin" or platform.machine() != "arm64":
         return False
     return _has("mflux") and _has("mlx")
+
+
+def _realism_ready() -> bool:
+    try:
+        from . import addons
+        return addons.realism_installed()
+    except Exception:
+        return False
 
 
 def _motion_ready() -> bool:

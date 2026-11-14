@@ -40,6 +40,7 @@ quality:
   video_steps: 30
   image_steps: 50
   image_steps_mac: 4
+  best_long_side: 1344     # Best pictures size (long side, pixels)
   mac_quantize: 8          # Apple chips: 8-bit = faster, same look. 0 = full precision
   # Draft mode: quick low-res preview to check the idea, then "Make it final" re-renders the same takes
   video_steps_draft: 12
