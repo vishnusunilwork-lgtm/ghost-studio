@@ -54,7 +54,7 @@ def status():
     f = RUNNER.eng.fal
     m = E.Spend.month()
     return {"engine": RUNNER.eng.name, "gpu": E.gpu_info(), "llm": llm.available(), "models": CFG["models"],
-            "makers": RUNNER.eng.plan(), "image_ai": E.image_ai_installed(),
+            "makers": RUNNER.eng.plan(), "image_ai": E.image_ai_installed() and INSTALL["state"] != "running", "image_ai_install": INSTALL["state"],
             "api": {"on": f.on, "key_end": f.key[-4:] if f.on else "", "limit": f.limit, "spent": m["usd"],
                     "price": f.price, "model": f.video_model},
             "moves": MOVES, "steps": STEPS, "labels": LABEL, "language": CFG.get("language", "Hindi"),
@@ -174,26 +174,75 @@ class ImageAIBody(BaseModel):
     go: bool = True
 
 
-INSTALL = {"state": "idle", "log": ""}
+INSTALL = {"state": "idle", "pct": 0, "step": "", "detail": "", "started": 0, "log": ""}
+PKGS = [("torch", 55), ("transformers", 15), ("diffusers>=0.43.0", 10), ("accelerate", 6), ("sentencepiece", 4),
+        ("safetensors", 4), ("huggingface_hub", 6)]
+
+
+def _image_model() -> str:
+    import platform
+    return CFG["models"]["image_mac" if platform.system() == "Darwin" else "image"]
 
 
 @app.post("/api/settings/image-ai")
 def install_image_ai(body: ImageAIBody):
-    """One-time: installs the free image AI for Macs / PCs (several GB)."""
+    """One-time: installs the free image AI and downloads its model, with real progress."""
+    import importlib
     import subprocess
     import sys
     import threading
+    import time as _t
     if INSTALL["state"] == "running":
         return INSTALL
 
     def work():
-        INSTALL.update(state="running", log="Installing image AI (one time, 5-15 min)…")
-        r = subprocess.run([sys.executable, "-m", "pip", "install", "-q", "torch", "diffusers>=0.43.0", "transformers",
-                            "accelerate", "sentencepiece", "safetensors"], capture_output=True, text=True)
-        INSTALL.update(state="done" if r.returncode == 0 else "error",
-                       log="Installed. The first picture also downloads the model (~8 GB)." if r.returncode == 0 else r.stderr[-600:])
+        INSTALL.update(state="running", pct=1, step="Starting", detail="", started=_t.time(), log="")
+        try:
+            total = sum(w for _, w in PKGS)
+            done = 0
+            for i, (pkg, w) in enumerate(PKGS, 1):
+                name = pkg.split(">")[0]
+                INSTALL.update(step=f"Installing {name}", detail=f"Part {i} of {len(PKGS)}")
+                r = subprocess.run([sys.executable, "-m", "pip", "install", "-q", pkg], capture_output=True, text=True)
+                if r.returncode != 0:
+                    raise RuntimeError(f"Could not install {name}: " + r.stderr[-400:])
+                done += w
+                INSTALL["pct"] = round(30 * done / total, 1)
+            importlib.invalidate_caches()
+            from huggingface_hub import HfApi, constants, snapshot_download
+            mid = _image_model()
+            INSTALL.update(step="Downloading the picture model", detail="Checking size…")
+            info = HfApi().model_info(mid, files_metadata=True)
+            size = sum((f.size or 0) for f in info.siblings) or 1
+            folder = Path(constants.HF_HUB_CACHE) / ("models--" + mid.replace("/", "--"))
+            err: list = []
+            th = threading.Thread(target=lambda: _dl(snapshot_download, mid, err), daemon=True)
+            th.start()
+            t0, last = _t.time(), 0
+            while th.is_alive():
+                got = sum(f.stat().st_size for f in folder.rglob("*") if f.is_file()) if folder.exists() else 0
+                rate = got / max(1, _t.time() - t0)
+                left = (size - got) / rate if rate > 1e5 else None
+                INSTALL.update(pct=round(30 + 70 * min(1, got / size), 1),
+                               detail=f"{got / 1e9:.1f} of {size / 1e9:.1f} GB" + (f" · about {int(left // 60) + 1} min left" if left else ""))
+                last = got
+                _t.sleep(1.5)
+            if err:
+                raise RuntimeError(err[0])
+            INSTALL.update(state="done", pct=100, step="Ready", detail="Free AI pictures are on. New ads use them automatically.")
+        except Exception as e:
+            INSTALL.update(state="error", step="Something went wrong", detail=str(e)[:400])
+
     threading.Thread(target=work, daemon=True).start()
+    _t.sleep(0.2)
     return INSTALL
+
+
+def _dl(fn, mid, err):
+    try:
+        fn(mid)
+    except Exception as e:  # e.g. no internet
+        err.append(str(e)[:300])
 
 
 @app.get("/api/settings/image-ai")
