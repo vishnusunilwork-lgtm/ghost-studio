@@ -204,6 +204,14 @@ details.log pre{font:11.5px/1.6 ui-monospace,Menlo,monospace;color:var(--mute);w
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 
 /* ---------- Glass layer: frosted surfaces over the molecule field ---------- */
+.ver{display:flex;align-items:center;gap:6px;height:34px;padding:0 12px;margin-right:6px;border-radius:99px;font:500 12.5px/1 ui-monospace,Menlo,monospace;color:var(--mute);
+  background:var(--glass-soft);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border:1px solid var(--edge);box-shadow:var(--hi);transition:color .2s,border-color .2s}
+.ver:hover{color:var(--ink);border-color:var(--edge-hi)}.ver .ok{color:var(--ok)}.ver.new{color:var(--ink);border-color:rgba(159,211,255,.45)}.ver.new b{font-weight:600}.ver .arrow{opacity:.6}
+.upbar{position:fixed;top:72px;left:50%;transform:translateX(-50%);z-index:35;width:min(680px,calc(100% - 32px));display:flex;align-items:center;gap:12px;padding:12px 12px 12px 16px;border-radius:20px;
+  background:var(--glass-strong);-webkit-backdrop-filter:blur(28px) saturate(170%);backdrop-filter:blur(28px) saturate(170%);border:1px solid var(--edge);box-shadow:var(--hi),0 24px 70px -24px rgba(0,0,0,.9);animation:enter .5s var(--ease) both}
+.upbar .uptext{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px;font-size:13.5px}.upbar .uptext span{color:var(--mute)}.upbar .uptext small{color:var(--faint);font-size:12px}
+.upbar .btn{height:38px;padding:0 16px;flex:none}
+@media(max-width:600px){.upbar{flex-wrap:wrap}.upbar .uptext{flex-basis:calc(100% - 30px)}.upbar .btn{flex:1}}
 .stage{grid-template-columns:auto minmax(260px,1fr)}
 .screen{width:380px;max-width:100%}.screen.wide{width:640px}
 @media(max-width:820px){.stage{grid-template-columns:minmax(0,1fr)}.screen,.screen.wide{width:100%;max-width:380px}.screen.wide{max-width:640px}}
@@ -240,6 +248,7 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
 <body>
 <canvas id="field" aria-hidden="true"></canvas>
 <div class="pline" id="pline"></div>
+<div class="upbar hidden" id="upbar" role="status"><span class="udot"></span><div class="uptext"><b>Ghost Studio <span id="upVer"></span> is ready</b><span id="upNotes"></span><small>Your ads, settings and what you're typing are kept.</small></div><button class="btn" id="upLater">Later</button><button class="btn solid" id="upGo">Update now</button></div>
 
 <header class="top">
   <button class="icon mark" id="homeBtn" aria-label="Home" title="Home">
@@ -249,7 +258,7 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v4h4"/><path d="M12 8v4l3 2"/></svg>
   </button>
   <div class="sp"></div>
-  <button class="upd hidden" id="updBtn" title="A newer version is ready"><span class="udot"></span><span id="updTxt">Update available</span><b>Update now</b></button>
+  <button class="ver" id="verBtn" title="Version">v…</button>
   <button class="status" id="statusBtn" title="This computer"><span class="dot" id="sDot"></span><span id="sText">Starting…</span></button>
   <button class="icon" id="setBtn" aria-label="Settings" title="Settings">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
@@ -436,7 +445,7 @@ function chips(){const out=[];
   if(A.ref)out.push(`<div class="att"><span class="ph">${IC.vid}</span><span><b>${esc(A.ref.name)}</b><small>Reference ad</small></span><button class="x" data-rm="ref" aria-label="Remove">✕</button></div>`);
   A.pics.forEach((f,i)=>out.push(`<div class="att"><img src="${URL.createObjectURL(f)}" alt=""><span><b>${esc(f.name)}</b><small>Character / product</small></span><button class="x" data-rm="pic${i}" aria-label="Remove">✕</button></div>`));
   if(A.music)out.push(`<div class="att"><span class="ph">${IC.mus}</span><span><b>${esc(A.music.name)}</b><small>Music</small></span><button class="x" data-rm="music" aria-label="Remove">✕</button></div>`);
-  $('#attach').innerHTML=out.join('');$$('[data-rm]').forEach(b=>b.onclick=()=>{const k=b.dataset.rm;if(k==='ref')A.ref=null;else if(k==='music')A.music=null;else A.pics.splice(+k.slice(3),1);chips()});ready()}
+  $('#attach').innerHTML=out.join('');saveAtt();$$('[data-rm]').forEach(b=>b.onclick=()=>{const k=b.dataset.rm;if(k==='ref')A.ref=null;else if(k==='music')A.music=null;else A.pics.splice(+k.slice(3),1);chips()});ready()}
 const comp=$('#composer');
 ['dragenter','dragover'].forEach(t=>comp.addEventListener(t,e=>{e.preventDefault();comp.classList.add('drag')}));
 ['dragleave','drop'].forEach(t=>comp.addEventListener(t,e=>{e.preventDefault();comp.classList.remove('drag')}));
@@ -451,7 +460,7 @@ async function go(){const text=prompt_.value.trim();$('#goErr').textContent='';
   const fd=new FormData();fd.append(EXACT?'dialogue':'idea',text);fd.append('seconds',$('#len').value);fd.append('aspect',$('#aspect').value);fd.append('voice_mode',$('#voice').value);fd.append('language',$('#lang').value);fd.append('quality',QUAL);
   if(A.ref)fd.append('reference',A.ref);if(A.music)fd.append('music',A.music);A.pics.forEach(f=>fd.append('refs',f));
   $('#send').classList.remove('ready');const r0=comp.getBoundingClientRect();F.impulse(r0.left+r0.width/2,r0.top+r0.height/2,9);F.set(.9);
-  try{const r=await api('/api/projects',{method:'POST',body:fd});comp.classList.add('sent');setTimeout(()=>{comp.classList.remove('sent');prompt_.value='';A.ref=null;A.pics=[];A.music=null;chips();grow();open(r.id)},380)}
+  try{const r=await api('/api/projects',{method:'POST',body:fd});comp.classList.add('sent');setTimeout(()=>{comp.classList.remove('sent');prompt_.value='';A.ref=null;A.pics=[];A.music=null;chips();grow();saveDraft();open(r.id)},380)}
   catch(e){$('#goErr').textContent=e.message;F.set(.18);ready()}}
 
 /* ---------- status / settings / history ---------- */
@@ -526,12 +535,45 @@ function report(p){const L=[`Ghost Studio problem report`,`Version: ${ST?.versio
 async function copyReport(p){const t=report(p);try{await navigator.clipboard.writeText(t)}catch(e){const a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();document.execCommand('copy');a.remove()}toast('Copied — paste it to Vishnu on Slack')}
 $('#pReport').onclick=()=>copyReport(P);
 $('#sStop').onclick=async()=>{try{await api('/api/stop',{method:'POST'})}catch(e){}document.body.innerHTML='<div class="cover"><div>Ghost Studio is stopped.<small>Open it again any time from the Ghost Studio icon.</small></div></div>'};$('#sReport').onclick=()=>copyReport(CUR?P:null);
-async function checkUpdate(force){try{const u=await api('/api/update'+(force?'?force=true':''));const b=$('#updBtn');b.classList.toggle('hidden',!u.available);if(u.available)$('#updTxt').textContent='Update'+(u.remote?' '+u.remote:'')+' ready'}catch(e){}}
-$('#updBtn').onclick=async()=>{const before=ST?.version;const c=document.createElement('div');c.className='cover';c.innerHTML='<div>Updating Ghost Studio…<small>About 10–30 seconds. The page reloads by itself.</small></div>';document.body.appendChild(c);
-  try{await api('/api/update',{method:'POST'})}catch(e){c.remove();toast(e.message);return}
-  const t0=Date.now();const iv=setInterval(async()=>{try{const s=await api('/api/status');if(s.version!==before||Date.now()-t0>8000){clearInterval(iv);location.reload()}}catch(e){}if(Date.now()-t0>120000){clearInterval(iv);c.innerHTML='<div>Taking longer than usual.<small>Close the black window and double-click Start Ghost Studio.</small></div>'}},1500)};
-headline();status();setInterval(status,30000);checkUpdate();setInterval(()=>checkUpdate(),10*60*1000);addEventListener('focus',()=>checkUpdate());
-if(location.hash.length>1)open(location.hash.slice(1));else setTimeout(()=>prompt_.focus(),300);
+/* ---------- version + updates that never lose your work ---------- */
+const lsGet=k=>{try{return JSON.parse(localStorage.getItem(k)||'null')}catch(e){return null}};
+const lsSet=(k,v)=>{try{v===null?localStorage.removeItem(k):localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
+let UPD=null;
+function verPill(){const b=$('#verBtn');if(!ST)return;const v='v'+(ST.version||'?');
+  if(UPD&&UPD.available){b.className='ver new';b.innerHTML=`<span class="udot"></span>${esc(v)} <span class="arrow">→</span> <b>${esc(UPD.remote)}</b>`;b.title='A new version is ready. Click to see what\'s new.'}
+  else{b.className='ver';b.innerHTML=`${esc(v)} <span class="ok">✓</span>`;b.title='You have the latest version'}}
+async function checkUpdate(force){try{UPD=await api('/api/update'+(force?'?force=true':''));verPill();
+  const later=(()=>{try{return sessionStorage.getItem('gs-later')}catch(e){return null}})();
+  if(UPD.available&&later!==UPD.remote){$('#upVer').textContent=UPD.remote;$('#upNotes').textContent=UPD.notes||'Improvements and fixes.';$('#upbar').classList.remove('hidden')}else $('#upbar').classList.add('hidden')}catch(e){}}
+$('#verBtn').onclick=()=>{if(UPD&&UPD.available){try{sessionStorage.removeItem('gs-later')}catch(e){}$('#upVer').textContent=UPD.remote;$('#upNotes').textContent=UPD.notes||'Improvements and fixes.';$('#upbar').classList.remove('hidden')}else{toast('You have the latest version ('+(ST?.version||'')+')');checkUpdate(true)}};
+$('#upLater').onclick=()=>{try{sessionStorage.setItem('gs-later',UPD?.remote||'')}catch(e){}$('#upbar').classList.add('hidden')};
+$('#upGo').onclick=async()=>{if(P&&(P.status==='running'||P.status==='queued')){toast('An ad is being made. Update when it is finished, so nothing is lost.');return}
+  saveDraft();await saveAtt();const before=ST?.version;lsSet('gs-upd',{from:before,to:UPD?.remote});
+  const c=document.createElement('div');c.className='cover';c.innerHTML='<div>Updating Ghost Studio…<small>About 10–30 seconds. Your ads, settings and what you were typing are kept.</small></div>';document.body.appendChild(c);
+  try{await api('/api/update',{method:'POST'})}catch(e){c.remove();lsSet('gs-upd',null);toast(e.message);return}
+  const t0=Date.now();const iv=setInterval(async()=>{try{const st=await api('/api/status');if(st.version!==before){clearInterval(iv);location.reload()}}catch(e){}if(Date.now()-t0>180000){clearInterval(iv);c.innerHTML='<div>Taking longer than usual.<small>Open Ghost Studio again from its icon. Your work is saved.</small></div>'}},1500)};
+
+/* draft: what you are typing and choosing is saved as you go, and comes back after an update or reload */
+const DKEY='gs-draft';
+function saveDraft(){const open=$('#clipSheet').classList.contains('on')&&EDIT>=0;
+  lsSet(DKEY,{prompt:prompt_.value,len:$('#len').value,aspect:$('#aspect').value,voice:$('#voice').value,lang:$('#lang').value,exact:EXACT,qual:QUAL,pid:CUR,
+    sheet:open?{i:EDIT,line:$('#csLine').value,prompt:$('#csPrompt').value,move:$('.mv.on')?.dataset.m||'',shake:$('#csShake').value,amt:$('#csAmt').value}:null})}
+let _dt=0;const draftSoon=()=>{clearTimeout(_dt);_dt=setTimeout(saveDraft,250)};
+['input','change'].forEach(t=>document.addEventListener(t,draftSoon,true));document.addEventListener('click',()=>setTimeout(draftSoon,60),true);
+const idb=()=>new Promise((res,rej)=>{const r=indexedDB.open('ghost-studio',1);r.onupgradeneeded=()=>r.result.createObjectStore('att');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)});
+async function saveAtt(){try{const db=await idb();await new Promise(r=>{const tx=db.transaction('att','readwrite');tx.objectStore('att').put({ref:A.ref,pics:A.pics,music:A.music},'cur');tx.oncomplete=r;tx.onerror=r})}catch(e){}}
+async function loadAtt(){try{const db=await idb();return await new Promise(r=>{const q=db.transaction('att').objectStore('att').get('cur');q.onsuccess=()=>r(q.result);q.onerror=()=>r(null)})}catch(e){return null}}
+function setSel(id,v){const el=$('#'+id);if(v&&[...el.options].some(o=>o.value===v))el.value=v}
+async function restore(){const d=lsGet(DKEY);
+  if(d){prompt_.value=d.prompt||'';grow();setSel('len',d.len);setSel('aspect',d.aspect);setSel('voice',d.voice);setSel('lang',d.lang);$('#lang').dataset.set=1;
+    if(d.exact&&!EXACT){EXACT=true;$('#exact').classList.add('on')}if(d.qual){QUAL=d.qual;$('#modeTxt').textContent=QUAL==='draft'?'Draft':'Final'}}
+  const a=await loadAtt();if(a&&(a.ref||(a.pics||[]).length||a.music)){A.ref=a.ref||null;A.pics=a.pics||[];A.music=a.music||null;chips()}
+  const pid=location.hash.length>1?location.hash.slice(1):d&&d.pid;
+  if(pid){await open(pid);if(d&&d.sheet&&d.pid===pid&&P&&P.clips&&P.clips[d.sheet.i]){sheet(d.sheet.i);$('#csLine').value=d.sheet.line;$('#csPrompt').value=d.sheet.prompt;
+      if(d.sheet.move)$$('.mv').forEach(x=>x.classList.toggle('on',x.dataset.m===d.sheet.move));$('#csShake').value=d.sheet.shake;$('#csAmt').value=d.sheet.amt;sv()}}
+  else setTimeout(()=>prompt_.focus(),300)}
+(async()=>{headline();await status();verPill();const u=lsGet('gs-upd');if(u){lsSet('gs-upd',null);if(ST&&ST.version!==u.from)setTimeout(()=>toast('Updated to '+ST.version+'. Everything is where you left it.'),600)}
+  await restore();checkUpdate();setInterval(status,30000);setInterval(()=>checkUpdate(),10*60*1000);addEventListener('focus',()=>checkUpdate())})();
 </script>
 </body>
 </html>

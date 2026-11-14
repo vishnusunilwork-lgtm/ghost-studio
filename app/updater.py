@@ -37,6 +37,10 @@ def local_version() -> str:
     return f.read_text().strip() if f.exists() else ""
 
 
+RAW = os.environ.get("GHOST_RAW", "https://raw.githubusercontent.com")
+ARCHIVE = os.environ.get("GHOST_ARCHIVE", "https://github.com")
+
+
 def _get(url: str, timeout=20) -> bytes:
     req = urllib.request.Request(url, headers={"User-Agent": "GhostStudio", "Cache-Control": "no-cache"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -51,8 +55,16 @@ def check(force: bool = False) -> dict:
         data = {"available": False, "reason": "updates not set up"}
     else:
         try:
-            remote = _get(f"https://raw.githubusercontent.com/{r}/main/VERSION?{int(time.time())}").decode().strip()
-            data = {"available": bool(remote) and remote != local_version(), "remote": remote}
+            remote = _get(f"{RAW}/{r}/main/VERSION?{int(time.time())}").decode().strip()
+            notes = ""
+            try:
+                for line in _get(f"{RAW}/{r}/main/WHATSNEW?{int(time.time())}").decode().splitlines():
+                    if line.startswith(remote + ":"):
+                        notes = line.split(":", 1)[1].strip()
+                        break
+            except Exception:
+                pass
+            data = {"available": bool(remote) and remote != local_version(), "remote": remote, "local": local_version(), "notes": notes}
         except Exception as e:
             data = {"available": False, "reason": "offline: " + str(e)[:120]}
     _cache.update(t=time.time(), data=data)
@@ -65,7 +77,7 @@ def apply() -> str:
     shutil.rmtree(tmp, ignore_errors=True)
     tmp.mkdir(parents=True)
     tgz = ROOT / ".ghost" / "new.tgz"
-    tgz.write_bytes(_get(f"https://github.com/{r}/archive/refs/heads/main.tar.gz", timeout=300))
+    tgz.write_bytes(_get(f"{ARCHIVE}/{r}/archive/refs/heads/main.tar.gz", timeout=300))
     with tarfile.open(tgz) as t:
         t.extractall(tmp, filter="data") if sys.version_info >= (3, 12) else t.extractall(tmp)
     src = next(p for p in tmp.iterdir() if p.is_dir())
