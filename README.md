@@ -30,13 +30,13 @@ After that you can change any clip's line, camera move or shake. Press **Make th
   - **Hindi narrator voice:** if you hear an English voice, add **Lekha** in System Settings → Accessibility → Spoken Content → System voice → Manage voices.
 - **Video service (optional):** paste a **fal.ai** key under ⚙ to get real moving video where people speak (Veo 3.1 Lite, about US$0.05 per second). The key stays on that computer only, and the app stops at your monthly limit. Press **Remove key** to go back to free mode.
 
-## Install (one line, Mac or Windows)
+## Install (one line, Mac or Windows, no account)
 
-Use the install page Vishnu shares. It gives one line to paste:
-- **Mac:** open **Terminal**, paste the Mac line, press Enter.
-- **Windows:** open **PowerShell**, paste the Windows line, press Enter.
+Open **https://vishnusunilwork-lgtm.github.io/ghost-studio/** and copy the line for your computer.
+- **Mac:** paste it in **Terminal** and press Enter.
+- **Windows:** paste it in **PowerShell** and press Enter.
 
-It installs Ghost Studio and puts a **Ghost Studio** icon on your Desktop. Double-click that icon from then on.
+You get a **Ghost Studio** icon on your Desktop. It updates itself.
 
 ## For the team (Mac)
 

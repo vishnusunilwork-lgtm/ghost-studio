@@ -1,6 +1,6 @@
 #!/bin/bash
 # Ghost Studio — double-click to start.
-# Every start it checks the team's GitHub project for a newer version and updates itself.
+# Every start it checks for a newer version and updates itself (no account needed).
 # Your ads (projects/), your settings (config.local.yaml) and the installed parts (.venv/) are never touched.
 
 REPO="vishnusunilwork-lgtm/ghost-studio"   # filled in by the person who set up the team project, e.g. yourname/ghost-studio
@@ -17,44 +17,32 @@ echo "  ---------------------------------------------"
 echo "  Keep this window open while you use the app. To stop: close this window."
 echo ""
 
-# ---------- 1) Updates from the team project ----------
+# ---------- 1) Updates (public project, no sign-in needed) ----------
 if [ "$1" != "--no-update" ] && [[ "$REPO" == */* ]]; then
   printf '%s' "$REPO" > .ghost/repo
-  get_gh
-  if command -v gh >/dev/null 2>&1; then
-    if ! gh auth status -h github.com >/dev/null 2>&1; then
-      echo "  First time only: sign in to GitHub so the app can get updates."
-      echo "  1. A code appears below.  2. Press Enter — your browser opens."
-      echo "  3. Paste the code there and click Authorize."
-      echo ""
-      gh auth login -h github.com -p https --web --skip-ssh-key 2>&1 </dev/tty || true
-      echo ""
-    fi
-    REMOTE=$(gh api "repos/$REPO/commits/main" --jq .sha 2>/dev/null)
-    LOCAL=$(cat .ghost/version 2>/dev/null)
-    if [ -n "$REMOTE" ] && [ "$REMOTE" != "$LOCAL" ]; then
-      echo "  Getting the newest version…"
-      rm -rf .ghost/new && mkdir -p .ghost/new
-      if gh api "repos/$REPO/tarball/main" > .ghost/new.tgz 2>/dev/null && tar -xzf .ghost/new.tgz -C .ghost/new; then
-        SRC=$(find .ghost/new -mindepth 1 -maxdepth 1 -type d | head -1)
-        if [ -f "$SRC/app/server.py" ]; then
-          cp -R "$SRC"/. ./
-          echo "$REMOTE" > .ghost/version
-          chmod +x "Start Ghost Studio.command" 2>/dev/null
-          rm -rf .ghost/new .ghost/new.tgz
-          echo "  Updated to $(cat VERSION 2>/dev/null) (${REMOTE:0:7})."
-          exec bash "$SELF" --no-update      # restart with the new version of this file
-        fi
+  REMOTE=$(curl -fsSL --max-time 15 "https://raw.githubusercontent.com/$REPO/main/VERSION?$(date +%s)" 2>/dev/null | tr -d '[:space:]')
+  LOCAL=$(tr -d '[:space:]' < VERSION 2>/dev/null)
+  if [ -n "$REMOTE" ] && { [ "$REMOTE" != "$LOCAL" ] || [ ! -f app/server.py ]; }; then
+    echo "  Getting Ghost Studio $REMOTE…"
+    rm -rf .ghost/new && mkdir -p .ghost/new
+    if curl -fsSL --max-time 300 "https://github.com/$REPO/archive/refs/heads/main.tar.gz" -o .ghost/new.tgz && tar -xzf .ghost/new.tgz -C .ghost/new; then
+      SRC=$(find .ghost/new -mindepth 1 -maxdepth 1 -type d | head -1)
+      if [ -f "$SRC/app/server.py" ]; then
+        cp -R "$SRC"/. ./
+        chmod +x "Start Ghost Studio.command" 2>/dev/null
+        rm -rf .ghost/new .ghost/new.tgz
+        echo "  Updated to $(cat VERSION 2>/dev/null)."
+        exec bash "$SELF" --no-update
       fi
-      echo "  Could not update right now — starting the version you have."
-    elif [ -z "$REMOTE" ]; then
-      echo "  Could not check for updates (offline or no access) — starting the version you have."
     fi
+    echo "  Could not update right now — starting the version you have."
+  elif [ -z "$REMOTE" ]; then
+    echo "  Could not check for updates (offline?) — starting the version you have."
   fi
 fi
 if [ ! -f app/server.py ]; then
   echo "  The app files are missing and could not be downloaded."
-  echo "  Check your internet and that Vishnu invited your GitHub account, then try again."
+  echo "  Check your internet connection, then try again."
   read -r; exit 1
 fi
 
@@ -103,14 +91,6 @@ echo "  Ghost Studio stopped. If that was unexpected, send a screenshot of this 
 read -r
 }
 
-get_gh() {
-  command -v gh >/dev/null 2>&1 && return
-  echo "  Getting the GitHub helper (one time)…"
-  A=amd64; [ "$(uname -m)" = "arm64" ] && A=arm64
-  URL=$(curl -fsSL https://api.github.com/repos/cli/cli/releases/latest | grep -o "\"browser_download_url\": *\"[^\"]*macOS_${A}\.zip\"" | head -1 | sed 's/.*"\(https[^"]*\)"/\1/')
-  [ -z "$URL" ] && return
-  curl -fsSL "$URL" -o .ghost/gh.zip && (cd .ghost && unzip -oq gh.zip && cp gh_*_macOS_${A}/bin/gh bin/gh && chmod +x bin/gh && rm -rf gh.zip gh_*_macOS_${A})
-}
 
 main "$@"
 exit

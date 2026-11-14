@@ -1,17 +1,16 @@
-"""In-app updates: checks the team's GitHub project and updates + restarts the app with one click.
-Uses the GitHub helper that "Start Ghost Studio" installed and signed in. Never touches
-projects/, config.local.yaml, .venv/ or .ghost/."""
+"""In-app updates from the public GitHub project: no account or sign-in needed.
+Compares the VERSION file, downloads the newest copy and restarts the app.
+Never touches projects/, config.local.yaml, .venv/ or .ghost/."""
 from __future__ import annotations
 
-import base64
 import os
 import re
 import shutil
-import subprocess
 import sys
 import tarfile
 import threading
 import time
+import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -23,49 +22,37 @@ def repo() -> str:
     f = ROOT / ".ghost" / "repo"
     if f.exists() and "/" in f.read_text():
         return f.read_text().strip()
-    try:
-        m = re.search(r'^REPO="([^"]+/[^"]+)"', (ROOT / "Start Ghost Studio.command").read_text(), re.M)
-        return m.group(1) if m else ""
-    except Exception:
-        return ""
+    for name, pat in (("Start Ghost Studio.command", r'^REPO="([^"]+/[^"]+)"'), ("ghost.ps1", r'^\$REPO = "([^"]+/[^"]+)"')):
+        try:
+            m = re.search(pat, (ROOT / name).read_text(encoding="utf-8"), re.M)
+            if m:
+                return m.group(1)
+        except Exception:
+            pass
+    return ""
 
 
-def _gh() -> str:
-    for name in ("gh", "gh.exe"):
-        local = ROOT / ".ghost" / "bin" / name
-        if local.exists():
-            return str(local)
-    return shutil.which("gh") or ""
-
-
-def _api(path: str, timeout=30) -> bytes:
-    r = subprocess.run([_gh(), "api", path], capture_output=True, timeout=timeout)
-    if r.returncode != 0:
-        raise RuntimeError(r.stderr.decode(errors="ignore")[-300:] or "GitHub not reachable")
-    return r.stdout
-
-
-def local_sha() -> str:
-    f = ROOT / ".ghost" / "version"
+def local_version() -> str:
+    f = ROOT / "VERSION"
     return f.read_text().strip() if f.exists() else ""
+
+
+def _get(url: str, timeout=20) -> bytes:
+    req = urllib.request.Request(url, headers={"User-Agent": "GhostStudio", "Cache-Control": "no-cache"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read()
 
 
 def check(force: bool = False) -> dict:
     if not force and _cache["data"] and time.time() - _cache["t"] < 600:
         return _cache["data"]
     r = repo()
-    if not r or not _gh():
+    if not r:
         data = {"available": False, "reason": "updates not set up"}
     else:
         try:
-            import json
-            sha = json.loads(_api(f"repos/{r}/commits/main"))["sha"]
-            ver = ""
-            try:
-                ver = base64.b64decode(json.loads(_api(f"repos/{r}/contents/VERSION"))["content"]).decode().strip()
-            except Exception:
-                pass
-            data = {"available": bool(sha) and sha != local_sha(), "remote": ver, "sha": sha[:7]}
+            remote = _get(f"https://raw.githubusercontent.com/{r}/main/VERSION?{int(time.time())}").decode().strip()
+            data = {"available": bool(remote) and remote != local_version(), "remote": remote}
         except Exception as e:
             data = {"available": False, "reason": "offline: " + str(e)[:120]}
     _cache.update(t=time.time(), data=data)
@@ -78,9 +65,7 @@ def apply() -> str:
     shutil.rmtree(tmp, ignore_errors=True)
     tmp.mkdir(parents=True)
     tgz = ROOT / ".ghost" / "new.tgz"
-    import json
-    sha = json.loads(_api(f"repos/{r}/commits/main"))["sha"]
-    tgz.write_bytes(_api(f"repos/{r}/tarball/{sha}", timeout=300))
+    tgz.write_bytes(_get(f"https://github.com/{r}/archive/refs/heads/main.tar.gz", timeout=300))
     with tarfile.open(tgz) as t:
         t.extractall(tmp, filter="data") if sys.version_info >= (3, 12) else t.extractall(tmp)
     src = next(p for p in tmp.iterdir() if p.is_dir())
@@ -98,11 +83,10 @@ def apply() -> str:
         os.chmod(ROOT / "Start Ghost Studio.command", 0o755)
     except Exception:
         pass
-    (ROOT / ".ghost" / "version").write_text(sha)
     shutil.rmtree(tmp, ignore_errors=True)
     tgz.unlink(missing_ok=True)
     _cache.update(t=0.0, data=None)
-    return sha
+    return local_version()
 
 
 def restart_soon(delay: float = 1.0):

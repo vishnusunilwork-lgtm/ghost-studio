@@ -30,7 +30,7 @@ def _merge(a: dict, b: dict) -> dict:
 if (ROOT / "config.local.yaml").exists():
     CFG = _merge(CFG, yaml.safe_load((ROOT / "config.local.yaml").read_text(encoding="utf-8")) or {})
 VERSION = (ROOT / "VERSION").read_text().strip() if (ROOT / "VERSION").exists() else "dev"
-BUILD = (ROOT / ".ghost" / "version").read_text().strip()[:7] if (ROOT / ".ghost" / "version").exists() else ""
+BUILD = ""
 STORE = Store(ROOT / CFG["paths"]["projects"])
 RUNNER = Runner(CFG, STORE)
 app = FastAPI(title="AI Film Studio Local")

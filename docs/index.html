@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Get Ghost Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one narrow column, three steps, the install line is the hero. Single dark look, same as the app. */
+:root{
+  --bg:#0a0a0b;--panel:#141416;--panel2:#1b1b1e;--ink:#ededee;--mute:#9a9aa1;--faint:#5c5c63;
+  --line:rgba(255,255,255,.09);--line2:rgba(255,255,255,.18);--ok:#86e3b0;--glow:rgba(170,215,255,.14);
+  --display:"Space Grotesk","Inter",system-ui,sans-serif;--body:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;--mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 var(--body);-webkit-font-smoothing:antialiased;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0}
+.wrap{max-width:640px;margin:0 auto;padding-block:56px 64px;display:flex;flex-direction:column;gap:28px}
+header{display:flex;flex-direction:column;gap:10px}
+.mark{display:flex;align-items:center;gap:10px;color:var(--mute);font-size:13px;letter-spacing:.06em;text-transform:uppercase}
+h1{font:600 clamp(30px,6vw,40px)/1.1 var(--display);letter-spacing:-.02em;margin:0;text-wrap:balance}
+.lead{color:var(--mute);margin:0;max-width:52ch}
+.tabs{display:inline-flex;gap:4px;padding:4px;background:var(--panel);border:1px solid var(--line);border-radius:99px;align-self:flex-start}
+.tabs button{border:0;background:none;color:var(--mute);font:500 14px var(--body);padding:8px 18px;border-radius:99px;cursor:pointer;transition:background .2s,color .2s}
+.tabs button[aria-selected="true"]{background:var(--ink);color:var(--bg)}
+.tabs button:focus-visible,.copy:focus-visible{outline:2px solid var(--line2);outline-offset:2px}
+ol.steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:14px;counter-reset:s}
+ol.steps>li{counter-increment:s;display:grid;grid-template-columns:32px minmax(0,1fr);gap:14px;padding:18px;background:var(--panel);border:1px solid var(--line);border-radius:18px}
+ol.steps>li::before{content:counter(s);width:32px;height:32px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--line2);font:600 14px var(--display);color:var(--ink)}
+ol.steps>li.hero{border-color:var(--line2);box-shadow:0 20px 60px -30px var(--glow)}
+.step{min-width:0;display:flex;flex-direction:column;gap:8px}
+.step h2{margin:0;font:600 17px/1.3 var(--display)}
+.step p{margin:0;color:var(--mute)}
+.step b{color:var(--ink);font-weight:600}
+kbd{white-space:nowrap;font:500 12px var(--mono);background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:1px 6px;color:var(--ink)}
+.line{display:flex;align-items:stretch;gap:8px;margin-top:4px}
+.line code{flex:1;min-width:0;display:block;font:400 12.5px/1.55 var(--mono);color:var(--ink);background:#060607;border:1px solid var(--line);border-radius:12px;padding:12px 14px;overflow-x:auto;white-space:nowrap;user-select:all}
+.copy{flex:none;border:0;background:var(--ink);color:var(--bg);font:600 14px var(--body);padding:0 18px;border-radius:12px;cursor:pointer;transition:transform .12s,background .2s;min-width:92px}
+.copy:active{transform:scale(.96)}.copy.done{background:var(--ok)}
+.then{display:flex;flex-direction:column;gap:10px;padding:18px;border:1px dashed var(--line2);border-radius:18px}
+.then h3{margin:0;font:600 15px var(--display)}
+.then ul{margin:0;padding-left:18px;color:var(--mute);display:flex;flex-direction:column;gap:6px}
+.then li b{color:var(--ink);font-weight:600}
+footer{color:var(--faint);font-size:12.5px}
+[hidden]{display:none!important}
+@media (max-width:520px){.line{flex-direction:column}.copy{height:44px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+
+<div class="wrap">
+  <header>
+    <div class="mark"><svg width="22" height="22" viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><ellipse cx="13" cy="13" rx="10.5" ry="5.2" transform="rotate(-32 13 13)"/><ellipse cx="13" cy="13" rx="10.5" ry="5.2" transform="rotate(38 13 13)" opacity=".45"/><circle cx="15.6" cy="11.4" r="2.1" fill="currentColor" stroke="none"/></svg>Ghost Studio · for the team</div>
+    <h1>Get Ghost Studio in one line</h1>
+    <p class="lead">One-click ads with script, pictures, narrator and camera moves. It runs on your own computer and is free. No account and no download: copy one line, paste, press Enter. After that, just double-click the icon on your Desktop.</p>
+  </header>
+
+  <div class="tabs" role="tablist" aria-label="Your computer">
+    <button role="tab" id="tab-mac" aria-selected="true" data-os="mac">Mac</button>
+    <button role="tab" id="tab-win" aria-selected="false" data-os="win">Windows</button>
+  </div>
+
+  <ol class="steps">
+    <li class="hero">
+      <div class="step" data-for="mac">
+        <h2>Paste this line in Terminal</h2>
+        <p>Press <kbd>⌘ Cmd</kbd> + <kbd>Space</kbd>, type <b>Terminal</b>, press <kbd>Enter</kbd>. Paste the line with <kbd>⌘ Cmd</kbd> + <kbd>V</kbd> and press <kbd>Enter</kbd>.</p>
+        <div class="line"><code id="cmd-mac">curl -fsSL https://raw.githubusercontent.com/vishnusunilwork-lgtm/ghost-studio/main/install/mac.sh | bash</code><button class="copy" id="copy-mac" data-src="cmd-mac">Copy</button></div>
+      </div>
+      <div class="step" data-for="win" hidden>
+        <h2>Paste this line in PowerShell</h2>
+        <p>Click <b>Start</b>, type <b>PowerShell</b>, press <kbd>Enter</kbd>. Paste the line with a right-click (or <kbd>Ctrl</kbd> + <kbd>V</kbd>) and press <kbd>Enter</kbd>.</p>
+        <div class="line"><code id="cmd-win">irm https://raw.githubusercontent.com/vishnusunilwork-lgtm/ghost-studio/main/install/windows.ps1 | iex</code><button class="copy" id="copy-win" data-src="cmd-win">Copy</button></div>
+      </div>
+    </li>
+    <li>
+      <div class="step">
+        <h2>Wait about 5 minutes, once</h2>
+        <p>The first time, Ghost Studio installs itself and then opens in your browser. Keep the black window open while you use it.</p>
+      </div>
+    </li>
+  </ol>
+
+  <section class="then" aria-label="After setup">
+    <h3>After that</h3>
+    <ul>
+      <li><b>Open it:</b> double-click <b>Ghost Studio</b> on your Desktop.</li>
+      <li><b>Updates:</b> when you see <b>Update now</b> at the top of the app, click it. It reloads by itself.</li>
+      <li><b>Problem?</b> Click <b>Copy problem report</b> in the app and paste it to Vishnu on Slack.</li>
+      <li><b>Stop it:</b> close the black window.</li>
+    </ul>
+  </section>
+
+  <footer>Your ads stay on your own computer. Nothing is uploaded.</footer>
+</div>
+
+<script>
+(function(){
+  const tabs=[...document.querySelectorAll('[role=tab]')],panes=[...document.querySelectorAll('[data-for]')];
+  function pick(os){tabs.forEach(t=>t.setAttribute('aria-selected',String(t.dataset.os===os)));panes.forEach(p=>{p.hidden=p.dataset.for!==os});try{localStorage.setItem('gs-os',os)}catch(e){}}
+  tabs.forEach(t=>t.addEventListener('click',()=>pick(t.dataset.os)));
+  let os=null;try{os=localStorage.getItem('gs-os')}catch(e){}
+  if(!os)os=/Windows/i.test(navigator.userAgent)?'win':'mac';pick(os);
+  document.querySelectorAll('.copy').forEach(b=>b.addEventListener('click',()=>{
+    const el=document.getElementById(b.dataset.src),text=el.textContent.trim();
+    const ok=()=>{b.textContent='Copied';b.classList.add('done');setTimeout(()=>{b.textContent='Copy';b.classList.remove('done')},2000)};
+    const fallback=()=>{const r=document.createRange();r.selectNodeContents(el);const s=getSelection();s.removeAllRanges();s.addRange(r);b.textContent='Press ⌘C / Ctrl+C'};
+    try{navigator.clipboard.writeText(text).then(ok,fallback)}catch(e){fallback()}
+  }));
+})();
+</script>
+
+</body>
+</html>

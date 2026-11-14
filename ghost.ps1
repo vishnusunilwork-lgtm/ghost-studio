@@ -1,5 +1,5 @@
 # Ghost Studio for Windows - started by "Start Ghost Studio.cmd" (or the Desktop icon).
-# Every start it checks the team's GitHub project for a newer version and updates itself.
+# Every start it checks for a newer version and updates itself (no account needed).
 # Your ads (projects\), settings (config.local.yaml) and installed parts (.venv\) are never touched.
 $ErrorActionPreference = "Continue"
 $REPO = "vishnusunilwork-lgtm/ghost-studio"
@@ -17,56 +17,34 @@ Write-Host "  Keep this window open while you use the app. To stop: close this w
 Write-Host ""
 function Fail($m) { Write-Host "  $m" -ForegroundColor Yellow; Read-Host "  Press Enter to close"; exit 1 }
 
-# ---------- 1) Updates from the team project ----------
+# ---------- 1) Updates (public project, no sign-in needed) ----------
 if ($REPO -like "*/*" -and $args -notcontains "--no-update") {
   Set-Content -Path (Join-Path $G "repo") -Value $REPO -NoNewline
-  $gh = Join-Path $Bin "gh.exe"
-  if (-not (Test-Path $gh)) {
-    Write-Host "  Getting the GitHub helper (one time)..."
+  [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+  $remote = ""
+  try { $remote = (Invoke-WebRequest "https://raw.githubusercontent.com/$REPO/main/VERSION?$(Get-Random)" -UseBasicParsing -TimeoutSec 15).Content.Trim() } catch {}
+  $local = if (Test-Path VERSION) { (Get-Content VERSION -Raw).Trim() } else { "" }
+  if ($remote -and (($remote -ne $local) -or -not (Test-Path "app\server.py"))) {
+    Write-Host "  Getting Ghost Studio $remote..."
     try {
-      $rel = Invoke-RestMethod "https://api.github.com/repos/cli/cli/releases/latest" -UseBasicParsing
-      $a = $rel.assets | Where-Object { $_.name -like "*_windows_amd64.zip" } | Select-Object -First 1
-      $z = Join-Path $G "gh.zip"; Invoke-WebRequest $a.browser_download_url -OutFile $z -UseBasicParsing
-      Expand-Archive $z -DestinationPath (Join-Path $G "ghx") -Force
-      Copy-Item (Get-ChildItem (Join-Path $G "ghx") -Recurse -Filter gh.exe | Select-Object -First 1).FullName $gh
-      Remove-Item $z, (Join-Path $G "ghx") -Recurse -Force
-    } catch { Write-Host "  Could not get the GitHub helper - starting without updates." }
-  }
-  if (Test-Path $gh) {
-    & $gh auth status -h github.com *> $null
-    if ($LASTEXITCODE -ne 0) {
-      Write-Host "  First time only: sign in to GitHub so the app can get updates."
-      Write-Host "  1. A code appears below.  2. Press Enter - your browser opens."
-      Write-Host "  3. Paste the code there and click Authorize."
-      Write-Host ""
-      & $gh auth login -h github.com -p https --web
-    }
-    $remote = (& $gh api "repos/$REPO/commits/main" --jq .sha 2>$null)
-    $local = if (Test-Path (Join-Path $G "version")) { (Get-Content (Join-Path $G "version") -Raw).Trim() } else { "" }
-    if ($remote -and $remote -ne $local) {
-      Write-Host "  Getting the newest version..."
-      try {
-        $tok = (& $gh auth token).Trim()
-        $tgz = Join-Path $G "new.tgz"; $new = Join-Path $G "new"
-        if (Test-Path $new) { Remove-Item $new -Recurse -Force }
-        New-Item -ItemType Directory -Force -Path $new | Out-Null
-        Invoke-WebRequest "https://api.github.com/repos/$REPO/tarball/$remote" -Headers @{ Authorization = "Bearer $tok" } -OutFile $tgz -UseBasicParsing
-        tar -xzf $tgz -C $new
-        $src = Get-ChildItem $new -Directory | Select-Object -First 1
-        if (Test-Path (Join-Path $src.FullName "app\server.py")) {
-          Get-ChildItem $src.FullName -Force | Where-Object { $_.Name -notin @(".venv", "projects", "config.local.yaml", ".ghost", ".git") } |
-            ForEach-Object { Copy-Item $_.FullName -Destination $Here -Recurse -Force }
-          Set-Content -Path (Join-Path $G "version") -Value $remote -NoNewline
-          Remove-Item $new, $tgz -Recurse -Force
-          Write-Host "  Updated."
-          & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Here "ghost.ps1") --no-update
-          exit
-        }
-      } catch { Write-Host "  Could not update right now - starting the version you have." }
-    }
-  }
+      $tgz = Join-Path $G "new.tgz"; $new = Join-Path $G "new"
+      if (Test-Path $new) { Remove-Item $new -Recurse -Force }
+      New-Item -ItemType Directory -Force -Path $new | Out-Null
+      Invoke-WebRequest "https://github.com/$REPO/archive/refs/heads/main.tar.gz" -OutFile $tgz -UseBasicParsing
+      tar -xzf $tgz -C $new
+      $src = Get-ChildItem $new -Directory | Select-Object -First 1
+      if (Test-Path (Join-Path $src.FullName "app\server.py")) {
+        Get-ChildItem $src.FullName -Force | Where-Object { $_.Name -notin @(".venv", "projects", "config.local.yaml", ".ghost", ".git") } |
+          ForEach-Object { Copy-Item $_.FullName -Destination $Here -Recurse -Force }
+        Remove-Item $new, $tgz -Recurse -Force
+        Write-Host "  Updated."
+        & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Here "ghost.ps1") --no-update
+        exit
+      }
+    } catch { Write-Host "  Could not update right now - starting the version you have." }
+  } elseif (-not $remote) { Write-Host "  Could not check for updates (offline?) - starting the version you have." }
 }
-if (-not (Test-Path "app\server.py")) { Fail "The app files are missing. Check your internet and that Vishnu invited your GitHub account, then try again." }
+if (-not (Test-Path "app\server.py")) { Fail "The app files are missing. Check your internet connection, then try again." }
 
 # ---------- 2) Python (own copy, nothing installed system-wide) ----------
 $py = Join-Path $Here ".venv\Scripts\python.exe"
