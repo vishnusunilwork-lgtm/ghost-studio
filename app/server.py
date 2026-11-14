@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from . import engines as E
 from . import llm
+from . import updater
 from .editor import MOVES
 from .pipeline import ASPECTS, LABEL, STEPS, Runner, Store
 
@@ -106,6 +107,23 @@ def _get(pid: str) -> dict:
 @app.get("/api/projects/{pid}")
 def project(pid: str):
     return _get(pid)
+
+
+@app.get("/api/update")
+def update_check(force: bool = False):
+    return updater.check(force)
+
+
+@app.post("/api/update")
+def update_apply():
+    if RUNNER.busy:
+        raise HTTPException(409, "An ad is being made right now. Update when it is finished.")
+    try:
+        sha = updater.apply()
+    except Exception as e:
+        raise HTTPException(500, "Update failed: " + str(e)[:300])
+    updater.restart_soon()
+    return {"ok": True, "sha": sha[:7]}
 
 
 class ApiSettings(BaseModel):

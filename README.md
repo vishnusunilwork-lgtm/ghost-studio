@@ -38,7 +38,7 @@ After that you can change any clip's line, camera move or shake. Press **Make th
    - A code appears in the window. Press Enter and your browser opens.
    - Paste the code and click **Authorize**.
    - The app then downloads and installs itself, which takes about 5 minutes.
-4. Every later start checks for updates automatically.
+4. Updates: when a new version is ready, an **Update now** button appears at the top of the app. Click it and the app updates and reloads by itself, in about 30 seconds. It also checks every time you start it.
 5. **Something went wrong?** Press **Copy problem report** (on the ad, or under the gear) and send it to Vishnu.
 6. **Your own settings** go in a file called `config.local.yaml`. Updates never touch that file, your ads, or the installed parts.
 

@@ -82,6 +82,7 @@ class Runner:
     def __init__(self, cfg: dict, store: Store):
         self.cfg, self.store = cfg, store
         self.q: queue.Queue = queue.Queue()
+        self.busy = False
         self.eng = E.get_engines(cfg)
         threading.Thread(target=self._loop, daemon=True).start()
 
@@ -94,6 +95,7 @@ class Runner:
     def _loop(self):
         while True:
             pid, task, kw = self.q.get()
+            self.busy = True
             try:
                 getattr(self, "_" + task)(pid, **kw)
             except Exception as e:
@@ -103,6 +105,8 @@ class Runner:
                 p["log"].append("ERROR: " + str(e))
                 p["log"].append(traceback.format_exc()[-1200:])
                 self.store.save(p)
+            finally:
+                self.busy = not self.q.empty()
 
     # ------------------------------------------------------------ helpers
     def _say(self, p, step, msg=None, progress=None):

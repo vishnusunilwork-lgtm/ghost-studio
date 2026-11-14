@@ -37,6 +37,11 @@ button{cursor:pointer;background:none;border:0;padding:0}
 .sp{flex:1}
 .status{display:flex;align-items:center;gap:8px;height:34px;padding:0 13px;border:1px solid var(--line);border-radius:99px;color:var(--mute);font-size:13px;transition:border-color .2s}
 .status:hover{border-color:var(--line2);color:var(--ink)}
+.upd{display:flex;align-items:center;gap:9px;height:34px;padding:0 6px 0 13px;margin-right:6px;border-radius:99px;background:rgba(255,255,255,.06);border:1px solid var(--line2);font-size:13px;color:var(--ink);animation:enter .5s var(--ease) both}
+.upd b{font-weight:600;background:var(--ink);color:#0a0a0b;border-radius:99px;padding:4px 11px;transition:transform .15s}.upd:hover b{transform:scale(1.04)}
+.udot{width:7px;height:7px;border-radius:50%;background:#9fd3ff;box-shadow:0 0 10px #9fd3ff;animation:breathe 1.6s infinite}
+.cover{position:fixed;inset:0;z-index:80;display:grid;place-items:center;background:rgba(10,10,11,.82);backdrop-filter:blur(10px);color:var(--ink);font-size:15px;text-align:center;animation:enter .4s var(--ease) both}
+.cover small{display:block;color:var(--mute);margin-top:6px}
 .dot{width:7px;height:7px;border-radius:50%;background:var(--faint);box-shadow:0 0 0 0 currentColor}
 .dot.ok{background:var(--ok);animation:breathe 3.2s ease-in-out infinite}.dot.warn{background:#e6c66e}
 @keyframes breathe{50%{opacity:.45}}
@@ -211,6 +216,7 @@ details.log pre{font:11.5px/1.6 ui-monospace,Menlo,monospace;color:var(--mute);w
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v4h4"/><path d="M12 8v4l3 2"/></svg>
   </button>
   <div class="sp"></div>
+  <button class="upd hidden" id="updBtn" title="A newer version is ready"><span class="udot"></span><span id="updTxt">Update available</span><b>Update now</b></button>
   <button class="status" id="statusBtn" title="This computer"><span class="dot" id="sDot"></span><span id="sText">Starting…</span></button>
   <button class="icon" id="setBtn" aria-label="Settings" title="Settings">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
@@ -482,7 +488,11 @@ function report(p){const L=[`Ghost Studio problem report`,`Version: ${ST?.versio
   return L.join('\n')}
 async function copyReport(p){const t=report(p);try{await navigator.clipboard.writeText(t)}catch(e){const a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();document.execCommand('copy');a.remove()}toast('Copied — paste it to Vishnu on Slack')}
 $('#pReport').onclick=()=>copyReport(P);$('#sReport').onclick=()=>copyReport(CUR?P:null);
-headline();status();setInterval(status,30000);
+async function checkUpdate(force){try{const u=await api('/api/update'+(force?'?force=true':''));const b=$('#updBtn');b.classList.toggle('hidden',!u.available);if(u.available)$('#updTxt').textContent='Update'+(u.remote?' '+u.remote:'')+' ready'}catch(e){}}
+$('#updBtn').onclick=async()=>{const before=ST?.version;const c=document.createElement('div');c.className='cover';c.innerHTML='<div>Updating Ghost Studio…<small>About 10–30 seconds. The page reloads by itself.</small></div>';document.body.appendChild(c);
+  try{await api('/api/update',{method:'POST'})}catch(e){c.remove();toast(e.message);return}
+  const t0=Date.now();const iv=setInterval(async()=>{try{const s=await api('/api/status');if(s.version!==before||Date.now()-t0>8000){clearInterval(iv);location.reload()}}catch(e){}if(Date.now()-t0>120000){clearInterval(iv);c.innerHTML='<div>Taking longer than usual.<small>Close the black window and double-click Start Ghost Studio.</small></div>'}},1500)};
+headline();status();setInterval(status,30000);checkUpdate();setInterval(()=>checkUpdate(),30*60*1000);
 if(location.hash.length>1)open(location.hash.slice(1));else setTimeout(()=>prompt_.focus(),300);
 </script>
 </body>
