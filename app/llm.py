@@ -38,6 +38,17 @@ def _json_from(text: str):
         raise ValueError("The local model did not return JSON: " + text[:300])
 
 
+def unload():
+    """Frees the script AI's memory so pictures, video and music run without swapping."""
+    try:
+        with urllib.request.urlopen(OLLAMA + "/api/ps", timeout=3) as r:
+            running = [m["name"] for m in json.loads(r.read()).get("models", [])]
+        for m in running:
+            _post("/api/generate", {"model": m, "keep_alive": 0}, timeout=20)
+    except Exception:
+        pass
+
+
 def installed() -> list[str]:
     try:
         with urllib.request.urlopen(OLLAMA + "/api/tags", timeout=3) as r:
@@ -69,5 +80,5 @@ def ask_json(model: str, prompt: str, images: list[bytes] | None = None, tempera
     if images:
         msg["images"] = [base64.b64encode(b).decode() for b in images]
     r = _post("/api/chat", {"model": model, "messages": [msg], "stream": False, "format": "json",
-                            "options": {"temperature": temperature, "num_ctx": 16384}})
+                            "keep_alive": "10m", "options": {"temperature": temperature, "num_ctx": 8192}})
     return _json_from(r.get("message", {}).get("content", ""))

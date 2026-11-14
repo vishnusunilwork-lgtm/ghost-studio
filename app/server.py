@@ -66,6 +66,16 @@ def _local() -> dict:
     return (yaml.safe_load(LOCAL.read_text(encoding="utf-8")) or {}) if LOCAL.exists() else {}
 
 
+def _current() -> dict | None:
+    if not RUNNER.current:
+        return None
+    try:
+        p = STORE.load(RUNNER.current)
+        return {"id": p["id"], "title": p.get("title", ""), "progress": p.get("progress", 0)}
+    except Exception:
+        return None
+
+
 def _addon_summary() -> dict:
     from . import addons
     try:
@@ -79,7 +89,7 @@ def status():
     f = RUNNER.eng.fal
     m = E.Spend.month()
     return {"engine": RUNNER.eng.name, "gpu": E.gpu_info(), "llm": llm.available(), "models": CFG["models"],
-            "makers": RUNNER.eng.plan(), "addons": _addon_summary(), "image_ai": E.image_ai_installed() and _model_cached() and INSTALL["state"] != "running", "image_ai_pkgs": E.image_ai_installed(), "image_ai_install": INSTALL["state"],
+            "makers": RUNNER.eng.plan(), "addons": _addon_summary(), "current": _current(), "image_ai": E.image_ai_installed() and _model_cached() and INSTALL["state"] != "running", "image_ai_pkgs": E.image_ai_installed(), "image_ai_install": INSTALL["state"],
             "api": {"on": f.on, "key_end": f.key[-4:] if f.on else "", "limit": f.limit, "spent": m["usd"],
                     "price": f.price, "model": f.video_model},
             "moves": MOVES, "steps": STEPS, "labels": LABEL, "language": CFG.get("language", "Hindi"),
@@ -96,7 +106,7 @@ def projects():
 async def create(idea: str = Form(""), dialogue: str = Form(""), seconds: int = Form(30),
                  voice_mode: str = Form("oncamera"), language: str = Form(""), title: str = Form(""),
                  aspect: str = Form("9:16"), quality: str = Form("final"), kind: str = Form("video"), count: int = Form(4),
-                 same_look: str = Form("1"), style: str = Form("auto"), music_style: str = Form("bollywood"), vocals: str = Form("ai"), music_seconds: int = Form(60), ai_music: str = Form(""),
+                 same_look: str = Form("1"), style: str = Form("auto"), ai_motion: str = Form(""), music_style: str = Form("bollywood"), vocals: str = Form("ai"), music_seconds: int = Form(60), ai_music: str = Form(""),
                  reference: UploadFile | None = File(None), music: UploadFile | None = File(None),
                  refs: list[UploadFile] | None = File(None)):
     if kind == "music" and not idea.strip() and not dialogue.strip():
@@ -109,7 +119,7 @@ async def create(idea: str = Form(""), dialogue: str = Form(""), seconds: int = 
                   aspect=aspect if aspect in ASPECTS else "9:16", quality=quality if quality in ("draft", "best") else "final",
                   kind=kind if kind in ("images", "music") else "video", count=max(1, min(8, count)),
                   music_style=music_style, vocals=vocals if vocals in ("ai", "mine", "instrumental") else "ai",
-                  music_seconds=max(10, min(600, music_seconds)), ai_music=ai_music == "1", same_look=same_look != "0", style=style if style in ("auto", "interview2", "cinematic", "news", "ugc") else "auto")
+                  music_seconds=max(10, min(600, music_seconds)), ai_music=ai_music == "1", same_look=same_look != "0", ai_motion=ai_motion == "1", style=style if style in ("auto", "interview2", "cinematic", "news", "ugc") else "auto")
     d = STORE.dir(p["id"])
     for up, key in ((reference, "reference"), (music, "music")):
         if up and up.filename:
@@ -400,6 +410,52 @@ def zip_images(pid: str):
                 z.write(s["image"], f"{n:02d} {s.get('caption') or 'image'}.png".replace("/", "-"))
     safe = "".join(ch for ch in (p.get("title") or "images") if ch.isalnum() or ch in " -_").strip() or "images"
     return Response(b.getvalue(), media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{safe} - images.zip"'})
+
+
+@app.post("/api/projects/{pid}/stop")
+def stop_project(pid: str):
+    _get(pid)
+    RUNNER.stop(pid)
+    return {"ok": True}
+
+
+@app.post("/api/projects/{pid}/resume")
+def resume_project(pid: str):
+    _get(pid)
+    RUNNER.submit(pid, "resume")
+    return {"ok": True}
+
+
+class Rename(BaseModel):
+    title: str
+
+
+@app.patch("/api/projects/{pid}")
+def rename_project(pid: str, body: Rename):
+    p = _get(pid)
+    t = " ".join(body.title.split())[:80]
+    if not t:
+        raise HTTPException(400, "Write a name")
+    p["title"] = t
+    STORE.save(p)
+    return {"ok": True}
+
+
+@app.delete("/api/projects/{pid}")
+def delete_project(pid: str):
+    """Deletes the project and all its files from this computer."""
+    import time as _t
+    _get(pid)
+    RUNNER.stop(pid)
+    for _ in range(40):  # wait for a running job to let go
+        if RUNNER.current != pid:
+            break
+        _t.sleep(0.25)
+    d = STORE.dir(pid).resolve()
+    if d.parent != STORE.root.resolve():
+        raise HTTPException(400, "Not a project folder")
+    shutil.rmtree(d, ignore_errors=True)
+    return {"ok": True}
 
 
 @app.post("/api/projects/{pid}/rerun")

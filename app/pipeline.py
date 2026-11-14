@@ -83,21 +83,55 @@ class Runner:
         self.cfg, self.store = cfg, store
         self.q: queue.Queue = queue.Queue()
         self.busy = False
+        self.current: str | None = None
+        self.cancel: set[str] = set()
         self.eng = E.get_engines(cfg)
         threading.Thread(target=self._loop, daemon=True).start()
 
     def submit(self, pid: str, task: str = "all", **kw):
+        self.cancel.discard(pid)
         p = self.store.load(pid)
         p["status"] = "queued"
+        p.pop("error", None)
         self.store.save(p)
         self.q.put((pid, task, kw))
+
+    def stop(self, pid: str):
+        """Pause: the running job stops at the next safe point; a waiting job leaves the queue."""
+        self.cancel.add(pid)
+        if self.current == pid:
+            E.STOP["flag"] = True
+            from . import addons
+            addons.MusicServer.stop()
+        else:
+            try:
+                p = self.store.load(pid)
+                if p.get("status") == "queued":
+                    p["status"] = "stopped"
+                    p["log"].append(time.strftime("%H:%M:%S ") + "Removed from the queue")
+                    self.store.save(p)
+            except FileNotFoundError:
+                pass
 
     def _loop(self):
         while True:
             pid, task, kw = self.q.get()
-            self.busy = True
+            if pid in self.cancel:  # paused while waiting
+                continue
+            self.busy, self.current = True, pid
+            E.STOP["flag"] = False
             try:
                 getattr(self, "_" + task)(pid, **kw)
+            except E.Cancelled:
+                try:
+                    p = self.store.load(pid)
+                    p["status"] = "stopped"
+                    p["log"].append(time.strftime("%H:%M:%S ") + "Paused. Press Continue to carry on from here.")
+                    self.store.save(p)
+                except FileNotFoundError:
+                    pass
+            except FileNotFoundError:
+                pass  # deleted while running
             except Exception as e:
                 p = self.store.load(pid)
                 p["status"] = "error"
@@ -106,10 +140,15 @@ class Runner:
                 p["log"].append(traceback.format_exc()[-1200:])
                 self.store.save(p)
             finally:
+                self.current = None
+                self.cancel.discard(pid)
+                E.STOP["flag"] = False
                 self.busy = not self.q.empty()
 
     # ------------------------------------------------------------ helpers
     def _say(self, p, step, msg=None, progress=None):
+        if p.get("id") in self.cancel or E.STOP["flag"]:
+            raise E.Cancelled("Paused")
         p["step"] = step
         p["status"] = "running"
         if step in p["steps"] and p["steps"][step] == "waiting":
@@ -187,8 +226,9 @@ class Runner:
         return st
 
     def _images(self, pid):
-        from . import addons
+        from . import addons, llm
         addons.MusicServer.stop()  # pictures need the memory
+        llm.unload()
         p = self.store.load(pid)
         d = self.store.dir(pid)
         q = self.cfg["quality"]
@@ -238,8 +278,11 @@ class Runner:
                        fallback=refs[i % len(refs)] if refs else None)
         c["image"] = str(f)
 
-    def _videos(self, pid, only: int | None = None):
+    def _videos(self, pid, only: int | None = None, resume: bool = False):
+        from . import llm
+        llm.unload()
         p = self.store.load(pid)
+        self.eng.allow_motion = bool(p.get("ai_motion"))
         d = self.store.dir(pid)
         idx = [only] if only is not None else range(len(p["clips"]))
         (gw, gh), _, draft = sizes(p)
@@ -247,6 +290,8 @@ class Runner:
         n = len(p["clips"]) or 1
         for i in idx:
             c = p["clips"][i]
+            if resume and c.get("video") and c.get("status") == "done" and Path(c["video"]).exists():
+                continue  # already made before the pause
             self._say(p, "videos", f"Clip {i + 1} of {n}: {c.get('line','')[:50]}", 25 + int(55 * i / n))
             start = c.get("image") or p.get("person_images", {}).get(c.get("speaker")) or p["image"]
             out = d / f"clip{i + 1:02d}_{c['seed']}{'_draft' if draft else ''}.mp4"
@@ -378,7 +423,7 @@ class Runner:
             p["log"].append(pl["note"])
         p["tracks"] = p.get("tracks") or []
         self._done(p, "plan")
-        self._compose(pid, takes=2)
+        self._compose(pid, takes=1)  # one take = half the time; "Make another take" adds more
 
     def _compose(self, pid, takes=1):
         from . import addons
@@ -387,6 +432,8 @@ class Runner:
             raise RuntimeError("Install the Music & songs add-on first (⚙ → Add-ons).")
         pl = p["song"]
         E.free()
+        from . import llm
+        llm.unload()
         self._say(p, "music", "Starting the music engine", 20)
         try:
             out = addons.MusicServer.generate(caption=pl["caption"], lyrics=pl.get("lyrics", ""), seconds=pl.get("seconds", 60),
@@ -404,6 +451,24 @@ class Runner:
         p["status"], p["progress"] = "done", 100
         p["log"].append(time.strftime("%H:%M:%S ") + f"Finished {len(out)} take{'s' if len(out) > 1 else ''}")
         self.store.save(p)
+
+    def _resume(self, pid):
+        """Continue after a pause, keeping everything already made."""
+        p = self.store.load(pid)
+        p["log"].append(time.strftime("%H:%M:%S ") + "Continuing")
+        self.store.save(p)
+        if p.get("kind") == "images" and p.get("stills"):
+            return self._stills(pid, resume=True)
+        if p.get("kind") == "music":
+            return self._compose(pid, takes=1) if p.get("song") else self._all(pid)
+        if not p.get("clips"):
+            return self._all(pid)
+        if not p.get("image") or not Path(p["image"]).exists():
+            self._images(pid)
+        self._videos(pid, resume=True)
+        self._voice(pid)
+        self._music_for_ad(pid)
+        self._edit(pid)
 
     def _more_music(self, pid):
         p = self.store.load(pid)
@@ -431,9 +496,10 @@ class Runner:
     LOCK = ("Keep EXACTLY the same person as in the reference image: same face, skin tone, hair, outfit, colours and jewellery, "
             "and the same place, light and colour mood. Only the framing, pose and action change: ")
 
-    def _stills(self, pid, only: int | None = None, mode: str = "same"):
-        from . import addons
+    def _stills(self, pid, only: int | None = None, mode: str = "same", resume: bool = False):
+        from . import addons, llm
         addons.MusicServer.stop()  # pictures need the memory
+        llm.unload()
         p = self.store.load(pid)
         d = self.store.dir(pid)
         q = self.cfg["quality"]
@@ -449,6 +515,8 @@ class Runner:
         took: list[float] = []
         for i in idx:
             s = p["stills"][i]
+            if resume and s.get("image") and s.get("status") == "done" and Path(s["image"]).exists():
+                continue
             eta = f" · about {int(sum(took) / len(took))} s each" if took else (" · first one also loads the model" if i == 0 else "")
             self._say(p, "images", f"Image {i + 1} of {n}: {s.get('caption', '')}{eta}", 15 + int(80 * i / n))
             t0 = time.time()

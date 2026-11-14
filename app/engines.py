@@ -25,6 +25,21 @@ from pathlib import Path
 from .editor import ffmpeg_bin
 
 _LOADED: dict = {}
+STOP = {"flag": False}
+
+
+class Cancelled(Exception):
+    """Raised when you press Pause: the current job stops at the next safe point."""
+
+
+def check_stop():
+    if STOP["flag"]:
+        raise Cancelled("Paused")
+
+
+def _step_cb(pipe, i, t, kw):  # diffusers callback: lets Pause stop a picture or clip mid-way
+    check_stop()
+    return kw
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -177,6 +192,7 @@ class Engines:
         self.cfg = cfg
         self.mock = force_mock
         self.fal = Fal(cfg)
+        self.allow_motion = False  # AI motion is very slow on a Mac: only when a project asks for it
 
     # which maker is used for each step (shown in the app)
     def plan(self) -> dict:
@@ -184,7 +200,7 @@ class Engines:
         local_img = not self.mock and image_ai_installed() and (cuda or gpu_info().get("mps"))
         return {
             "image": "nvidia" if cuda else "local" if local_img else "service" if self.fal.on else "photos",
-            "video": "service" if self.fal.on and not self.mock else "nvidia" if cuda else "motion" if (not self.mock and _motion_ready()) else "photo_motion",
+            "video": "service" if self.fal.on and not self.mock else "nvidia" if cuda else "motion" if (not self.mock and self.allow_motion and _motion_ready()) else "photo_motion",
             "voice": "mac" if shutil.which("say") else "windows" if platform.system() == "Windows" else "kokoro" if _has("kokoro") else "tone",
         }
 
@@ -258,6 +274,7 @@ class Engines:
                   num_inference_steps=int(steps or self.cfg["quality"]["image_steps"]))
         if ref_images and "klein" in mid.lower():
             kw["image"] = [Image.open(p).convert("RGB") for p in ref_images]
+        kw["callback_on_step_end"] = _step_cb
         pipe(**kw).images[0].save(out)
         return out
 
@@ -304,7 +321,7 @@ class Engines:
                 p.to(_device())
             return p
         pipe = _pipe("zimage", load)
-        pipe(prompt=prompt, height=h, width=w, num_inference_steps=9, guidance_scale=0.0,
+        pipe(prompt=prompt, height=h, width=w, num_inference_steps=9, guidance_scale=0.0, callback_on_step_end=_step_cb,
              generator=torch.Generator("cpu").manual_seed(int(seed) % 2**31)).images[0].save(out)
         return out
 
@@ -385,11 +402,11 @@ class Engines:
         big = _device() == "cuda" and addons.cuda_vram_gb() >= 20
         long_side, short_side = (1280, 704) if big else (832, 480)
         w, h = (short_side, long_side) if aspect in ("9:16", "4:5") else (long_side, short_side) if aspect == "16:9" else (short_side + 64, short_side + 64)
-        frames = int(min(121 if big else 81, 4 * round(min(seconds, 5.0) * 24 / 4) + 1))
+        frames = int(min(121 if big else 49, 4 * round(min(seconds, 5.0) * 24 / 4) + 1))
         img = load_image(str(image)).resize((w, h))
-        res = pipe(image=img, prompt=prompt, height=h, width=w, num_frames=frames, guidance_scale=5.0,
+        res = pipe(image=img, prompt=prompt, height=h, width=w, num_frames=frames, guidance_scale=5.0, callback_on_step_end=_step_cb,
                    negative_prompt="text, subtitles, watermark, logo, blurry, distorted face, extra fingers, static, jittery",
-                   num_inference_steps=30 if big else 20, generator=torch.Generator("cpu").manual_seed(int(seed) % 2**31)).frames[0]
+                   num_inference_steps=30 if big else 16, generator=torch.Generator("cpu").manual_seed(int(seed) % 2**31)).frames[0]
         export_to_video(res, str(out), fps=24)
         return out
 
@@ -421,7 +438,7 @@ class Engines:
         pipe = _pipe("video", load)
         fps = float(q["fps"])
         frames = int(8 * round(seconds * fps / 8) + 1)
-        video, audio = pipe(image=load_image(str(image)), prompt=prompt,
+        video, audio = pipe(image=load_image(str(image)), prompt=prompt, callback_on_step_end=_step_cb,
                             negative_prompt="worst quality, inconsistent motion, blurry, jittery, distorted face, extra fingers, text, subtitles, watermark, logo",
                             width=int(width or q["video_width"]), height=int(height or q["video_height"]), num_frames=frames,
                             frame_rate=fps, num_inference_steps=int(steps or q["video_steps"]), guidance_scale=3.0,
