@@ -789,7 +789,7 @@ async function checkUpdate(force){try{UPD=await api('/api/update'+(force?'?force
   if(UPD.available&&later!==UPD.remote){$('#upVer').textContent=UPD.remote;$('#upNotes').textContent=UPD.notes||'Improvements and fixes.';$('#upbar').classList.remove('hidden')}else $('#upbar').classList.add('hidden')}catch(e){}}
 $('#verBtn').onclick=()=>{if(UPD&&UPD.available){try{sessionStorage.removeItem('gs-later')}catch(e){}$('#upVer').textContent=UPD.remote;$('#upNotes').textContent=UPD.notes||'Improvements and fixes.';$('#upbar').classList.remove('hidden')}else{toast('You have the latest version ('+(ST?.version||'')+')');checkUpdate(true)}};
 $('#upLater').onclick=()=>{try{sessionStorage.setItem('gs-later',UPD?.remote||'')}catch(e){}$('#upbar').classList.add('hidden')};
-$('#upGo').onclick=async()=>{if(P&&(P.status==='running'||P.status==='queued')){toast('An ad is being made. Update when it is finished, so nothing is lost.');return}
+$('#upGo').onclick=async()=>{let cur=null;try{cur=(await api('/api/status')).current}catch(e){}if(cur){toast(`“${cur.title||'An ad'}” is being made (${cur.progress||0}%). Pause it or wait, then update.`);return}
   saveDraft();await saveAtt();const before=ST?.version;lsSet('gs-upd',{from:before,to:UPD?.remote});
   const c=document.createElement('div');c.className='cover';c.innerHTML='<div><canvas class="cmark"></canvas>Updating Ghost Studio…<small>About 10–30 seconds. Your ads, settings and what you were typing are kept.</small></div>';document.body.appendChild(c);try{ghostMark(c.querySelector('canvas'),84)}catch(e){}
   try{await api('/api/update',{method:'POST'})}catch(e){c.remove();lsSet('gs-upd',null);toast(e.message);return}

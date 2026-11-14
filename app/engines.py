@@ -28,8 +28,9 @@ _LOADED: dict = {}
 STOP = {"flag": False}
 
 
-class Cancelled(Exception):
-    """Raised when you press Pause: the current job stops at the next safe point."""
+class Cancelled(BaseException):
+    """Raised when you press Pause: the current job stops at the next safe point.
+    BaseException on purpose: no 'except Exception' fallback may swallow a Pause."""
 
 
 def check_stop():

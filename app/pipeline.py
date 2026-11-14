@@ -82,10 +82,10 @@ class Runner:
     def __init__(self, cfg: dict, store: Store):
         self.cfg, self.store = cfg, store
         self.q: queue.Queue = queue.Queue()
-        self.busy = False
         self.current: str | None = None
         self.cancel: set[str] = set()
         self.eng = E.get_engines(cfg)
+        self.recover()
         threading.Thread(target=self._loop, daemon=True).start()
 
     def submit(self, pid: str, task: str = "all", **kw):
@@ -113,37 +113,56 @@ class Runner:
             except FileNotFoundError:
                 pass
 
+    @property
+    def busy(self) -> bool:
+        return self.current is not None
+
+    @busy.setter
+    def busy(self, _v):  # kept for old callers; "busy" now always means "a job is running right now"
+        pass
+
+    def _note(self, pid, status, line, error=None):
+        try:
+            p = self.store.load(pid)
+            p["status"] = status
+            if error is not None:
+                p["error"] = error
+            p["log"].append(line)
+            self.store.save(p)
+        except Exception:
+            pass  # the project was deleted while it was being made: nothing to update
+
     def _loop(self):
-        while True:
-            pid, task, kw = self.q.get()
-            if pid in self.cancel:  # paused while waiting
-                continue
-            self.busy, self.current = True, pid
-            E.STOP["flag"] = False
+        while True:  # this loop must never die, or Ghost would look busy for ever
+            pid = None
             try:
-                getattr(self, "_" + task)(pid, **kw)
-            except E.Cancelled:
-                try:
-                    p = self.store.load(pid)
-                    p["status"] = "stopped"
-                    p["log"].append(time.strftime("%H:%M:%S ") + "Paused. Press Continue to carry on from here.")
-                    self.store.save(p)
-                except FileNotFoundError:
-                    pass
-            except FileNotFoundError:
-                pass  # deleted while running
-            except Exception as e:
-                p = self.store.load(pid)
-                p["status"] = "error"
-                p["error"] = str(e)
-                p["log"].append("ERROR: " + str(e))
-                p["log"].append(traceback.format_exc()[-1200:])
-                self.store.save(p)
-            finally:
-                self.current = None
-                self.cancel.discard(pid)
+                pid, task, kw = self.q.get()
+                if pid in self.cancel or not (self.store.dir(pid) / "project.json").exists():
+                    continue  # paused or deleted while waiting
+                self.current = pid
                 E.STOP["flag"] = False
-                self.busy = not self.q.empty()
+                try:
+                    getattr(self, "_" + task)(pid, **kw)
+                except E.Cancelled:
+                    self._note(pid, "stopped", time.strftime("%H:%M:%S ") + "Paused. Press Continue to carry on from here.")
+                except FileNotFoundError:
+                    if (self.store.dir(pid) / "project.json").exists():
+                        self._note(pid, "error", "ERROR: a file is missing\n" + traceback.format_exc()[-1200:], "A file is missing. Press Continue or Start again.")
+                except Exception as e:
+                    self._note(pid, "error", "ERROR: " + str(e) + "\n" + traceback.format_exc()[-1200:], str(e))
+            except BaseException as e:  # anything else: log it and keep the worker alive
+                print("worker error:", e)
+            finally:
+                if pid:
+                    self.cancel.discard(pid)
+                self.current = None
+                E.STOP["flag"] = False
+
+    def recover(self):
+        """After Ghost restarts, jobs that were running or waiting are shown as Paused (press Continue)."""
+        for pp in self.store.list():
+            if pp.get("status") in ("running", "queued"):
+                self._note(pp["id"], "stopped", time.strftime("%H:%M:%S ") + "Ghost restarted. Press Continue to carry on from here.")
 
     # ------------------------------------------------------------ helpers
     def _say(self, p, step, msg=None, progress=None):
