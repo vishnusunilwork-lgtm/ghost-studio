@@ -49,7 +49,9 @@ function Once {
   $remote = ""
   try { $remote = (Invoke-WebRequest "https://raw.githubusercontent.com/$REPO/main/VERSION?$(Get-Random)" -UseBasicParsing -TimeoutSec 15).Content.Trim() } catch {}
   $local = if (Test-Path VERSION) { (Get-Content VERSION -Raw).Trim() } else { "" }
-  if ($remote -and (($remote -ne $local) -or -not (Test-Path "app\server.py"))) {
+  $isNewer = $false
+  try { $isNewer = [version]($remote -replace '[^0-9.]', '') -gt [version](($local, "0.0.0" | Where-Object { $_ })[0] -replace '[^0-9.]', '') } catch { $isNewer = $remote -ne $local }
+  if ($remote -and ($isNewer -or -not (Test-Path "app\server.py"))) {
     Status "Getting Ghost Studio $remote..."
     try {
       $tgz = Join-Path $G "new.tgz"; $new = Join-Path $G "new"

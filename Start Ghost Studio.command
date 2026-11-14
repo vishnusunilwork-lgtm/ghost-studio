@@ -44,13 +44,24 @@ service() {
   done
 }
 
+newer() {  # true when version $1 is newer than $2 (3.10.0 > 3.9.2)
+  local IFS=. i x y; local -a a=($1) b=($2)
+  for i in 0 1 2; do
+    x=${a[i]//[^0-9]/}; y=${b[i]//[^0-9]/}; x=${x:-0}; y=${y:-0}
+    if ((10#$x > 10#$y)); then return 0; fi
+    if ((10#$x < 10#$y)); then return 1; fi
+  done
+  return 1
+}
+
 once() {
   # 1) updates (public project, no sign-in)
   if [[ "$REPO" == */* ]]; then
     printf '%s' "$REPO" > .ghost/repo
     REMOTE=$(curl -fsSL --max-time 15 "https://raw.githubusercontent.com/$REPO/main/VERSION?$(date +%s)" 2>/dev/null | tr -d '[:space:]')
     LOCAL=$(cat VERSION 2>/dev/null | tr -d '[:space:]')
-    if [ -n "$REMOTE" ] && { [ "$REMOTE" != "$LOCAL" ] || [ ! -f app/server.py ]; }; then
+    # only when GitHub has a NEWER version (its version file can lag a few minutes behind)
+    if [ -n "$REMOTE" ] && { newer "$REMOTE" "$LOCAL" || [ ! -f app/server.py ]; }; then
       say_status "Getting Ghost Studio $REMOTE…"
       rm -rf .ghost/new && mkdir -p .ghost/new
       if curl -fsSL --max-time 300 "https://github.com/$REPO/archive/refs/heads/main.tar.gz" -o .ghost/new.tgz && tar -xzf .ghost/new.tgz -C .ghost/new; then
@@ -59,8 +70,9 @@ once() {
           cp -R "$SRC"/. ./
           chmod +x "Start Ghost Studio.command" 2>/dev/null
           rm -rf .ghost/new .ghost/new.tgz
-          say_status "Updated to $(cat VERSION 2>/dev/null)"
-          exit 0            # the engine loop starts the new version right away
+          NOW=$(cat VERSION 2>/dev/null | tr -d '[:space:]')
+          say_status "Updated to $NOW"
+          [ "$NOW" != "$LOCAL" ] && exit 0   # the engine loop starts the new version right away
         fi
       fi
     fi
