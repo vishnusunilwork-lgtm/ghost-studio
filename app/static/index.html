@@ -297,6 +297,21 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
 .toast{background:rgba(245,245,247,.86);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);box-shadow:0 18px 50px -18px rgba(0,0,0,.8)}
 .cover{background:rgba(10,10,11,.55);-webkit-backdrop-filter:blur(26px) saturate(150%);backdrop-filter:blur(26px) saturate(150%)}
 @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.composer,.menu,.drawer{background:#16161a}}
+
+/* live editing: the Change dialog */
+.chg{position:fixed;inset:0;z-index:88;display:grid;place-items:center;padding:16px;background:rgba(6,6,8,.55);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);animation:enter .25s var(--ease) both}
+.chg.hidden{display:none}
+.chg-c{width:min(520px,100%);max-height:calc(100vh - 32px);overflow:auto;padding:18px;border-radius:24px;background:var(--glass-strong);-webkit-backdrop-filter:blur(30px) saturate(170%);backdrop-filter:blur(30px) saturate(170%);border:1px solid var(--edge-hi);box-shadow:var(--hi),0 30px 90px -30px rgba(0,0,0,.95);display:flex;flex-direction:column;gap:12px}
+.chg-h{display:flex;gap:12px;align-items:center}.chg-h img{width:56px;height:56px;object-fit:cover;border-radius:12px;flex:none;border:1px solid var(--edge)}
+.chg-h b{font-size:16px;display:block}.chg-h small{color:var(--mute);font-size:13px;line-height:1.4;display:block}
+.chg textarea{width:100%;min-height:64px;background:rgba(255,255,255,.04);border:1px solid var(--edge);border-radius:14px;padding:12px;color:var(--ink);font:15px/1.5 var(--font);resize:vertical;outline:0}.chg textarea:focus{border-color:var(--edge-hi)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}.chip{height:32px;padding:0 12px;border-radius:99px;border:1px solid var(--edge);background:var(--glass-soft);font-size:13px;color:var(--mute);transition:color .15s,border-color .15s,background .15s}.chip:hover{color:var(--ink);border-color:var(--edge-hi)}
+.seg{display:flex;gap:4px;padding:3px;border-radius:99px;border:1px solid var(--edge);background:rgba(0,0,0,.2)}.seg button{flex:1;height:34px;border-radius:99px;font-size:13px;color:var(--mute)}.seg button.on{background:var(--ink);color:#0a0a0b}
+.chg-acts{display:flex;gap:8px;justify-content:flex-end}.chg-acts .btn{height:42px}
+.chg .note{padding:0;margin:0;font-size:12.5px}
+.pbf .lab{display:flex;align-items:center;gap:8px}.rw{margin-left:auto;font-size:12px;color:var(--mute);height:24px;padding:0 9px;border-radius:99px;border:1px solid var(--edge)}.rw:hover{color:var(--ink);border-color:var(--edge-hi)}.rw[data-back]{margin-left:0}.tile .row3 .btn{white-space:nowrap}
+.tile .row2 .btn.chgb{flex:2}.edited{font-size:12px;color:var(--mute);padding:0 4px;margin-top:-4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.track .from{font-size:12px;color:var(--mute)}
 </style>
 </head>
 <body>
@@ -381,7 +396,7 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
           <a class="btn solid hidden" id="pDl" download><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 4v12M6 11l6 6 6-6M5 20h14"/></svg>Download MP4</a>
           <button class="btn hidden" id="pUp">Make it in Quality</button>
           <button class="btn hidden" id="pReedit">Re-export with my changes</button>
-          <button class="btn hidden" id="pRerun">Start this ad again</button>
+          <button class="btn hidden" id="pUndo">↶ Undo</button><button class="btn hidden" id="pRerun">Start this ad again</button>
         </div>
         <ul class="steps" id="pSteps"></ul>
         <p class="perr" id="pErr"></p>
@@ -395,7 +410,7 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
       <details class="lyrics hidden" id="lyrBox"><summary>Lyrics</summary><pre id="lyrics"></pre></details>
     </div>
     <div class="gallery-wrap hidden" id="galWrap">
-      <div class="galbar"><a class="btn solid" id="gZip" download><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 4v12M6 11l6 6 6-6M5 20h14"/></svg>Download all</a><button class="btn hidden" id="gUp">Make them in Quality</button><button class="btn" id="gRerun">Start again</button></div>
+      <div class="galbar"><a class="btn solid" id="gZip" download><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 4v12M6 11l6 6 6-6M5 20h14"/></svg>Download all</a><button class="btn hidden" id="gUp">Make them in Quality</button><button class="btn hidden" id="gUndo">↶ Undo</button><button class="btn" id="gRerun">Start again</button></div>
       <p class="note galhint hidden" id="galHint"><b>Retake</b> keeps the same person and place as the ★ main look. <b>New take</b> starts fresh. Tap ☆ on any picture to make it the main look.</p>
       <div class="gallery" id="gallery"></div>
     </div>
@@ -434,6 +449,7 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
 <aside class="drawer right" id="clipSheet" aria-label="Edit shot">
   <div class="dhead"><h3 id="csTitle">Shot</h3><button class="icon" data-close aria-label="Close">✕</button></div>
   <div class="dbody">
+    <div class="field"><label>Change what's in this shot</label><div style="display:flex;gap:8px"><button class="btn" id="csChg" style="flex:1" title="Hair, eyes, gender, clothes, light… on this same shot">✨ Change</button><button class="btn hidden" id="csUndo">↶ Undo</button></div><small class="edited" id="csEd"></small></div>
     <div class="field"><label>What they say</label><textarea id="csLine" rows="3"></textarea></div>
     <div class="field"><label>Camera move</label><div class="moves" id="csMoves"></div></div>
     <div class="field"><label>Handheld shake</label><div class="range"><input type="range" id="csShake" min="0" max="1.5" step="0.1"><b id="csShakeV"></b></div></div>
@@ -442,6 +458,15 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
   </div>
   <div class="sheetacts"><button class="btn" id="csRedo">New take</button><button class="btn solid" id="csSave">Save &amp; re-export</button></div>
 </aside>
+<div class="chg hidden" id="chg" role="dialog" aria-modal="true" aria-labelledby="chgT"><div class="chg-c">
+  <div class="chg-h"><img id="chgImg" alt="" class="hidden"><div><b id="chgT">Change</b><small id="chgSub"></small></div></div>
+  <textarea id="chgIn" placeholder="What should change? e.g. shorter hair"></textarea>
+  <div class="chips" id="chgChips"></div>
+  <div class="seg hidden" id="chgScope"><button data-s="one" class="on">Only this one</button><button data-s="all" id="chgAll">All of them</button></div>
+  <div class="hidden" id="chgStr"><div class="seg"><button data-v="0.7">A little</button><button data-v="0.5" class="on">Medium</button><button data-v="0.3">A lot</button></div></div>
+  <p class="note" id="chgNote"></p>
+  <div class="chg-acts"><button class="btn" id="chgNo">Cancel</button><button class="btn solid" id="chgGo">✨ Change it</button></div>
+</div></div>
 <div class="toast" id="toast"></div>
 
 <script src="/static/ghostmark.js"></script>
@@ -601,12 +626,18 @@ $('#pTitle').onblur=async()=>{const h=$('#pTitle');h.contentEditable='false';con
 $('#pPause').onclick=async()=>{try{await api(`/api/projects/${CUR}/stop`,{method:'POST'});toast(P&&P.status==='queued'?'Removed from the queue':'Pausing at the next safe point…');kick()}catch(e){toast(e.message)}};
 $('#pCont').onclick=async()=>{try{await api(`/api/projects/${CUR}/resume`,{method:'POST'});toast('Continuing from where it stopped');kick()}catch(e){toast(e.message)}};
 $('#pDel').onclick=()=>P&&deleteP(P.id,P.title);
-const ta=(k,v,rows,lab)=>`<label class="pbf"><span>${lab}</span><textarea data-k="${k}" rows="${rows}">${esc(v||'')}</textarea></label>`;
+const RWK={prompt:'image_prompt',image_prompt:'image_prompt',video_prompt:'image_prompt',line:'line',lyrics:'lyrics',caption:'caption'};
+const ta=(k,v,rows,lab)=>`<div class="pbf"><span class="lab">${lab}<button type="button" class="rw" data-kind="${RWK[k]||'text'}" title="Tell Ghost how to change this text">✨ Rewrite</button><button type="button" class="rw hidden" data-back title="Back to before the rewrite">↶ Undo</button></span><textarea data-k="${k}" rows="${rows}">${esc(v||'')}</textarea></div>`;
+function wireRewrite(){$$('#pbBody .rw[data-kind]').forEach(b=>{const box=b.closest('.pbf'),t=box.querySelector('textarea'),back=box.querySelector('[data-back]'),kind=b.dataset.kind;
+  b.onclick=()=>changeOpen({title:'Rewrite this',sub:'Ghost changes the same text and keeps the rest. Check it, then Save.',chips:{image_prompt:'image',caption:'song',lyrics:'lyrics'}[kind]||'text',ph:'e.g. shorter, more emotional, in Malayalam',go:'✨ Rewrite',
+    run:async ins=>{const r=await api('/api/rewrite',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t.value,instruction:ins,kind,language:P?.language||null})});
+      t.dataset.prev=t.value;t.value=r.text;back.classList.remove('hidden');t.focus();toast('Rewritten. Check it, then press Save.')}});
+  back.onclick=()=>{if(t.dataset.prev!=null){t.value=t.dataset.prev;delete t.dataset.prev;back.classList.add('hidden')}}})}
 function planOpen(p,focus){const b=$('#pbBody');let h='';
   if(p.kind==='images'){h=(p.stills||[]).map((x,i)=>`<div class="pbi" data-i="${i}"><div class="pbn">${i+1}</div><div class="pbc"><input class="inp" data-k="caption" value="${esc(x.caption||'')}">${ta('prompt',x.prompt,4,'Picture prompt')}</div></div>`).join('');$('#pbHint').textContent='Edit a prompt, then use Retake on that picture (or Make it).'}
   else if(p.kind==='music'){const g=p.song||{};h=`<div class="pbi"><div class="pbc"><input class="inp" data-k="title" value="${esc(p.title||'')}">${ta('caption',g.caption,2,'Style (genre, instruments, mood, voice)')}${ta('lyrics',g.lyrics&&g.lyrics!=='[Instrumental]'?g.lyrics:'',12,'Lyrics · use [Verse] and [Chorus] lines')}</div></div>`;$('#pbHint').textContent='Then press Make it (or Make another take).'}
   else{h=`<div class="pbi"><div class="pbc">${ta('image_prompt',(p.plan||{}).image_prompt,3,'Main picture')}</div></div>`+(p.clips||[]).map((c,i)=>`<div class="pbi" data-i="${i}"><div class="pbn">${i+1}</div><div class="pbc">${ta('line',c.line,2,'What is said')}${ta('video_prompt',c.video_prompt,3,'Shot prompt')}</div></div>`).join('');$('#pbHint').textContent='Changes to words make that shot again when you continue or press Make this clip again.'}
-  b.innerHTML=h;$('#planBox').classList.remove('hidden');$('#pbMake').classList.toggle('hidden',p.status!=='review');
+  b.innerHTML=h;wireRewrite();$('#planBox').classList.remove('hidden');$('#pbMake').classList.toggle('hidden',p.status!=='review');
   const t=focus!=null?b.querySelector(`.pbi[data-i="${focus}"] textarea`):b.querySelector('textarea');if(t){t.scrollIntoView({block:'center',behavior:'smooth'});t.focus()}}
 function planCollect(){const p=P,b=$('#pbBody'),body={};
   if(p.kind==='images')body.stills=[...b.querySelectorAll('.pbi')].map(x=>({caption:x.querySelector('[data-k=caption]').value,prompt:x.querySelector('[data-k=prompt]').value}));
@@ -641,7 +672,7 @@ async function refresh(force){if(!CUR)return;let p;try{p=await api('/api/project
   $('#pLog').textContent=(p.log||[]).join('\n');$('#pErr').textContent=p.status==='error'?(p.error||'')+' — press “Copy problem report” and send it to Vishnu.':'';$('#pReport').classList.toggle('hidden',p.status!=='error');
   const fin=p.status==='done'&&p.final;
   ['pDl','pReedit','pRerun'].forEach(i=>$('#'+i).classList.toggle('hidden',!fin&&i!=='pRerun'));$('#pRerun').classList.toggle('hidden',busy);
-  $('#pUp').classList.toggle('hidden',!(fin&&p.quality==='draft'));
+  $('#pUp').classList.toggle('hidden',!(fin&&p.quality==='draft'));undoBtn('#pUndo',p.kind==='images'?{}:p,busy);
   scr.classList.toggle('busy',busy);
   const key=fin?p.final+p.updated:'';
   if(fin&&(force||LASTFIN!==p.final)){LASTFIN=p.final;const u=fileUrl(p.id,p.final,Math.round(p.updated||0));scr.innerHTML=`<video src="${u}" controls playsinline autoplay muted loop></video>`;$('#pDl').href=u;$('#pDl').setAttribute('download',p.final.split(/[\\/]/).pop())}
@@ -657,17 +688,19 @@ async function refresh(force){if(!CUR)return;let p;try{p=await api('/api/project
   const imgs=p.kind==='images';$('.stage').classList.toggle('hidden',imgs);$('.shots-h').classList.toggle('hidden',imgs);$('#shots').classList.toggle('hidden',imgs);$('#galWrap').classList.toggle('hidden',!imgs);
   if(imgs){$('#pSteps').innerHTML=['analyse','plan','images'].filter(s=>p.steps[s]!=='skipped'||s!=='analyse').map(s=>`<li class="${p.steps[s]}"><i></i>${esc({analyse:'Reading the reference',plan:'Writing the image prompts',images:'Making the images'}[s])}</li>`).join('');
     const gs=JSON.stringify((p.stills||[]).map(x=>[x.image,x.status]))+p.status+p.quality;if(force||gs!==LAST){LAST=gs;gallery(p)}
-    $('#gZip').classList.toggle('hidden',!(p.status==='done'));$('#gZip').href='/api/projects/'+p.id+'/zip';$('#gUp').classList.toggle('hidden',!(p.status==='done'&&p.quality==='draft'));$('#gRerun').classList.toggle('hidden',busy);
+    $('#gZip').classList.toggle('hidden',!(p.status==='done'));$('#gZip').href='/api/projects/'+p.id+'/zip';$('#gUp').classList.toggle('hidden',!(p.status==='done'&&p.quality==='draft'));$('#gRerun').classList.toggle('hidden',busy);undoBtn('#gUndo',p,busy);
     if(!busy){clearInterval(TIMER);TIMER=setInterval(refresh,8000)}return}
   const sig=JSON.stringify((p.clips||[]).map(c=>[c.video,c.status,c.camera_move,c.shake,c.line,c.seconds]))+p.status;
   if(force||sig!==LAST){LAST=sig;shots(p)}
   if(!busy){clearInterval(TIMER);TIMER=setInterval(refresh,8000)}}
 function tracks(p){const busy=p.status==='running'||p.status==='queued';const ts=p.tracks||[];
   $('#tracks').innerHTML=ts.map((t,i)=>{const u=fileUrl(p.id,t.file);const nm=`${(p.title||'song').replace(/[^\w\s-]/g,'')} - take ${i+1}.mp3`;
-    return `<div class="track" style="animation-delay:${i*60}ms"><div class="tk-h"><span class="eq"><i></i><i></i><i></i><i></i></span><b>Take ${i+1}</b><small>${esc([t.bpm?t.bpm+' BPM':'',t.key||''].filter(Boolean).join(' · '))}</small></div>
-      <audio controls preload="metadata" src="${u}"></audio><div class="row2"><a class="btn" href="${u}" download="${esc(nm)}">Download MP3</a></div></div>`}).join('')+
+    return `<div class="track" style="animation-delay:${i*60}ms"><div class="tk-h"><span class="eq"><i></i><i></i><i></i><i></i></span><b>Take ${i+1}</b><small>${esc([t.bpm?t.bpm+' BPM':'',t.key||''].filter(Boolean).join(' · '))}</small></div>${t.change?`<div class="from">From take ${t.from}: ${esc(t.change)}${t.how==='new tune'?' (new tune)':''}</div>`:''}
+      <audio controls preload="metadata" src="${u}"></audio><div class="row2"><a class="btn" href="${u}" download="${esc(nm)}">Download MP3</a><button class="btn" data-tchg="${t.n||i+1}" data-k="${i+1}" ${busy?'disabled':''} title="Same song, different sound">✨ Change</button></div></div>`}).join('')+
     (busy?`<div class="track wait"><div class="tk-h"><span class="eq on"><i></i><i></i><i></i><i></i></span><b>Composing…</b><small>about 5–10 min per song on a Mac</small></div></div>`:'');
   $$('#tracks audio').forEach(a=>{const eq=a.parentElement.querySelector('.eq');a.onplay=()=>{$$('#tracks audio').forEach(o=>{if(o!==a)o.pause()});eq.classList.add('on')};a.onpause=a.onended=()=>eq.classList.remove('on')});
+  $$('#tracks [data-tchg]').forEach(b=>b.onclick=()=>{const n=+b.dataset.tchg;changeOpen({title:`Change take ${b.dataset.k}`,sub:'Same song and words, different sound. It’s added as a new take, so this one stays.',chips:'song',ph:'e.g. more upbeat, male voice, acoustic',strength:true,
+    note:'To change the words, use ✎ Edit lyrics & style → ✨ Rewrite.',run:async(ins,_s,st)=>{await change('song',n,ins,'one',st);toast('Changing take '+b.dataset.k)}})});
   const ly=(p.song&&p.song.lyrics&&p.song.lyrics!=='[Instrumental]')?p.song.lyrics:'';$('#lyrBox').classList.toggle('hidden',!ly);$('#lyrics').textContent=ly}
 $('#mEdit').onclick=()=>P&&planOpen(P);
 $('#mMore').onclick=async()=>{try{await api(`/api/projects/${CUR}/music/more`,{method:'POST'});toast('Making another take');kick()}catch(e){toast(e.message)}};
@@ -676,10 +709,14 @@ function gallery(p){const ar=(p.aspect||'9:16').replace(':','/');$('#gallery').s
   $('#gallery').innerHTML=(p.stills||[]).map((x,i)=>{const u=x.image?fileUrl(p.id,x.image,x.seed):'';const nm=`${String(i+1).padStart(2,'0')} ${x.caption||'image'}.png`;
     const main=p.anchor_i===i&&p.same_look!==false;
     return `<div class="tile ${main?'main':''}" style="animation-delay:${i*50}ms"><div class="im ${u?'':'wait'}">${u?`<img src="${u}" alt="${esc(x.caption)}" data-z="${u}">`:''}${u&&p.same_look!==false?(main?'<span class="star on" title="Main look: retakes keep this person and place">★ Main look</span>':`<button class="star" data-main="${i}" title="Use this as the main look">☆</button>`):''}</div><div class="cap">${i+1}. ${esc(x.caption||'')}</div>
-    <div class="row3">${u?`<a class="btn ic" href="${u}" download="${esc(nm)}" title="Download"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 4v12M6 11l6 6 6-6M5 20h14"/></svg></a>`:''}<button class="btn ic" data-edit="${i}" title="Edit this picture's prompt">✎</button><button class="btn" data-redo="${i}" data-mode="same" ${busy?'disabled':''} title="Same person and place, new take">Retake</button><button class="btn" data-redo="${i}" data-mode="new" ${busy?'disabled':''} title="Completely fresh: new person and place allowed">New take</button></div></div>`}).join('')||'<p class="note">Images appear here as they are made.</p>';
+    <div class="row3">${u?`<a class="btn ic" href="${u}" download="${esc(nm)}" title="Download"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 4v12M6 11l6 6 6-6M5 20h14"/></svg></a>`:''}<button class="btn ic" data-edit="${i}" title="Edit this picture's prompt">✎</button><button class="btn" data-redo="${i}" data-mode="same" ${busy?'disabled':''} title="Same person and place, new take">Retake</button><button class="btn" data-redo="${i}" data-mode="new" ${busy?'disabled':''} title="Completely fresh: new person and place allowed">New take</button></div>
+    <div class="row2"><button class="btn chgb" data-chg="${i}" ${busy||!u?'disabled':''} title="Edit this same picture: hair, eyes, gender, clothes…">✨ Change</button>${(x.history||[]).length?`<button class="btn" data-undo="${i}" ${busy?'disabled':''} title="Back to before: ${esc(x.history[x.history.length-1].what||'')}">↶ Undo</button>`:''}</div>${(x.edits||[]).length?`<div class="edited" title="${esc(x.edits.join(' · '))}">Changed: ${esc(x.edits.slice(-2).join(' · '))}</div>`:''}</div>`}).join('')||'<p class="note">Images appear here as they are made.</p>';
   $$('#gallery [data-z]').forEach(im=>im.onclick=()=>{const z=document.createElement('div');z.className='zoom';z.innerHTML=`<img src="${im.dataset.z}" alt="">`;z.onclick=()=>z.remove();document.body.appendChild(z)});
   $$('#gallery [data-redo]').forEach(b=>b.onclick=async()=>{b.disabled=true;const same=b.dataset.mode==='same';try{await api(`/api/projects/${CUR}/images/${b.dataset.redo}/redo?mode=${b.dataset.mode}`,{method:'POST'});toast((same?'Retake with the same person and place: image ':'Fresh new take: image ')+(+b.dataset.redo+1));kick()}catch(e){toast(e.message);b.disabled=false}});
   $$('#gallery [data-edit]').forEach(b=>b.onclick=()=>planOpen(P,+b.dataset.edit));
+  $$('#gallery [data-chg]').forEach(b=>b.onclick=()=>{const i=+b.dataset.chg,x=P.stills[i];changeOpen({title:`Change picture ${i+1}`,sub:'Edits this same picture. Everything you don’t mention stays the same.',img:fileUrl(P.id,x.image),chips:'image',ph:'e.g. shorter hair, brown eyes, make it a man',all:'All pictures',
+    note:'Want something completely different? Use New take instead. You can Undo any change.',run:async(ins,scope)=>{await change('image',i,ins,scope);toast(scope==='all'?'Changing every picture':'Changing picture '+(i+1))}})});
+  $$('#gallery [data-undo]').forEach(b=>b.onclick=async()=>{try{await undoIt('image',+b.dataset.undo);toast('Back to before')}catch(e){toast(e.message)}});
   $$('#gallery [data-main]').forEach(b=>b.onclick=async e=>{e.stopPropagation();try{await api(`/api/projects/${CUR}/images/${b.dataset.main}/main`,{method:'POST'});toast('Main look set. Retakes now keep this person and place.');refresh(true)}catch(err){toast(err.message)}});
   $('#galHint').classList.toggle('hidden',p.same_look===false||!(p.stills||[]).some(x=>x.image))}
 $('#gUp').onclick=async()=>{await api(`/api/projects/${CUR}/upgrade`,{method:'POST'});toast('Making the final images at full quality');kick()};
@@ -690,7 +727,13 @@ function shots(p){const cs=p.clips||[];$('#shotsHint').textContent=cs.length?'Cl
 function sheet(i){const c=P.clips[i];EDIT=i;$('#csTitle').textContent=`Shot ${i+1} · ${Number(c.seconds).toFixed(1)} s`;$('#csLine').value=c.line||'';$('#csPrompt').value=c.video_prompt||'';
   const mv=Object.keys(ST?.moves||MOVE_LABEL);$('#csMoves').innerHTML=mv.map(m=>`<button class="mv ${m===c.camera_move?'on':''}" data-m="${m}"><span class="cam ${m}"><i></i></span>${esc(MOVE_LABEL[m]||m)}</button>`).join('');
   $$('.mv').forEach(b=>b.onclick=()=>$$('.mv').forEach(x=>x.classList.toggle('on',x===b)));
-  $('#csShake').value=c.shake||0;$('#csAmt').value=c.amount||1;sv();const busy=P.status==='running'||P.status==='queued';$('#csSave').disabled=$('#csRedo').disabled=busy;drawer('clipSheet')}
+  $('#csShake').value=c.shake||0;$('#csAmt').value=c.amount||1;sv();const busy=P.status==='running'||P.status==='queued';$('#csSave').disabled=$('#csRedo').disabled=$('#csChg').disabled=$('#csUndo').disabled=busy;
+  $('#csUndo').classList.toggle('hidden',!(c.history||[]).length);$('#csEd').textContent=(c.edits||[]).length?'Changed: '+c.edits.slice(-2).join(' · '):'';drawer('clipSheet')}
+$('#csChg').onclick=()=>{const i=EDIT,c=P.clips[i];const im=c.image||(P.person_images||{})[c.speaker]||P.image;
+  changeOpen({title:`Change shot ${i+1}`,sub:'Edits this shot’s picture, then remakes only this shot.',img:im?fileUrl(P.id,im):'',chips:'image',ph:'e.g. make her saree blue, shorter hair',all:'Every shot',
+    note:'“Every shot” changes the person or place in the whole ad. You can Undo. Want a different shot altogether? Use New take.',
+    run:async(ins,scope)=>{await change('clip',i,ins,scope);drawer(null);toast(scope==='all'?'Changing every shot':'Changing shot '+(i+1))}})};
+$('#csUndo').onclick=async()=>{try{await undoIt('clip',EDIT);drawer(null);toast('Going back to before')}catch(e){toast(e.message)}};
 function sv(){$('#csShakeV').textContent=+$('#csShake').value?Number($('#csShake').value).toFixed(1):'Off';$('#csAmtV').textContent=Number($('#csAmt').value).toFixed(1)+'×'}
 $('#csShake').oninput=$('#csAmt').oninput=sv;
 async function saveClip(newTake){const body={line:$('#csLine').value,video_prompt:$('#csPrompt').value,camera_move:$('.mv.on')?.dataset.m||'none',shake:+$('#csShake').value,amount:+$('#csAmt').value};
@@ -698,6 +741,31 @@ async function saveClip(newTake){const body={line:$('#csLine').value,video_promp
     if(newTake||r.needs_new_video){await api(`/api/projects/${CUR}/clips/${EDIT}/redo`,{method:'POST'});toast('Making a new take of shot '+(EDIT+1))}else{await api(`/api/projects/${CUR}/reedit`,{method:'POST'});toast('Re-exporting with your camera changes')}
     drawer(null);kick()}catch(e){toast(e.message)}}
 $('#csSave').onclick=()=>saveClip(false);$('#csRedo').onclick=()=>saveClip(true);
+/* ---------- live editing: one Change dialog for pictures, shots, songs and text ---------- */
+const CHIPS={image:['Shorter hair','Longer hair','Curly hair','Brown eyes','Make it a man','Make it a woman','Older','Younger','Add a soft smile','Red outfit','Make it daytime','Make it evening'],
+  song:['More upbeat','Slower and softer','Male voice','Female voice','Acoustic guitar','Traditional Indian instruments','Stronger beat'],
+  text:['Shorter','More emotional','Funnier','More formal','Simpler words','In Malayalam','In Hindi','In English'],
+  lyrics:['Shorter','More emotional','Simpler words','Catchier chorus','In Malayalam','In Hindi','In English']};
+let CHG=null;
+function changeOpen(o){CHG=o;$('#chgT').textContent=o.title;$('#chgSub').textContent=o.sub||'';const im=$('#chgImg');im.classList.toggle('hidden',!o.img);if(o.img)im.src=o.img;
+  $('#chgIn').value='';$('#chgIn').placeholder=o.ph||'What should change?';
+  $('#chgChips').innerHTML=(CHIPS[o.chips]||[]).map(c=>`<button class="chip" type="button">${esc(c)}</button>`).join('');
+  $$('#chgChips .chip').forEach(b=>b.onclick=()=>{const t=$('#chgIn'),v=t.value.trim();t.value=v?v.replace(/[.,\s]+$/,'')+', '+b.textContent.toLowerCase():b.textContent;t.focus()});
+  $('#chgScope').classList.toggle('hidden',!o.all);if(o.all)$('#chgAll').textContent=o.all;$$('#chgScope button').forEach(b=>b.classList.toggle('on',b.dataset.s==='one'));
+  $('#chgStr').classList.toggle('hidden',!o.strength);$$('#chgStr button').forEach(b=>b.classList.toggle('on',b.dataset.v==='0.5'));
+  $('#chgNote').textContent=o.note||'';$('#chgGo').textContent=o.go||'✨ Change it';$('#chgGo').disabled=false;$('#chg').classList.remove('hidden');setTimeout(()=>$('#chgIn').focus(),60)}
+const chgClose=()=>$('#chg').classList.add('hidden');
+$$('#chgScope button,#chgStr button').forEach(b=>b.onclick=()=>[...b.parentElement.children].forEach(x=>x.classList.toggle('on',x===b)));
+$('#chgNo').onclick=chgClose;$('#chg').onclick=e=>{if(e.target.id==='chg')chgClose()};
+$('#chgIn').onkeydown=e=>{if(e.key==='Enter'&&(e.metaKey||e.ctrlKey||!e.shiftKey)){e.preventDefault();$('#chgGo').click()}if(e.key==='Escape')chgClose()};
+$('#chgGo').onclick=async()=>{const ins=$('#chgIn').value.trim();if(!ins){toast('Write what to change, or tap a suggestion');return}
+  const scope=$('#chgScope .on')?.dataset.s||'one',st=+($('#chgStr .on')?.dataset.v||.5);const g=$('#chgGo');g.disabled=true;const old=g.textContent;g.textContent='Working…';
+  try{await CHG.run(ins,scope,st);chgClose()}catch(e){toast(e.message)}finally{g.disabled=false;g.textContent=old}};
+async function change(target,i,instruction,scope,strength){await api(`/api/projects/${CUR}/change`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target,i,instruction,scope:scope||'one',strength:strength||.5})});kick()}
+async function undoIt(target,i){await api(`/api/projects/${CUR}/undo`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target,i:i||0})});kick()}
+function undoBtn(sel,p,busy){const u=(p.undo||[]).slice(-1)[0],b=$(sel);b.classList.toggle('hidden',!u||busy);if(u){b.textContent=`↶ Undo “${u.what.length>28?u.what.slice(0,28)+'…':u.what}”`;b.title='Undo the last change made to all of them'}}
+$('#gUndo').onclick=$('#pUndo').onclick=async()=>{try{await undoIt('all');toast('Back to before')}catch(e){toast(e.message)}};
+
 function kick(){clearInterval(TIMER);TIMER=setInterval(refresh,2000);refresh(true)}
 $('#pReedit').onclick=async()=>{await api(`/api/projects/${CUR}/reedit`,{method:'POST'});toast('Re-exporting');kick()};
 $('#pUp').onclick=async()=>{await api(`/api/projects/${CUR}/upgrade`,{method:'POST'});toast('Making the final version — same takes, full quality');kick()};

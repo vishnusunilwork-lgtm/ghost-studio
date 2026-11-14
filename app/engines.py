@@ -272,6 +272,29 @@ class Engines:
             return out
         return self._card(prompt, out, width, height, seed, fallback)
 
+    EDIT_KEEP = ("Edit this photo. Change only this: {ins}. Keep everything else exactly the same: the same person and face "
+                 "(unless asked), the same framing and camera angle, the same place, light and colours, the same clothes unless asked. "
+                 "Photorealistic, natural skin, correct hands and eyes.")
+
+    def can_edit(self) -> bool:
+        return self.mock or self.plan()["image"] in ("service", "nvidia", "local")
+
+    def edit_image(self, src: Path, instruction: str, out: Path, seed: int = 0) -> Path:
+        """Change the SAME picture by a plain-words instruction ("shorter hair", "make it a man")."""
+        from PIL import Image
+        src = Path(src)
+        w, h = Image.open(src).size
+        if self.mock:  # test mode: a visible tint so the change is obvious
+            from PIL import ImageEnhance
+            im = Image.open(src).convert("RGB")
+            ImageEnhance.Color(im).enhance(0.4 + (seed % 7) / 5).save(out)
+            return out
+        if not self.can_edit():
+            raise RuntimeError("Editing needs the Pictures add-on (⚙ → Add-ons) or a video-service key.")
+        sc = min(1.0, 1440 / max(w, h))
+        w, h = max(256, int(w * sc) // 16 * 16), max(256, int(h * sc) // 16 * 16)
+        return self.image(self.EDIT_KEEP.format(ins=instruction.strip().rstrip(".")), out, w, h, seed=seed, ref_images=[src])
+
     def _local_image(self, prompt, out, width, height, seed, ref_images, steps, mac=False):
         if mac and _mflux_ok():
             try:

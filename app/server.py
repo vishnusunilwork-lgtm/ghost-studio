@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from . import engines as E
 from . import llm
+from . import planner
 from . import updater
 from .editor import MOVES
 from .pipeline import ASPECTS, LABEL, STEPS, Runner, Store
@@ -359,6 +360,87 @@ def redo_image(pid: str, i: int, mode: str = "same"):
         raise HTTPException(404, "No such image")
     RUNNER.submit(pid, "redo_still", i=i, mode="new" if mode == "new" else "same")
     return {"ok": True}
+
+
+class Change(BaseModel):
+    target: str  # image | clip | song
+    i: int = 0
+    instruction: str = ""
+    scope: str = "one"  # one | all
+    strength: float = 0.5
+
+
+@app.post("/api/projects/{pid}/change")
+def change(pid: str, body: Change):
+    """Live editing: change the SAME picture, shot or song by a plain-words instruction."""
+    p = _get(pid)
+    ins = " ".join(body.instruction.split())[:300]
+    if not ins:
+        raise HTTPException(400, "Write what to change")
+    scope = "all" if body.scope == "all" else "one"
+    if body.target == "image":
+        if not 0 <= body.i < len(p.get("stills") or []) or not p["stills"][body.i].get("image"):
+            raise HTTPException(404, "No such image")
+        if not RUNNER.eng.can_edit():
+            raise HTTPException(400, "Editing pictures needs the Pictures add-on (⚙ → Add-ons) or a video-service key.")
+        RUNNER.submit(pid, "change_still", i=body.i, instruction=ins, scope=scope)
+    elif body.target == "clip":
+        if not 0 <= body.i < len(p.get("clips") or []):
+            raise HTTPException(404, "No such shot")
+        if not RUNNER.eng.can_edit():
+            raise HTTPException(400, "Editing shots needs the Pictures add-on (⚙ → Add-ons) or a video-service key.")
+        RUNNER.submit(pid, "change_clip", i=body.i, instruction=ins, scope=scope)
+    elif body.target == "song":
+        if not any(int(t.get("n", 0)) == body.i for t in p.get("tracks") or []):
+            raise HTTPException(404, "No such take")
+        RUNNER.submit(pid, "change_song", n=body.i, instruction=ins, strength=max(0.1, min(1.0, body.strength)))
+    else:
+        raise HTTPException(400, "Unknown target")
+    return {"ok": True}
+
+
+class Undo(BaseModel):
+    target: str  # image | clip | all
+    i: int = 0
+
+
+@app.post("/api/projects/{pid}/undo")
+def undo(pid: str, body: Undo):
+    p = _get(pid)
+    if RUNNER.current == pid or p.get("status") in ("queued", "running"):
+        raise HTTPException(409, "Wait until Ghost finishes this project, then press Undo.")
+    if body.target == "image":
+        if not 0 <= body.i < len(p.get("stills") or []):
+            raise HTTPException(404, "No such image")
+        RUNNER.undo_still(pid, body.i)
+    elif body.target == "clip":
+        if not 0 <= body.i < len(p.get("clips") or []):
+            raise HTTPException(404, "No such shot")
+        RUNNER.submit(pid, "undo_clip", i=body.i)
+    elif body.target == "all":
+        if not p.get("undo"):
+            raise HTTPException(400, "Nothing to undo")
+        if "stills" in p["undo"][-1]:
+            RUNNER._undo_all(pid)  # pictures: instant
+        else:
+            RUNNER.submit(pid, "undo_all")  # shots: re-joins the video (a few seconds)
+    return {"ok": True}
+
+
+class Rewrite(BaseModel):
+    text: str = ""
+    instruction: str = ""
+    kind: str = "text"
+    language: str | None = None
+
+
+@app.post("/api/rewrite")
+def rewrite(body: Rewrite):
+    """Script, lines, lyrics, prompts: the script AI changes the same text; you check it before saving."""
+    try:
+        return {"text": planner.rewrite(CFG, body.text[:6000], body.instruction[:300], body.kind, body.language)}
+    except Exception as e:
+        raise HTTPException(400, str(e)[:300])
 
 
 @app.post("/api/projects/{pid}/images/{i}/main")

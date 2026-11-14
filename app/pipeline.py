@@ -308,7 +308,7 @@ class Runner:
             def mk(i):
                 c = p["clips"][i]
                 start = c.get("image") or p.get("person_images", {}).get(c.get("speaker")) or p["image"]
-                out = d / f"clip{i + 1:02d}_{c['seed']}{'_draft' if draft else ''}.mp4"
+                out = d / f"clip{i + 1:02d}_{c['seed']}{'_r%d' % c['rev'] if c.get('rev') else ''}{'_draft' if draft else ''}.mp4"
                 self.eng.video(Path(start), c["video_prompt"], float(c["seconds"]), out, seed=c["seed"],
                                width=gw, height=gh, steps=steps, aspect=p.get("aspect") or "9:16")
                 return i, out
@@ -324,7 +324,7 @@ class Runner:
                 continue  # already made before the pause
             self._say(p, "videos", f"Clip {i + 1} of {n}: {c.get('line','')[:50]}", 25 + int(55 * i / n))
             start = c.get("image") or p.get("person_images", {}).get(c.get("speaker")) or p["image"]
-            out = d / f"clip{i + 1:02d}_{c['seed']}{'_draft' if draft else ''}.mp4"
+            out = d / f"clip{i + 1:02d}_{c['seed']}{'_r%d' % c['rev'] if c.get('rev') else ''}{'_draft' if draft else ''}.mp4"
             self.eng.video(Path(start), c["video_prompt"], float(c["seconds"]), out, seed=c["seed"],
                            width=gw, height=gh, steps=steps, aspect=p.get("aspect") or "9:16")
             c["video"], c["status"] = str(out), "done"
@@ -666,6 +666,172 @@ class Runner:
             p["anchor"] = p["stills"][i]["image"]  # retaking the main look itself: keep its own person + place
         self.store.save(p)
         self._stills(pid, only=i, mode=mode)
+
+    # ------------------------------------------------------------ live editing ("Change")
+    def _edit_pic(self, p, src: Path, instruction: str, tag: str) -> Path:
+        out = self.store.dir(p["id"]) / f"{tag}_edit{int(time.time() * 1000) % 10**8}.png"
+        return self.eng.edit_image(src, instruction, out, seed=random.randint(1, 10**6))
+
+    def _change_still(self, pid, i: int, instruction: str, scope: str = "one"):
+        """Edit the SAME picture(s): "shorter hair", "make it a man". The old version is kept for Undo."""
+        from . import addons, llm
+        addons.MusicServer.stop()
+        llm.unload()
+        p = self.store.load(pid)
+        idx = [j for j, s in enumerate(p["stills"]) if s.get("image")] if scope == "all" else [i]
+        if scope == "all":
+            p.setdefault("undo", []).append({"what": instruction, "stills": [dict(image=s.get("image"), edits=list(s.get("edits") or [])) for s in p["stills"]],
+                                             "anchor": p.get("anchor")})
+            p["undo"] = p["undo"][-10:]
+        for n, j in enumerate(idx):
+            s = p["stills"][j]
+            src = Path(s.get("image") or "")
+            if not src.exists():
+                continue
+            self._say(p, "images", f"Changing image {j + 1}: {instruction}", 10 + int(85 * n / len(idx)))
+            out = self._edit_pic(p, src, instruction, f"image{j + 1:02d}")
+            if scope != "all":
+                s.setdefault("history", []).append({"image": str(src), "what": instruction})
+                s["history"] = s["history"][-10:]
+            s["image"], s["status"] = str(out), "done"
+            s.setdefault("edits", []).append(instruction)
+            if p.get("anchor_i") == j or p.get("anchor") == str(src):
+                p["anchor"] = str(out)  # the main look follows the change, so new pictures match it
+            self.store.save(p)
+        p["status"], p["progress"] = "done", 100
+        p["log"].append(time.strftime("%H:%M:%S ") + f"Changed: {instruction}")
+        self.store.save(p)
+
+    def _change_clip(self, pid, i: int, instruction: str, scope: str = "one"):
+        """Edit the SAME shot (or every shot): its picture is changed, then only those shots are re-made."""
+        from . import addons, llm
+        addons.MusicServer.stop()
+        llm.unload()
+        p = self.store.load(pid)
+        idx = list(range(len(p["clips"]))) if scope == "all" else [i]
+        if scope == "all":
+            p.setdefault("undo", []).append({"what": instruction, "image": p.get("image"), "person_images": dict(p.get("person_images") or {}),
+                                             "clips": [dict(image=c.get("image"), video=c.get("video"), rev=c.get("rev"),
+                                                           edits=list(c.get("edits") or [])) for c in p["clips"]]})
+            p["undo"] = p["undo"][-10:]
+        done: dict[str, str] = {}  # each picture is changed once, even if several shots share it
+
+        def changed(src: str, tag: str) -> str:
+            if src and src not in done and Path(src).exists():
+                self._say(p, "images", f"Changing the picture: {instruction}", 15)
+                done[src] = str(self._edit_pic(p, Path(src), instruction, tag))
+            return done.get(src, src)
+        if scope == "all":
+            if p.get("image"):
+                p["image"] = changed(p["image"], "frame_main")
+            for k, f in (p.get("person_images") or {}).items():
+                p["person_images"][k] = changed(f, f"frame_{k}")
+        for j in idx:
+            c = p["clips"][j]
+            start = c.get("image") or (p.get("person_images") or {}).get(c.get("speaker")) or p.get("image")
+            if scope != "all":
+                c.setdefault("history", []).append({"image": c.get("image"), "video": c.get("video"), "what": instruction})
+                c["history"] = c["history"][-10:]
+            c["image"] = changed(start, f"shot{j + 1:02d}")
+            c["status"] = "waiting"
+            c["rev"] = int(c.get("rev") or 0) + 1  # a new file, so Undo can bring back the old one
+            c.setdefault("edits", []).append(instruction)
+        self.store.save(p)
+        if scope == "all":
+            self._videos(pid)
+        else:
+            self._videos(pid, only=i)
+        self._edit(pid)
+
+    def _change_song(self, pid, n: int, instruction: str, strength: float = 0.5):
+        """Same song, new sound: keeps the melody and words (local music engine, cover mode) and adds it as a new take."""
+        from . import addons
+        p = self.store.load(pid)
+        tr = next((t for t in p.get("tracks") or [] if int(t.get("n", 0)) == int(n)), None)
+        if not tr or not Path(tr["file"]).exists():
+            raise RuntimeError("That take is missing; make a new one first.")
+        pl = p.get("song") or {}
+        self._say(p, "plan", f"Changing take {n}: {instruction}", 10)
+        caption = planner.rewrite(self.cfg, tr.get("caption") or pl.get("caption", ""), instruction, kind="caption")
+        lyrics = tr.get("lyrics") or pl.get("lyrics") or "[Instrumental]"
+        secs = float(tr.get("seconds") or pl.get("seconds") or 60)
+        E.free()
+        from . import llm
+        llm.unload()
+        if addons.music_installed():
+            self._say(p, "music", "Re-recording the same song with the change", 30)
+            try:
+                out = addons.MusicServer.generate(caption=caption, lyrics=lyrics, seconds=secs, language=pl.get("language", "unknown"),
+                                                  out_dir=self.store.dir(pid), takes=1, bpm=tr.get("bpm") or pl.get("bpm"),
+                                                  src_audio=tr["file"], cover_strength=strength,
+                                                  log=lambda m: self._say(self.store.load(pid), "music", m))
+            finally:
+                addons.MusicServer.stop_later()
+            how = "same tune"
+        elif self.eng.fal.on:
+            self._say(p, "music", "Making it in the cloud with the change (the tune can differ a little)", 30)
+            out = self.eng.fal.music(caption=caption, lyrics=lyrics, seconds=secs, language=pl.get("language", "unknown"),
+                                     out_dir=self.store.dir(pid), takes=1, bpm=tr.get("bpm") or pl.get("bpm"))
+            how = "new tune"
+        else:
+            raise RuntimeError("Install the Music & songs add-on first (⚙ → Add-ons).")
+        p = self.store.load(pid)
+        for t in out:
+            p["tracks"].append({**t, "caption": caption, "lyrics": lyrics, "n": len(p["tracks"]) + 1,
+                                "from": int(n), "change": instruction, "how": how})
+        p["steps"]["music"] = "done"
+        p["status"], p["progress"] = "done", 100
+        p["log"].append(time.strftime("%H:%M:%S ") + f"Changed take {n}: {instruction} → take {len(p['tracks'])}")
+        self.store.save(p)
+
+    def _undo_all(self, pid):
+        """Undo the last change that was applied to every picture / shot."""
+        p = self.store.load(pid)
+        u = (p.get("undo") or []).pop() if p.get("undo") else None
+        if not u:
+            return
+        if "stills" in u:
+            for s, old in zip(p["stills"], u["stills"]):
+                if old.get("image"):
+                    s["image"], s["edits"] = old["image"], old.get("edits") or []
+            p["anchor"] = u.get("anchor") or p.get("anchor")
+            p["status"] = "done"
+            p["log"].append(time.strftime("%H:%M:%S ") + f"Undid: {u.get('what', '')}")
+            self.store.save(p)
+            return
+        p["image"], p["person_images"] = u.get("image") or p.get("image"), u.get("person_images") or p.get("person_images")
+        for c, old in zip(p["clips"], u["clips"]):
+            c["image"], c["video"], c["status"], c["edits"] = old.get("image"), old.get("video"), "done", old.get("edits") or []
+        p["log"].append(time.strftime("%H:%M:%S ") + f"Undid: {u.get('what', '')}")
+        self.store.save(p)
+        self._edit(pid)
+
+    def _undo_clip(self, pid, i: int):
+        p = self.store.load(pid)
+        c = p["clips"][i]
+        if not c.get("history"):
+            return
+        h = c["history"].pop()
+        c["image"], c["video"], c["status"] = h.get("image"), h.get("video"), "done"
+        c["edits"] = (c.get("edits") or [])[:-1]
+        p["log"].append(time.strftime("%H:%M:%S ") + f"Shot {i + 1}: undid {h.get('what', '')}")
+        self.store.save(p)
+        self._edit(pid)
+
+    def undo_still(self, pid, i: int) -> dict:
+        """Instant (no re-making): bring back the picture from before the last change."""
+        p = self.store.load(pid)
+        s = p["stills"][i]
+        if not s.get("history"):
+            return p
+        h = s["history"].pop()
+        if p.get("anchor") == s.get("image"):
+            p["anchor"] = h["image"]
+        s["image"] = h["image"]
+        s["edits"] = (s.get("edits") or [])[:-1]
+        p["log"].append(time.strftime("%H:%M:%S ") + f"Image {i + 1}: undid {h.get('what', '')}")
+        self.store.save(p)
+        return p
 
     def _upgrade(self, pid):
         """Draft -> final: the same script and the same takes (seeds), re-made at full quality."""

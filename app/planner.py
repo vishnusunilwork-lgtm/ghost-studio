@@ -418,3 +418,38 @@ Lyrics:
             out["describe"] = f"a {lang} song, {base}, about: {idea or 'a joyful festival'}"
             out["note"] = f"Lyrics written by the music engine (script AI not available: {e})."
     return out
+
+
+# ---------------------------------------------------------------- live editing ("Change")
+KIND_NOTE = {
+    "image_prompt": "a photo description for an image AI (keep it one paragraph, concrete, visual)",
+    "line": "one spoken line of an ad (keep it short and natural to say)",
+    "lyrics": "song lyrics (keep the [Verse]/[Chorus] section tags and roughly the same length so it still fits the music)",
+    "caption": "a music style description for a music AI (genre, instruments, mood, tempo, voice)",
+    "text": "ad copy",
+}
+
+
+def rewrite(cfg: dict, text: str, instruction: str, kind: str = "text", language: str | None = None) -> str:
+    """Change the SAME text by a plain-words instruction. Keeps everything the instruction doesn't mention."""
+    from . import llm
+    text, instruction = (text or "").strip(), (instruction or "").strip()
+    if not instruction:
+        return text
+    if not llm.available():
+        if kind in ("image_prompt", "caption"):  # no script AI: add the change as an explicit instruction
+            return f"{text.rstrip(' .')}. Change: {instruction.rstrip('.')}." if text else instruction
+        raise RuntimeError("Rewriting needs the Script add-on (⚙ → Add-ons).")
+    lang = f" Write it in {language}." if language and kind in ("line", "lyrics") else ""
+    data = llm.ask_json(cfg["models"]["llm"], f"""You edit {KIND_NOTE.get(kind, KIND_NOTE['text'])}.
+Apply ONLY this change: "{instruction}".
+Keep every other detail exactly as it is (people, place, wording, structure) unless the change needs it.{lang}
+Use only real, common words. Do not add explanations.
+
+TEXT:
+{text}
+
+Answer as JSON: {{"text": "<the edited text>"}}""", temperature=0.3)
+    out = str(data.get("text") or "").strip()
+    return out or text
+

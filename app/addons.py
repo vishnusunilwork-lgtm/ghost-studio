@@ -435,7 +435,8 @@ class MusicServer:
 
     @classmethod
     def generate(cls, *, caption: str, lyrics: str, seconds: float, language: str, out_dir: Path, takes: int = 2,
-                 seed: int = -1, bpm: int | None = None, describe: str = "", fast: bool = False, log=lambda m: None) -> list[dict]:
+                 seed: int = -1, bpm: int | None = None, describe: str = "", fast: bool = False, log=lambda m: None,
+                 src_audio: str | None = None, cover_strength: float = 0.5) -> list[dict]:
         cls.start(log)
         body = {"prompt": caption, "lyrics": lyrics or "[Instrumental]", "audio_duration": max(10, min(600, float(seconds))),
                 "vocal_language": language or "unknown", "audio_format": "mp3", "batch_size": max(1, min(4, takes)),
@@ -445,6 +446,9 @@ class MusicServer:
         if describe:  # the music engine writes caption + lyrics itself
             body.update({"sample_mode": True, "sample_query": describe})
             body.pop("lyrics", None)
+        if src_audio:  # "Change": keep this song's melody and words, change its sound (ACE-Step cover mode)
+            body.update({"task_type": "cover", "src_audio_path": str(src_audio),
+                         "audio_cover_strength": max(0.1, min(1.0, float(cover_strength)))})
         task = cls._post("/release_task", body)
         tid = task.get("task_id") if isinstance(task, dict) else task
         t0 = time.time()
