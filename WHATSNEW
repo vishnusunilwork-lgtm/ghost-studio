@@ -1,3 +1,4 @@
+3.4.0: Big speed-up. Fixed the fast Mac picture engine (it was falling back to the slow one). New Draft / Final / Best choice: Final is now fast, Best uses the most realistic model. Music engine stays ready between songs; Draft songs compose faster.
 3.3.0: Same person and place across all images. Retake keeps the main look; New take starts fresh. Pick any picture as the main look with the star.
 3.2.0: Better picture quality: real shot variety (close-up, hands detail, wide…), hand/eye guidance, new Best pictures add-on (Z-Image-Turbo, higher resolution) and an automatic quality check that remakes pictures with bad hands or eyes.
 3.1.0: Much faster pictures on Apple chips (native MLX engine, same model), model pre-loads in the background, time per image shown. New Script AI add-on for much better prompts and lyrics.

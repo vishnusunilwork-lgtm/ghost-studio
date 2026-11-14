@@ -201,7 +201,7 @@ class Engines:
     def image(self, prompt: str, out: Path, width: int, height: int, seed: int = 0,
               ref_images: list[Path] | None = None, steps: int | None = None, fallback: Path | None = None, best: bool = False) -> Path:
         how = self.plan()["image"]
-        if best and not ref_images and not self.mock and _realism_ready():
+        if best and not ref_images and not self.mock and _realism_ready() and (_mflux_ok() or has_cuda()):
             try:
                 return self._zimage(prompt, out, width, height, seed)
             except Exception as e:
@@ -228,9 +228,11 @@ class Engines:
         if mac and _mflux_ok():
             try:
                 return self._mflux_image(prompt, out, width, height, seed, ref_images)
-            except Exception as e:  # fall back to the slower PyTorch path
+            except Exception as e:  # fall back to the slower PyTorch path for this picture only
                 print("Fast pictures (MLX) failed, using PyTorch:", e)
-                _MFLUX["broken"] = True
+                _MFLUX["fails"] = _MFLUX.get("fails", 0) + 1
+                if _MFLUX["fails"] >= 3:
+                    _MFLUX["broken"] = True
                 free()
         import torch
         from PIL import Image
@@ -262,15 +264,20 @@ class Engines:
     def _mflux_image(self, prompt, out, width, height, seed, ref_images):
         """Apple-chip native (MLX) FLUX.2 klein: same model files, about 3-4x faster than PyTorch on a Mac."""
         from mflux.models.common.config.model_config import ModelConfig
-        from mflux.models.flux2.variants.edit.flux2_klein_edit import Flux2KleinEdit
         q = int(self.cfg["quality"].get("mac_quantize", 8)) or None
-        model = _pipe("mflux", lambda: Flux2KleinEdit(quantize=q, model_config=ModelConfig.flux2_klein_4b()))
         s = min(1.0, 1024 / max(width, height))
         w, h = int(width * s) // 16 * 16, int(height * s) // 16 * 16
         refs = [str(p) for p in (ref_images or []) if p and Path(p).exists()][:3]
-        res = model.generate_image(seed=int(seed) % 2**31, prompt=prompt, num_inference_steps=4, width=w, height=h,
-                                   guidance=1.0, image_paths=refs or None)
-        res.image.save(out)
+        if refs:
+            from mflux.models.flux2.variants.edit.flux2_klein_edit import Flux2KleinEdit
+            model = _pipe("mflux_edit", lambda: Flux2KleinEdit(quantize=q, model_config=ModelConfig.flux2_klein_4b()))
+            res = model.generate_image(seed=int(seed) % 2**31, prompt=prompt, num_inference_steps=4, width=w, height=h,
+                                       guidance=1.0, image_paths=refs)
+        else:
+            from mflux.models.flux2.variants.txt2img.flux2_klein import Flux2Klein
+            model = _pipe("mflux", lambda: Flux2Klein(quantize=q, model_config=ModelConfig.flux2_klein_4b()))
+            res = model.generate_image(seed=int(seed) % 2**31, prompt=prompt, num_inference_steps=4, width=w, height=h, guidance=1.0)
+        (res.image if hasattr(res, "image") else res).save(out)
         return out
 
     def _zimage(self, prompt, out, width, height, seed):
@@ -308,9 +315,9 @@ class Engines:
         try:
             if _mflux_ok():
                 from mflux.models.common.config.model_config import ModelConfig
-                from mflux.models.flux2.variants.edit.flux2_klein_edit import Flux2KleinEdit
+                from mflux.models.flux2.variants.txt2img.flux2_klein import Flux2Klein
                 q = int(self.cfg["quality"].get("mac_quantize", 8)) or None
-                _pipe("mflux", lambda: Flux2KleinEdit(quantize=q, model_config=ModelConfig.flux2_klein_4b()))
+                _pipe("mflux", lambda: Flux2Klein(quantize=q, model_config=ModelConfig.flux2_klein_4b()))
         except Exception as e:
             print("warm-up skipped:", e)
 

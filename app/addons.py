@@ -394,8 +394,22 @@ class MusicServer:
                 log(f"Starting the music engine ({int(time.time() - t0)} s)…")
                 time.sleep(3)
 
+    _timer = None
+
+    @classmethod
+    def stop_later(cls, seconds: int = 600):
+        """Keep the music engine ready for 10 minutes, so the next song starts straight away."""
+        if cls._timer:
+            cls._timer.cancel()
+        cls._timer = threading.Timer(seconds, cls.stop)
+        cls._timer.daemon = True
+        cls._timer.start()
+
     @classmethod
     def stop(cls):
+        if cls._timer:
+            cls._timer.cancel()
+            cls._timer = None
         if cls.proc and cls.proc.poll() is None:
             cls.proc.terminate()
             try:
@@ -415,11 +429,11 @@ class MusicServer:
 
     @classmethod
     def generate(cls, *, caption: str, lyrics: str, seconds: float, language: str, out_dir: Path, takes: int = 2,
-                 seed: int = -1, bpm: int | None = None, describe: str = "", log=lambda m: None) -> list[dict]:
+                 seed: int = -1, bpm: int | None = None, describe: str = "", fast: bool = False, log=lambda m: None) -> list[dict]:
         cls.start(log)
         body = {"prompt": caption, "lyrics": lyrics or "[Instrumental]", "audio_duration": max(10, min(600, float(seconds))),
                 "vocal_language": language or "unknown", "audio_format": "mp3", "batch_size": max(1, min(4, takes)),
-                "inference_steps": 8, "thinking": True, "use_random_seed": seed < 0, "seed": seed}
+                "inference_steps": 8, "thinking": not fast, "use_random_seed": seed < 0, "seed": seed}
         if bpm:
             body["bpm"] = int(bpm)
         if describe:  # the music engine writes caption + lyrics itself

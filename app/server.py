@@ -106,7 +106,7 @@ async def create(idea: str = Form(""), dialogue: str = Form(""), seconds: int = 
     p = STORE.new(idea=idea.strip(), dialogue=dialogue.strip(), seconds=max(8, min(180, seconds)),
                   voice_mode=voice_mode, language=language or CFG.get("language", "Hindi"), title=title.strip() or "New ad",
                   mode="reference" if reference else "idea",
-                  aspect=aspect if aspect in ASPECTS else "9:16", quality="draft" if quality == "draft" else "final",
+                  aspect=aspect if aspect in ASPECTS else "9:16", quality=quality if quality in ("draft", "best") else "final",
                   kind=kind if kind in ("images", "music") else "video", count=max(1, min(8, count)),
                   music_style=music_style, vocals=vocals if vocals in ("ai", "mine", "instrumental") else "ai",
                   music_seconds=max(10, min(600, music_seconds)), ai_music=ai_music == "1", same_look=same_look != "0")

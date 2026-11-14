@@ -500,7 +500,8 @@ const IC={vid:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" strok
   mus:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg>'};
 $('#plus').onclick=e=>{e.stopPropagation();if(MENU){closeMenu();return}$('#plus').classList.add('open');
   menu($('#plus'),[{t:'Reference ad',s:'A video to copy, with new faces',icon:IC.vid},{t:'Character or product photos',s:'Up to 6 — keeps faces and products the same',icon:IC.img},{t:'Background music',s:'Ducks under the voice automatically',icon:IC.mus}],i=>[$('#fRef'),$('#fPics'),$('#fMusic')][i].click())};
-$('#modeBtn').onclick=e=>{e.stopPropagation();menu($('#modeBtn'),[{t:'Final',s:'Full quality, takes longer',on:QUAL==='final'},{t:'Draft',s:'Fast preview, upgrade to final later',on:QUAL==='draft'}],i=>{QUAL=i?'draft':'final';$('#modeTxt').textContent=i?'Draft':'Final'})};
+const QN={draft:'Draft',final:'Final',best:'Best'};
+$('#modeBtn').onclick=e=>{e.stopPropagation();menu($('#modeBtn'),[{t:'Draft',s:'Fastest preview · about 10 s a picture',on:QUAL==='draft'},{t:'Final',s:'Full size, fast · about 25–35 s a picture',on:QUAL==='final'},{t:'Best',s:'Most realistic · about 1 min a picture (needs Best pictures)',on:QUAL==='best'}],i=>{QUAL=['draft','final','best'][i];$('#modeTxt').textContent=QN[QUAL]})};
 $('#fRef').onchange=e=>{if(e.target.files[0])A.ref=e.target.files[0];e.target.value='';chips()};
 $('#fPics').onchange=e=>{A.pics=[...A.pics,...e.target.files].filter(f=>f.type.startsWith('image/')).slice(0,6);e.target.value='';chips()};
 $('#fMusic').onchange=e=>{if(e.target.files[0])A.music=e.target.files[0];e.target.value='';chips()};
@@ -569,7 +570,7 @@ async function open(id){CUR=id;LAST='';show('proj');history.replaceState(null,''
 let LAST='',LASTNOW='',LASTFIN='';
 async function refresh(force){if(!CUR)return;let p;try{p=await api('/api/projects/'+CUR)}catch(e){return}P=p;
   const busy=p.status==='running'||p.status==='queued',ar=(p.aspect||'9:16').replace(':','/');
-  $('#pTitle').textContent=p.title||'Ad';$('#pTag').textContent=[(p.aspect||'9:16'),p.quality==='draft'?'Draft':'Final',(p.language||'')].filter(Boolean).join(' · ');
+  $('#pTitle').textContent=p.title||'Ad';$('#pTag').textContent=[(p.aspect||'9:16'),({draft:'Draft',final:'Final',best:'Best'})[p.quality]||'Final',(p.language||'')].filter(Boolean).join(' · ');
   const scr=$('#screen');scr.style.setProperty('--ar',ar);scr.classList.toggle('wide',p.aspect==='16:9');$('#shots').style.setProperty('--ar',ar);
   const now=p.status==='done'?'Ready'+(p.quality==='draft'?' — this is a draft preview':''):p.status==='error'?'Something went wrong':p.status==='queued'?'Waiting its turn…':((ST?.labels||{})[p.step]||'Working')+'…';
   if(now!==LASTNOW){LASTNOW=now;const n=$('#pNow');n.textContent=now;n.classList.remove('swap');void n.offsetWidth;n.classList.add('swap')}
@@ -677,7 +678,7 @@ async function loadAtt(){try{const db=await idb();return await new Promise(r=>{c
 function setSel(id,v){const el=$('#'+id);if(v&&[...el.options].some(o=>o.value===v))el.value=v}
 async function restore(){const d=lsGet(DKEY);
   if(d){prompt_.value=d.prompt||'';grow();setSel('len',d.len);setSel('aspect',d.aspect);setSel('voice',d.voice);setSel('lang',d.lang);setSel('kind',d.kind);setSel('count',d.count);setSel('lock',d.lock);setSel('mstyle',d.mstyle);setSel('mvocal',d.mvocal);setSel('mlen',d.mlen);setSel('vmusic',d.vmusic);kindUI();$('#lang').dataset.set=1;
-    if(d.exact&&!EXACT){EXACT=true;$('#exact').classList.add('on')}if(d.qual){QUAL=d.qual;$('#modeTxt').textContent=QUAL==='draft'?'Draft':'Final'}}
+    if(d.exact&&!EXACT){EXACT=true;$('#exact').classList.add('on')}if(d.qual){QUAL=d.qual;$('#modeTxt').textContent=({draft:'Draft',final:'Final',best:'Best'})[QUAL]||'Final'}}
   const a=await loadAtt();if(a&&(a.ref||(a.pics||[]).length||a.music)){A.ref=a.ref||null;A.pics=a.pics||[];A.music=a.music||null;chips()}
   const pid=location.hash.length>1?location.hash.slice(1):d&&d.pid;
   if(pid){await open(pid);if(d&&d.sheet&&d.pid===pid&&P&&P.clips&&P.clips[d.sheet.i]){sheet(d.sheet.i);$('#csLine').value=d.sheet.line;$('#csPrompt').value=d.sheet.prompt;

@@ -174,6 +174,8 @@ class Runner:
         self._edit(pid)
 
     def _images(self, pid):
+        from . import addons
+        addons.MusicServer.stop()  # pictures need the memory
         p = self.store.load(pid)
         d = self.store.dir(pid)
         q = self.cfg["quality"]
@@ -184,7 +186,7 @@ class Runner:
         main = d / "frame_main.png"
         refs = [Path(r) for r in p.get("refs") or []]
         self.eng.image(p["plan"]["image_prompt"], main, gw * k, gh * k, seed=int(p.get("image_seed", 7)),
-                       ref_images=refs or None, steps=steps, fallback=refs[0] if refs else None, best=not draft)
+                       ref_images=refs or None, steps=steps, fallback=refs[0] if refs else None, best=p.get("quality") == "best")
         p["image"] = str(main)
         p["engine_plan"] = self.eng.plan()
         if p["engine_plan"]["video"] == "photo_motion":
@@ -334,7 +336,7 @@ class Runner:
             p["steps"]["music"] = "skipped"
             self.store.save(p)
         finally:
-            addons.MusicServer.stop()
+            addons.MusicServer.stop_later()
 
     def _music_only(self, pid):
         from . import addons
@@ -364,10 +366,10 @@ class Runner:
         try:
             out = addons.MusicServer.generate(caption=pl["caption"], lyrics=pl.get("lyrics", ""), seconds=pl.get("seconds", 60),
                                               language=pl.get("language", "unknown"), out_dir=self.store.dir(pid), takes=takes,
-                                              bpm=pl.get("bpm"), describe=pl.get("describe", ""),
+                                              bpm=pl.get("bpm"), describe=pl.get("describe", ""), fast=p.get("quality") == "draft",
                                               log=lambda m: self._say(self.store.load(pid), "music", m))
         finally:
-            addons.MusicServer.stop()
+            addons.MusicServer.stop_later()
         p = self.store.load(pid)
         for t in out:
             p["tracks"].append({**t, "n": len(p["tracks"]) + 1})
@@ -404,6 +406,8 @@ class Runner:
             "and the same place, light and colour mood. Only the framing, pose and action change: ")
 
     def _stills(self, pid, only: int | None = None, mode: str = "same"):
+        from . import addons
+        addons.MusicServer.stop()  # pictures need the memory
         p = self.store.load(pid)
         d = self.store.dir(pid)
         q = self.cfg["quality"]
@@ -428,9 +432,9 @@ class Runner:
             ref_imgs = ([anchor] if use_anchor else []) + refs
             prompt = (self.LOCK + s["prompt"]) if use_anchor else s["prompt"]
             self.eng.image(prompt, f, w, h, seed=int(s["seed"]), ref_images=ref_imgs[:3] or None, steps=steps,
-                           fallback=refs[i % len(refs)] if refs else None, best=not draft)
+                           fallback=refs[i % len(refs)] if refs else None, best=p.get("quality") == "best")
             f = self._checked(p, i, f, lambda seed, out: self.eng.image(prompt, out, w, h, seed=seed, ref_images=ref_imgs[:3] or None,
-                                                                        steps=steps, fallback=None, best=not draft), draft)
+                                                                        steps=steps, fallback=None, best=p.get("quality") == "best"), draft)
             s["image"], s["status"] = str(f), "done"
             s["look"] = "same" if use_anchor else "fresh"
             if anchor is None or (mode == "new" and p.get("anchor_i") == i):
