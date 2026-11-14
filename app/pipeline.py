@@ -392,6 +392,7 @@ class Runner:
                                  count=int(p.get("count", 4)), aspect=p.get("aspect") or "9:16", language=p.get("language"))
         if p.get("title") in (None, "", "New ad"):
             p["title"] = pl.get("title") or "Images"
+        p.pop("anchor", None); p.pop("anchor_i", None)  # a new set starts a new main look
         p["stills"] = [{"caption": i.get("caption", ""), "prompt": i["prompt"], "seed": random.randint(1, 10**6), "status": "waiting"}
                        for i in pl["images"]]
         if pl.get("note"):
@@ -399,7 +400,10 @@ class Runner:
         self._done(p, "plan")
         self._stills(pid)
 
-    def _stills(self, pid, only: int | None = None):
+    LOCK = ("Keep EXACTLY the same person as in the reference image: same face, skin tone, hair, outfit, colours and jewellery, "
+            "and the same place, light and colour mood. Only the framing, pose and action change: ")
+
+    def _stills(self, pid, only: int | None = None, mode: str = "same"):
         p = self.store.load(pid)
         d = self.store.dir(pid)
         q = self.cfg["quality"]
@@ -410,7 +414,8 @@ class Runner:
         refs = [Path(r) for r in p.get("refs") or []]
         idx = [only] if only is not None else range(len(p["stills"]))
         n = len(p["stills"]) or 1
-        first = Path(p["stills"][0]["image"]) if only is not None and p["stills"][0].get("image") else None
+        same = p.get("same_look", True) and mode != "new"
+        anchor = Path(p["anchor"]) if p.get("anchor") and Path(p["anchor"]).exists() else None
         took: list[float] = []
         for i in idx:
             s = p["stills"][i]
@@ -418,12 +423,20 @@ class Runner:
             self._say(p, "images", f"Image {i + 1} of {n}: {s.get('caption', '')}{eta}", 15 + int(80 * i / n))
             t0 = time.time()
             f = d / f"image{i + 1:02d}_{s['seed']}{'_draft' if draft else ''}.png"
-            ref_imgs = [*refs]  # only your own photos: an automatic reference doubled the time per image
-            self.eng.image(s["prompt"], f, w, h, seed=int(s["seed"]), ref_images=ref_imgs[:4] or None, steps=steps,
+            # Same look: every picture after the main one follows it (same person + place), via the reference model
+            use_anchor = same and anchor is not None and self.eng.plan()["image"] in ("local", "nvidia", "service")
+            ref_imgs = ([anchor] if use_anchor else []) + refs
+            prompt = (self.LOCK + s["prompt"]) if use_anchor else s["prompt"]
+            self.eng.image(prompt, f, w, h, seed=int(s["seed"]), ref_images=ref_imgs[:3] or None, steps=steps,
                            fallback=refs[i % len(refs)] if refs else None, best=not draft)
-            f = self._checked(p, i, f, lambda seed, out: self.eng.image(s["prompt"], out, w, h, seed=seed, ref_images=ref_imgs[:4] or None,
+            f = self._checked(p, i, f, lambda seed, out: self.eng.image(prompt, out, w, h, seed=seed, ref_images=ref_imgs[:3] or None,
                                                                         steps=steps, fallback=None, best=not draft), draft)
             s["image"], s["status"] = str(f), "done"
+            s["look"] = "same" if use_anchor else "fresh"
+            if anchor is None or (mode == "new" and p.get("anchor_i") == i):
+                if p.get("same_look", True):  # the first picture becomes the main look
+                    anchor = f
+                    p["anchor"], p["anchor_i"] = str(f), i
             took.append(time.time() - t0)
             self.store.save(p)
         for st in ("videos", "voice", "edit"):
@@ -451,12 +464,15 @@ class Runner:
             p["log"].append(time.strftime("%H:%M:%S ") + f"Quality check skipped: {str(e)[:120]}")
             return f
 
-    def _redo_still(self, pid, i: int):
+    def _redo_still(self, pid, i: int, mode: str = "same"):
+        """mode same = keep the main look (person + place); mode new = a completely fresh take."""
         p = self.store.load(pid)
         p["stills"][i]["seed"] = random.randint(1, 10**6)
         p["stills"][i]["status"] = "waiting"
+        if mode == "same" and p.get("anchor_i") == i and p["stills"][i].get("image"):
+            p["anchor"] = p["stills"][i]["image"]  # retaking the main look itself: keep its own person + place
         self.store.save(p)
-        self._stills(pid, only=i)
+        self._stills(pid, only=i, mode=mode)
 
     def _upgrade(self, pid):
         """Draft -> final: the same script and the same takes (seeds), re-made at full quality."""

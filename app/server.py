@@ -96,7 +96,7 @@ def projects():
 async def create(idea: str = Form(""), dialogue: str = Form(""), seconds: int = Form(30),
                  voice_mode: str = Form("oncamera"), language: str = Form(""), title: str = Form(""),
                  aspect: str = Form("9:16"), quality: str = Form("final"), kind: str = Form("video"), count: int = Form(4),
-                 music_style: str = Form("bollywood"), vocals: str = Form("ai"), music_seconds: int = Form(60), ai_music: str = Form(""),
+                 same_look: str = Form("1"), music_style: str = Form("bollywood"), vocals: str = Form("ai"), music_seconds: int = Form(60), ai_music: str = Form(""),
                  reference: UploadFile | None = File(None), music: UploadFile | None = File(None),
                  refs: list[UploadFile] | None = File(None)):
     if kind == "music" and not idea.strip() and not dialogue.strip():
@@ -109,7 +109,7 @@ async def create(idea: str = Form(""), dialogue: str = Form(""), seconds: int = 
                   aspect=aspect if aspect in ASPECTS else "9:16", quality="draft" if quality == "draft" else "final",
                   kind=kind if kind in ("images", "music") else "video", count=max(1, min(8, count)),
                   music_style=music_style, vocals=vocals if vocals in ("ai", "mine", "instrumental") else "ai",
-                  music_seconds=max(10, min(600, music_seconds)), ai_music=ai_music == "1")
+                  music_seconds=max(10, min(600, music_seconds)), ai_music=ai_music == "1", same_look=same_look != "0")
     d = STORE.dir(p["id"])
     for up, key in ((reference, "reference"), (music, "music")):
         if up and up.filename:
@@ -343,11 +343,23 @@ def upgrade(pid: str):
 
 
 @app.post("/api/projects/{pid}/images/{i}/redo")
-def redo_image(pid: str, i: int):
+def redo_image(pid: str, i: int, mode: str = "same"):
     p = _get(pid)
     if not 0 <= i < len(p.get("stills") or []):
         raise HTTPException(404, "No such image")
-    RUNNER.submit(pid, "redo_still", i=i)
+    RUNNER.submit(pid, "redo_still", i=i, mode="new" if mode == "new" else "same")
+    return {"ok": True}
+
+
+@app.post("/api/projects/{pid}/images/{i}/main")
+def set_main_look(pid: str, i: int):
+    """Use this picture as the main look: later retakes keep its person and place."""
+    p = _get(pid)
+    st = p.get("stills") or []
+    if not 0 <= i < len(st) or not st[i].get("image"):
+        raise HTTPException(404, "No such image")
+    p["anchor"], p["anchor_i"], p["same_look"] = st[i]["image"], i, True
+    STORE.save(p)
     return {"ok": True}
 
 
