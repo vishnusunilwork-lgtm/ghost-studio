@@ -205,6 +205,8 @@ class Runner:
         if pl.get("note"):
             p["log"].append(pl["note"])
         self._done(p, "plan")
+        if self._review_stop(p):
+            return
         # 3 images (one per person so the same face appears in all their clips)
         self._images(pid)
         # 4 videos
@@ -215,6 +217,16 @@ class Runner:
         self._music_for_ad(pid)
         # 6 edit
         self._edit(pid)
+
+    def _review_stop(self, p) -> bool:
+        """"Check prompts first": stop after writing so you can edit, then Continue makes it."""
+        if not p.get("review") or p.get("reviewed"):
+            return False
+        p["reviewed"] = True
+        p["status"] = "review"
+        p["log"].append(time.strftime("%H:%M:%S ") + "Ready for your check: edit anything, then press Make it.")
+        self.store.save(p)
+        return True
 
     def _style(self, p, ref=None) -> str:
         st = p.get("style") or "auto"
@@ -239,7 +251,7 @@ class Runner:
         main = d / "frame_main.png"
         refs = [Path(r) for r in p.get("refs") or []]
         self.eng.image(p["plan"]["image_prompt"], main, gw * k, gh * k, seed=int(p.get("image_seed", 7)),
-                       ref_images=refs or None, steps=steps, fallback=refs[0] if refs else None, best=p.get("quality") == "best")
+                       ref_images=refs or None, steps=steps, fallback=refs[0] if refs else None, best=p.get("quality") != "draft")
         p["image"] = str(main)
         p["engine_plan"] = self.eng.plan()
         style = p.get("style_used") or "auto"
@@ -288,6 +300,24 @@ class Runner:
         (gw, gh), _, draft = sizes(p)
         steps = int(self.cfg["quality"].get("video_steps_draft", 12)) if draft else None
         n = len(p["clips"]) or 1
+        if self.eng.plan()["video"] == "service" and only is None:  # cloud: every shot at the same time
+            from concurrent.futures import ThreadPoolExecutor
+            todo = [i for i in idx if not (resume and p["clips"][i].get("video") and p["clips"][i].get("status") == "done")]
+            self._say(p, "videos", f"Making {len(todo)} shots at the same time in the cloud (about 1–2 min)", 40)
+
+            def mk(i):
+                c = p["clips"][i]
+                start = c.get("image") or p.get("person_images", {}).get(c.get("speaker")) or p["image"]
+                out = d / f"clip{i + 1:02d}_{c['seed']}{'_draft' if draft else ''}.mp4"
+                self.eng.video(Path(start), c["video_prompt"], float(c["seconds"]), out, seed=c["seed"],
+                               width=gw, height=gh, steps=steps, aspect=p.get("aspect") or "9:16")
+                return i, out
+            with ThreadPoolExecutor(max_workers=4) as ex:
+                for i, out in ex.map(mk, todo):
+                    p["clips"][i]["video"], p["clips"][i]["status"] = str(out), "done"
+            self.store.save(p)
+            self._done(p, "videos")
+            return
         for i in idx:
             c = p["clips"][i]
             if resume and c.get("video") and c.get("status") == "done" and Path(c["video"]).exists():
@@ -384,7 +414,7 @@ class Runner:
     def _music_for_ad(self, pid):
         from . import addons
         p = self.store.load(pid)
-        if not p.get("ai_music") or p.get("music") or not addons.music_installed():
+        if not p.get("ai_music") or p.get("music") or not (addons.music_installed() or self.eng.fal.on):
             p["steps"]["music"] = "skipped"
             self.store.save(p)
             return
@@ -392,6 +422,19 @@ class Runner:
         total = sum(float(c.get("seconds", 0)) for c in p["clips"]) + 1
         style = (p.get("plan") or {}).get("music_style") or "warm festive Indian background music"
         self._say(p, "music", "Composing background music to fit the ad", 88)
+        if self.eng.fal.on:
+            try:
+                tr = self.eng.fal.music(caption=style + ". Instrumental background, leaves room for voice.", lyrics="[Instrumental]",
+                                        seconds=max(10, total), language="unknown", out_dir=self.store.dir(pid), thinking=False)
+                p = self.store.load(pid)
+                p["music"], p["music_ai"] = tr[0]["file"], True
+                self._done(p, "music")
+            except Exception as e:
+                p = self.store.load(pid)
+                p["log"].append(time.strftime("%H:%M:%S ") + "Music skipped: " + str(e)[:200])
+                p["steps"]["music"] = "skipped"
+                self.store.save(p)
+            return
         try:
             tr = addons.MusicServer.generate(caption=style + ". Instrumental background, leaves room for voice.", lyrics="[Instrumental]",
                                              seconds=max(10, total), language="unknown", out_dir=self.store.dir(pid), takes=1,
@@ -423,18 +466,33 @@ class Runner:
             p["log"].append(pl["note"])
         p["tracks"] = p.get("tracks") or []
         self._done(p, "plan")
+        if self._review_stop(p):
+            return
         self._compose(pid, takes=1)  # one take = half the time; "Make another take" adds more
 
     def _compose(self, pid, takes=1):
         from . import addons
         p = self.store.load(pid)
-        if not addons.music_installed():
+        if not addons.music_installed() and not self.eng.fal.on:
             raise RuntimeError("Install the Music & songs add-on first (⚙ → Add-ons).")
         pl = p["song"]
         E.free()
         from . import llm
         llm.unload()
         self._say(p, "music", "Starting the music engine", 20)
+        if self.eng.fal.on:  # cloud: same model, much faster
+            self._say(p, "music", "Composing in the cloud (about 20–60 s)", 30)
+            out = self.eng.fal.music(caption=pl["caption"], lyrics=pl.get("lyrics", "") or "", seconds=pl.get("seconds", 60),
+                                     language=pl.get("language", "unknown"), out_dir=self.store.dir(pid), takes=takes, bpm=pl.get("bpm"),
+                                     thinking=p.get("quality") != "draft" or (pl.get("lyrics") or "[Instrumental]") != "[Instrumental]")
+            p = self.store.load(pid)
+            for t in out:
+                p["tracks"].append({**t, "n": len(p["tracks"]) + 1})
+            p["steps"]["music"] = "done"
+            p["status"], p["progress"] = "done", 100
+            p["log"].append(time.strftime("%H:%M:%S ") + f"Finished {len(out)} take{'s' if len(out) > 1 else ''}")
+            self.store.save(p)
+            return
         try:
             out = addons.MusicServer.generate(caption=pl["caption"], lyrics=pl.get("lyrics", ""), seconds=pl.get("seconds", 60),
                                               language=pl.get("language", "unknown"), out_dir=self.store.dir(pid), takes=takes,
@@ -491,6 +549,8 @@ class Runner:
         if pl.get("note"):
             p["log"].append(pl["note"])
         self._done(p, "plan")
+        if self._review_stop(p):
+            return
         self._stills(pid)
 
     LOCK = ("Keep EXACTLY the same person as in the reference image: same face, skin tone, hair, outfit, colours and jewellery, "
@@ -513,6 +573,8 @@ class Runner:
         same = p.get("same_look", True) and mode != "new"
         anchor = Path(p["anchor"]) if p.get("anchor") and Path(p["anchor"]).exists() else None
         took: list[float] = []
+        if self.eng.plan()["image"] == "service" and len(list(idx)) > 1:
+            return self._stills_parallel(p, list(idx), w, h, steps, refs, same, anchor, draft, resume)
         for i in idx:
             s = p["stills"][i]
             if resume and s.get("image") and s.get("status") == "done" and Path(s["image"]).exists():
@@ -526,9 +588,9 @@ class Runner:
             ref_imgs = ([anchor] if use_anchor else []) + refs
             prompt = (self.LOCK + s["prompt"]) if use_anchor else s["prompt"]
             self.eng.image(prompt, f, w, h, seed=int(s["seed"]), ref_images=ref_imgs[:3] or None, steps=steps,
-                           fallback=refs[i % len(refs)] if refs else None, best=p.get("quality") == "best")
+                           fallback=refs[i % len(refs)] if refs else None, best=p.get("quality") != "draft")
             f = self._checked(p, i, f, lambda seed, out: self.eng.image(prompt, out, w, h, seed=seed, ref_images=ref_imgs[:3] or None,
-                                                                        steps=steps, fallback=None, best=p.get("quality") == "best"), draft)
+                                                                        steps=steps, fallback=None, best=p.get("quality") != "draft"), draft)
             s["image"], s["status"] = str(f), "done"
             s["look"] = "same" if use_anchor else "fresh"
             if anchor is None or (mode == "new" and p.get("anchor_i") == i):
@@ -542,6 +604,39 @@ class Runner:
         p["steps"]["images"] = "done"
         p["status"], p["progress"] = "done", 100
         p["log"].append(time.strftime("%H:%M:%S ") + f"Finished {n} image{'s' if n > 1 else ''}")
+        self.store.save(p)
+
+    def _stills_parallel(self, p, idx, w, h, steps, refs, same, anchor, draft, resume):
+        """Cloud: the main look first, then every other picture at the same time (seconds, not minutes)."""
+        from concurrent.futures import ThreadPoolExecutor
+        d = self.store.dir(p["id"])
+        todo = [i for i in idx if not (resume and p["stills"][i].get("status") == "done" and p["stills"][i].get("image"))]
+
+        def make(i, ref_list):
+            s = p["stills"][i]
+            f = d / f"image{i + 1:02d}_{s['seed']}{'_draft' if draft else ''}.png"
+            prompt = (self.LOCK + s["prompt"]) if ref_list and same else s["prompt"]
+            self.eng.image(prompt, f, w, h, seed=int(s["seed"]), ref_images=ref_list or None, steps=steps, best=not draft)
+            return i, f
+        if todo and same and anchor is None:
+            first = todo.pop(0)
+            self._say(p, "images", f"Image {first + 1}: the main look", 20)
+            i, f = make(first, refs[:3])
+            p["stills"][i].update(image=str(f), status="done", look="fresh")
+            anchor = f
+            p["anchor"], p["anchor_i"] = str(f), i
+            self.store.save(p)
+        if todo:
+            self._say(p, "images", f"Making {len(todo)} pictures at the same time", 45)
+            with ThreadPoolExecutor(max_workers=4) as ex:
+                for i, f in ex.map(lambda j: make(j, ([anchor] if same and anchor else []) + refs[:2]), todo):
+                    p["stills"][i].update(image=str(f), status="done", look="same" if same and anchor else "fresh")
+            self.store.save(p)
+        for st in ("videos", "voice", "edit"):
+            p["steps"][st] = "skipped"
+        p["steps"]["images"] = "done"
+        p["status"], p["progress"] = "done", 100
+        p["log"].append(time.strftime("%H:%M:%S ") + f"Finished {len(idx)} images")
         self.store.save(p)
 
     def _checked(self, p, i, f: Path, remake, draft: bool) -> Path:

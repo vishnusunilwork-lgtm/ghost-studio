@@ -518,7 +518,7 @@ ADDONS = {
                 "install": install_realism, "installed": realism_installed,
                 "fits": lambda: ((memory_gb() >= 16 or cuda_vram_gb() >= 12), "" if (memory_gb() >= 16 or cuda_vram_gb() >= 12) else "Needs 16 GB memory or more.")},
     "pictures": {"name": "AI pictures", "desc": "Photo-real images for shots and Images only. FLUX.2 klein (Apache 2.0).",
-                 "size": "about 10 GB", "time": "1–3 min per picture on a Mac", "install": install_pictures, "installed": pictures_installed,
+                 "size": "about 10 GB", "time": "about 10–35 s per picture on a Mac", "install": install_pictures, "installed": pictures_installed,
                  "fits": lambda: ((memory_gb() >= 16 or cuda_vram_gb() >= 8), "" if (memory_gb() >= 16 or cuda_vram_gb() >= 8) else "Needs 16 GB memory or more.")},
     "music": {"name": "Music & songs", "desc": "Songs with vocals in Hindi and 50+ languages, or instrumentals, in any style. ACE-Step 1.5 (MIT).",
               "size": "about 15 GB", "time": "about 5–10 min per song on a Mac, under a minute on NVIDIA", "install": install_music, "installed": music_installed,

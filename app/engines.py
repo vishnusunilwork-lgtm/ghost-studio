@@ -171,6 +171,33 @@ class Fal:
             raise RuntimeError(f"Monthly video limit reached (${m['usd']:.2f} of ${self.limit:.0f}). "
                                "Raise it under the gear, or switch to photo motion.")
 
+    def music(self, *, caption: str, lyrics: str, seconds: float, language: str, out_dir: Path, takes: int = 1,
+              thinking: bool = True, bpm: int | None = None) -> list[dict]:
+        """ACE-Step 1.5 in the cloud: the same music model, about a minute instead of 5-10 on a Mac."""
+        secs = max(10, min(600, float(seconds)))
+        cost = 0.0003 * secs * (2 if thinking else 1) * takes
+        self.check_budget(cost)
+        body = {"prompt": caption[:500], "lyrics": (lyrics or "[Instrumental]")[:4000], "duration": secs, "vocal_language": language or "unknown",
+                "num_outputs": max(1, min(4, takes)), "thinking": thinking}
+        if bpm:
+            body["bpm"] = int(bpm)
+        r = self.run("fal-ai/ace-step-1.5", body)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        items = r.get("audios") or ([{"audio": r["audio"]}] if r.get("audio") else [])
+        out = []
+        for n, it in enumerate(items, 1):
+            url = (it.get("audio") or {}).get("url")
+            if not url:
+                continue
+            ext = ".flac" if "flac" in ((it.get("audio") or {}).get("content_type") or "") else ".mp3"
+            f = out_dir / f"track{int(time.time())}_{n}{ext}"
+            Fal.download(url, f)
+            out.append({"file": str(f), "bpm": r.get("bpm"), "key": r.get("key_scale"), "seconds": r.get("duration"), "lyrics": lyrics, "caption": caption})
+        Spend.add(cost)
+        if not out:
+            raise RuntimeError("The music service returned no audio")
+        return out
+
     @staticmethod
     def data_uri(img: Path, long_side: int = 1280) -> str:
         from PIL import Image
@@ -199,7 +226,7 @@ class Engines:
         cuda = not self.mock and has_cuda()
         local_img = not self.mock and image_ai_installed() and (cuda or gpu_info().get("mps"))
         return {
-            "image": "nvidia" if cuda else "local" if local_img else "service" if self.fal.on else "photos",
+            "image": "service" if (self.fal.on and not self.mock) else "nvidia" if cuda else "local" if local_img else "photos",
             "video": "service" if self.fal.on and not self.mock else "nvidia" if cuda else "motion" if (not self.mock and self.allow_motion and _motion_ready()) else "photo_motion",
             "voice": "mac" if shutil.which("say") else "windows" if platform.system() == "Windows" else "kokoro" if _has("kokoro") else "tone",
         }
@@ -217,7 +244,7 @@ class Engines:
     def image(self, prompt: str, out: Path, width: int, height: int, seed: int = 0,
               ref_images: list[Path] | None = None, steps: int | None = None, fallback: Path | None = None, best: bool = False) -> Path:
         how = self.plan()["image"]
-        if best and not ref_images and not self.mock and _realism_ready() and (_mflux_ok() or has_cuda()):
+        if best and not ref_images and not self.mock and not self.fal.on and _realism_ready() and (_mflux_ok() or has_cuda()):
             try:
                 return self._zimage(prompt, out, width, height, seed)
             except Exception as e:
@@ -233,8 +260,13 @@ class Engines:
         if how == "service" or (how in ("nvidia", "local") and self.fal.on):
             sc = min(1.0, 1440 / max(width, height))
             width, height = int(width * sc) // 16 * 16, int(height * sc) // 16 * 16
-            r = self.fal.run(self.fal.image_model, {"prompt": prompt, "seed": seed, "num_images": 1, "output_format": "png",
-                                                    "image_size": {"width": width, "height": height}})
+            refs = [r for r in (ref_images or []) if r and Path(r).exists()][:4]
+            if refs:  # same person + place from the main look
+                r = self.fal.run(self.fal.image_model + "/edit", {"prompt": prompt, "seed": seed, "image_urls": [Fal.data_uri(x, 1024) for x in refs],
+                                                                  "image_size": {"width": width, "height": height}, "output_format": "png"})
+            else:
+                r = self.fal.run(self.fal.image_model, {"prompt": prompt, "seed": seed, "num_images": 1, "output_format": "png",
+                                                        "image_size": {"width": width, "height": height}})
             Fal.download(r["images"][0]["url"], out)
             Spend.add(0.005 * width * height / 1e6)
             return out

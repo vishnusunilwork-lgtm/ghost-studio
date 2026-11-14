@@ -106,7 +106,7 @@ def projects():
 async def create(idea: str = Form(""), dialogue: str = Form(""), seconds: int = Form(30),
                  voice_mode: str = Form("oncamera"), language: str = Form(""), title: str = Form(""),
                  aspect: str = Form("9:16"), quality: str = Form("final"), kind: str = Form("video"), count: int = Form(4),
-                 same_look: str = Form("1"), style: str = Form("auto"), ai_motion: str = Form(""), music_style: str = Form("bollywood"), vocals: str = Form("ai"), music_seconds: int = Form(60), ai_music: str = Form(""),
+                 review: str = Form(""), same_look: str = Form("1"), style: str = Form("auto"), ai_motion: str = Form(""), music_style: str = Form("bollywood"), vocals: str = Form("ai"), music_seconds: int = Form(60), ai_music: str = Form(""),
                  reference: UploadFile | None = File(None), music: UploadFile | None = File(None),
                  refs: list[UploadFile] | None = File(None)):
     if kind == "music" and not idea.strip() and not dialogue.strip():
@@ -119,7 +119,7 @@ async def create(idea: str = Form(""), dialogue: str = Form(""), seconds: int = 
                   aspect=aspect if aspect in ASPECTS else "9:16", quality=quality if quality in ("draft", "best") else "final",
                   kind=kind if kind in ("images", "music") else "video", count=max(1, min(8, count)),
                   music_style=music_style, vocals=vocals if vocals in ("ai", "mine", "instrumental") else "ai",
-                  music_seconds=max(10, min(600, music_seconds)), ai_music=ai_music == "1", same_look=same_look != "0", ai_motion=ai_motion == "1", style=style if style in ("auto", "interview2", "cinematic", "news", "ugc") else "auto")
+                  music_seconds=max(10, min(600, music_seconds)), ai_music=ai_music == "1", review=review == "1", same_look=same_look != "0", ai_motion=ai_motion == "1", style=style if style in ("auto", "interview2", "cinematic", "news", "ugc") else "auto")
     d = STORE.dir(p["id"])
     for up, key in ((reference, "reference"), (music, "music")):
         if up and up.filename:
@@ -423,6 +423,35 @@ def stop_project(pid: str):
 def resume_project(pid: str):
     _get(pid)
     RUNNER.submit(pid, "resume")
+    return {"ok": True}
+
+
+@app.patch("/api/projects/{pid}/plan")
+def edit_plan(pid: str, body: dict):
+    """Edit what Ghost wrote (prompts, lyrics, lines) before or after making."""
+    p = _get(pid)
+    for i, e in enumerate(body.get("stills") or []):
+        if i < len(p.get("stills") or []) and isinstance(e, dict):
+            for k in ("caption", "prompt"):
+                if isinstance(e.get(k), str) and e[k].strip():
+                    p["stills"][i][k] = e[k].strip()
+    if isinstance(body.get("song"), dict) and p.get("song"):
+        for k in ("title", "caption", "lyrics"):
+            v = body["song"].get(k)
+            if isinstance(v, str):
+                p["song"][k] = v.strip()
+                if k == "lyrics":
+                    p["song"]["describe"] = ""
+        if body["song"].get("title"):
+            p["title"] = body["song"]["title"].strip()
+    for i, e in enumerate(body.get("clips") or []):
+        if i < len(p.get("clips") or []) and isinstance(e, dict):
+            for k in ("line", "video_prompt", "image_prompt"):
+                if isinstance(e.get(k), str):
+                    p["clips"][i][k] = e[k].strip()
+    if isinstance(body.get("image_prompt"), str) and p.get("plan"):
+        p["plan"]["image_prompt"] = body["image_prompt"].strip()
+    STORE.save(p)
     return {"ok": True}
 
 
