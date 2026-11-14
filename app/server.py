@@ -70,7 +70,7 @@ def projects():
 @app.post("/api/projects")
 async def create(idea: str = Form(""), dialogue: str = Form(""), seconds: int = Form(30),
                  voice_mode: str = Form("oncamera"), language: str = Form(""), title: str = Form(""),
-                 aspect: str = Form("9:16"), quality: str = Form("final"),
+                 aspect: str = Form("9:16"), quality: str = Form("final"), kind: str = Form("video"), count: int = Form(4),
                  reference: UploadFile | None = File(None), music: UploadFile | None = File(None),
                  refs: list[UploadFile] | None = File(None)):
     if not idea.strip() and not dialogue.strip() and not reference:
@@ -78,7 +78,8 @@ async def create(idea: str = Form(""), dialogue: str = Form(""), seconds: int = 
     p = STORE.new(idea=idea.strip(), dialogue=dialogue.strip(), seconds=max(8, min(180, seconds)),
                   voice_mode=voice_mode, language=language or CFG.get("language", "Hindi"), title=title.strip() or "New ad",
                   mode="reference" if reference else "idea",
-                  aspect=aspect if aspect in ASPECTS else "9:16", quality="draft" if quality == "draft" else "final")
+                  aspect=aspect if aspect in ASPECTS else "9:16", quality="draft" if quality == "draft" else "final",
+                  kind="images" if kind == "images" else "video", count=max(1, min(8, count)))
     d = STORE.dir(p["id"])
     for up, key in ((reference, "reference"), (music, "music")):
         if up and up.filename:
@@ -309,6 +310,31 @@ def upgrade(pid: str):
     _get(pid)
     RUNNER.submit(pid, "upgrade")
     return {"ok": True}
+
+
+@app.post("/api/projects/{pid}/images/{i}/redo")
+def redo_image(pid: str, i: int):
+    p = _get(pid)
+    if not 0 <= i < len(p.get("stills") or []):
+        raise HTTPException(404, "No such image")
+    RUNNER.submit(pid, "redo_still", i=i)
+    return {"ok": True}
+
+
+@app.get("/api/projects/{pid}/zip")
+def zip_images(pid: str):
+    """All images of an images-only project in one zip."""
+    import io
+    import zipfile
+    from fastapi.responses import Response
+    p = _get(pid)
+    b = io.BytesIO()
+    with zipfile.ZipFile(b, "w", zipfile.ZIP_DEFLATED) as z:
+        for n, s in enumerate(p.get("stills") or [], 1):
+            if s.get("image") and Path(s["image"]).exists():
+                z.write(s["image"], f"{n:02d} {s.get('caption') or 'image'}.png".replace("/", "-"))
+    safe = "".join(ch for ch in (p.get("title") or "images") if ch.isalnum() or ch in " -_").strip() or "images"
+    return Response(b.getvalue(), media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{safe} - images.zip"'})
 
 
 @app.post("/api/projects/{pid}/rerun")

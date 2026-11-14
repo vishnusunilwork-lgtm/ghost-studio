@@ -63,7 +63,7 @@ class Store:
         for f in self.root.glob("*/project.json"):
             try:
                 p = json.loads(f.read_text(encoding="utf-8"))
-                out.append({k: p.get(k) for k in ("id", "title", "status", "updated", "final", "mode", "step", "quality", "aspect", "progress")})
+                out.append({k: p.get(k) for k in ("id", "title", "status", "updated", "final", "mode", "step", "quality", "aspect", "progress", "kind")})
             except Exception:
                 pass
         return sorted(out, key=lambda x: x.get("updated") or 0, reverse=True)
@@ -145,6 +145,9 @@ class Runner:
             self._done(p, "analyse")
         else:
             p["steps"]["analyse"] = "skipped"
+        if p.get("kind") == "images":
+            self._images_only(pid, ref)
+            return
         # 2 plan
         self._say(p, "plan", "Writing the script and every prompt", 10)
         pl = planner.plan(self.cfg, idea=p.get("idea", ""), dialogue=p.get("dialogue", ""), reference=ref,
@@ -300,10 +303,67 @@ class Runner:
     def _reedit(self, pid):
         self._edit(pid)
 
+    # ------------------------------------------------------------ images only
+    def _images_only(self, pid, ref=None):
+        p = self.store.load(pid)
+        self._say(p, "plan", "Writing the image prompts", 8)
+        pl = planner.plan_images(self.cfg, idea=p.get("idea", "") or p.get("dialogue", ""), reference=ref,
+                                 count=int(p.get("count", 4)), aspect=p.get("aspect") or "9:16", language=p.get("language"))
+        if p.get("title") in (None, "", "New ad"):
+            p["title"] = pl.get("title") or "Images"
+        p["stills"] = [{"caption": i.get("caption", ""), "prompt": i["prompt"], "seed": random.randint(1, 10**6), "status": "waiting"}
+                       for i in pl["images"]]
+        if pl.get("note"):
+            p["log"].append(pl["note"])
+        self._done(p, "plan")
+        self._stills(pid)
+
+    def _stills(self, pid, only: int | None = None):
+        p = self.store.load(pid)
+        d = self.store.dir(pid)
+        q = self.cfg["quality"]
+        _, (ow, oh), draft = sizes(p)
+        k = 0.5 if draft else 1.0
+        w, h = int(ow * k) // 16 * 16, int(oh * k) // 16 * 16
+        steps = int(q.get("image_steps_draft", 20)) if draft else int(q["image_steps"])
+        refs = [Path(r) for r in p.get("refs") or []]
+        idx = [only] if only is not None else range(len(p["stills"]))
+        n = len(p["stills"]) or 1
+        first = Path(p["stills"][0]["image"]) if only is not None and p["stills"][0].get("image") else None
+        for i in idx:
+            s = p["stills"][i]
+            self._say(p, "images", f"Image {i + 1} of {n}: {s.get('caption', '')}", 15 + int(80 * i / n))
+            f = d / f"image{i + 1:02d}_{s['seed']}{'_draft' if draft else ''}.png"
+            ref_imgs = [*refs] + ([first] if first and i > 0 else [])
+            self.eng.image(s["prompt"], f, w, h, seed=int(s["seed"]), ref_images=ref_imgs[:4] or None, steps=steps,
+                           fallback=refs[i % len(refs)] if refs else None)
+            s["image"], s["status"] = str(f), "done"
+            if i == 0 and first is None:
+                first = f
+            self.store.save(p)
+        for st in ("videos", "voice", "edit"):
+            p["steps"][st] = "skipped"
+        p["steps"]["images"] = "done"
+        p["status"], p["progress"] = "done", 100
+        p["log"].append(time.strftime("%H:%M:%S ") + f"Finished {n} image{'s' if n > 1 else ''}")
+        self.store.save(p)
+
+    def _redo_still(self, pid, i: int):
+        p = self.store.load(pid)
+        p["stills"][i]["seed"] = random.randint(1, 10**6)
+        p["stills"][i]["status"] = "waiting"
+        self.store.save(p)
+        self._stills(pid, only=i)
+
     def _upgrade(self, pid):
         """Draft -> final: the same script and the same takes (seeds), re-made at full quality."""
         p = self.store.load(pid)
         p["quality"] = "final"
+        if p.get("kind") == "images":
+            p["steps"]["images"] = "waiting"
+            self.store.save(p)
+            self._stills(pid)
+            return
         for s in ("images", "videos", "voice", "edit"):
             p["steps"][s] = "waiting"
         p["log"].append(time.strftime("%H:%M:%S ") + "Making the final version at full quality")

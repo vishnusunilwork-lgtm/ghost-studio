@@ -106,3 +106,38 @@ def _fallback(idea, dialogue, reference, seconds, lang, b, why, aspect="9:16"):
     return {"title": (idea or "New ad")[:40], "character": {"look": look, "voice": "warm adult voice"}, "people": [],
             "image_prompt": f"{aspect} real phone photo, {look}, {idea or 'festive home'}, natural light, no text.",
             "clips": clips, "note": "Written without the local language model (" + why + "). Start Ollama for real scripts."}
+
+
+SHOTS = ["close-up portrait, looking at camera, warm smile", "medium shot, natural gesture", "detail shot of hands and key object",
+         "wide shot showing the whole place", "over-the-shoulder shot", "low angle, festive light behind",
+         "candid moment, laughing", "top-down flat lay of the key objects"]
+
+
+def plan_images(cfg: dict, *, idea: str = "", reference: dict | None = None, count: int = 4, aspect: str = "9:16",
+                language: str | None = None) -> dict:
+    """Images only: a set of still images (ad stills, status posts, thumbnails) with one prompt each."""
+    count = max(1, min(8, int(count or 4)))
+    src = (f"REFERENCE AD to take the look from (same kind of people, place, light and framing, new fictional faces): {reference}"
+           if reference else f"IDEA: {idea}")
+    prompt = f"""You are an art director and prompt engineer for a photo-real image model.
+Make {count} different still images for {cfg['brand']['name']} ({cfg['brand']['about']}), {aspect} frame.
+{src}
+Rules: {RULES}
+Keep the same fictional people, outfits and place across all images, but vary the moment, framing and angle.
+Each prompt: one rich paragraph, real phone-photo look, every visible detail (people, clothes, place, light, colours, framing, lens feel). No text in the image.
+Return JSON only: {{"title":"short name","images":[{{"caption":"3-6 words","prompt":""}}]}}"""
+    try:
+        if not llm.available():
+            raise RuntimeError("Ollama is not running")
+        data = llm.ask_json(cfg["models"]["llm"], prompt)
+        imgs = [i for i in data.get("images", []) if i.get("prompt")][:count]
+        if not imgs:
+            raise RuntimeError("empty")
+        data["images"] = imgs
+    except Exception as e:
+        look = "a fictional Indian adult in festive everyday clothes, real skin texture"
+        data = {"title": (idea or "Images")[:40], "note": "Written without the local language model (" + str(e) + ").",
+                "images": [{"caption": SHOTS[i % len(SHOTS)].split(",")[0].capitalize(),
+                            "prompt": f"{aspect} real phone photo, {look}, {idea or 'festive home'}, {SHOTS[i % len(SHOTS)]}, natural light, no text."}
+                           for i in range(count)]}
+    return data

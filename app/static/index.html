@@ -97,7 +97,7 @@ h1.ask span{display:inline-block;animation:word .9s var(--ease) both}
 .sug{display:flex;align-items:center;gap:13px;width:100%;padding:12px 16px;border-radius:14px;color:var(--mute);text-align:left;transition:background .18s var(--ease),color .18s}
 .sug:hover{background:var(--hover);color:var(--ink)}.sug svg{flex:none;opacity:.85}
 .sug:nth-child(1){animation:enter .6s .15s var(--ease) both}.sug:nth-child(2){animation:enter .6s .22s var(--ease) both}.sug:nth-child(3){animation:enter .6s .29s var(--ease) both}
-.err{color:var(--bad);font-size:13px;text-align:center;min-height:20px;margin:10px 0 0}
+.err{color:var(--bad);font-size:13px;text-align:center;min-height:20px;margin:10px 0 0}.linkbtn{color:var(--ink);text-decoration:underline;text-underline-offset:3px;font:inherit}
 .foot{position:fixed;bottom:14px;left:0;right:0;text-align:center;color:var(--faint);font-size:12px;z-index:1;pointer-events:none}
 
 /* popover menu */
@@ -206,6 +206,15 @@ details.log pre{font:11.5px/1.6 ui-monospace,Menlo,monospace;color:var(--mute);w
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 
 /* ---------- Glass layer: frosted surfaces over the molecule field ---------- */
+.gallery-wrap{margin-top:8px}.galbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}.galbar .btn{height:42px}
+.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px}
+.tile{display:flex;flex-direction:column;gap:8px;padding:8px;border-radius:20px;background:var(--glass-soft);border:1px solid var(--edge);box-shadow:var(--hi);animation:enter .5s var(--ease) both;min-width:0}
+.tile .im{aspect-ratio:var(--ar,9/16);border-radius:14px;overflow:hidden;background:#111;position:relative}
+.tile .im img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
+.tile .im.wait::after{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 30%,rgba(255,255,255,.07) 50%,transparent 70%);background-size:250% 100%;animation:sheen 1.8s linear infinite}
+.tile .cap{font-size:13px;color:var(--mute);padding:0 4px;min-height:20px}.tile .row2{display:flex;gap:6px}.tile .row2 .btn{flex:1;height:36px;font-size:13px;padding:0 10px}
+.zoom{position:fixed;inset:0;z-index:85;display:grid;place-items:center;background:rgba(6,6,8,.72);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);cursor:zoom-out;animation:enter .3s var(--ease) both;padding:24px}
+.zoom img{max-width:100%;max-height:100%;border-radius:16px;box-shadow:0 30px 90px -20px rgba(0,0,0,.9)}
 .prog{margin-top:6px;padding:12px 14px;border-radius:16px;background:var(--glass-soft);border:1px solid var(--edge);box-shadow:var(--hi)}
 .prog .ptop2{display:flex;justify-content:space-between;align-items:baseline;font-size:13.5px}.prog .ptop2 span{font:500 13px ui-monospace,Menlo,monospace;color:var(--ink)}
 .ptrack{height:6px;border-radius:99px;background:rgba(255,255,255,.08);overflow:hidden;margin:9px 0 2px;position:relative}
@@ -292,9 +301,11 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
           </button>
         </div>
         <div class="opts">
-          <label class="opt" title="Length"><select id="len"><option value="15">15 s</option><option value="30" selected>30 s</option><option value="45">45 s</option><option value="60">60 s</option><option value="90">90 s</option><option value="120">2 min</option></select></label>
+          <label class="opt" title="What to make"><select id="kind"><option value="video">Video ad</option><option value="images">Images only</option></select></label>
+          <label class="opt hidden" id="countOpt" title="How many images"><select id="count"><option value="1">1 image</option><option value="2">2 images</option><option value="4" selected>4 images</option><option value="6">6 images</option><option value="8">8 images</option></select></label>
+          <label class="opt" id="lenOpt" title="Length"><select id="len"><option value="15">15 s</option><option value="30" selected>30 s</option><option value="45">45 s</option><option value="60">60 s</option><option value="90">90 s</option><option value="120">2 min</option></select></label>
           <label class="opt" title="Shape"><select id="aspect"><option value="9:16">9:16 Reels</option><option value="4:5">4:5 Feed</option><option value="1:1">1:1 Square</option><option value="16:9">16:9 YouTube</option></select></label>
-          <label class="opt" title="Voice"><select id="voice"><option value="oncamera">People talk</option><option value="narrator">Narrator</option><option value="both">Both</option></select></label>
+          <label class="opt" id="voiceOpt" title="Voice"><select id="voice"><option value="oncamera">People talk</option><option value="narrator">Narrator</option><option value="both">Both</option></select></label>
           <label class="opt" title="Language"><select id="lang"><option>Hindi</option><option>English</option><option>Marathi</option><option>Tamil</option><option>Telugu</option><option>Bengali</option><option>Gujarati</option><option>Kannada</option><option>Malayalam</option><option>Punjabi</option></select></label>
           <button class="opt tog" id="exact" title="Use my words exactly, as the dialogue"><span class="tg"></span>Exact words</button>
         </div>
@@ -330,6 +341,10 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
         <button class="btn hidden" id="pReport" style="max-width:340px;width:100%;margin-top:10px">Copy problem report</button>
         <details class="log"><summary>Show what it's doing</summary><pre id="pLog"></pre></details>
       </div>
+    </div>
+    <div class="gallery-wrap hidden" id="galWrap">
+      <div class="galbar"><a class="btn solid" id="gZip" download><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 4v12M6 11l6 6 6-6M5 20h14"/></svg>Download all</a><button class="btn hidden" id="gUp">Make them final · full quality</button><button class="btn" id="gRerun">Start again</button></div>
+      <div class="gallery" id="gallery"></div>
     </div>
     <div class="shots-h"><h3>Shots</h3><small id="shotsHint">Click a shot to change its words, camera move or shake</small></div>
     <div class="shots" id="shots"></div>
@@ -432,6 +447,9 @@ function grow(){prompt_.style.height='auto';prompt_.style.height=Math.min(240,pr
 function ready(){const ok=prompt_.value.trim()||A.ref;$('#send').classList.toggle('ready',!!ok);$('#sugs').classList.toggle('dim',!!(prompt_.value.trim()||A.ref||A.pics.length))}
 prompt_.addEventListener('input',grow);
 prompt_.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();go()}});
+function kindUI(){const im=$('#kind').value==='images';$('#countOpt').classList.toggle('hidden',!im);$('#lenOpt').classList.toggle('hidden',im);$('#voiceOpt').classList.toggle('hidden',im);$('#exact').classList.toggle('hidden',im);
+  prompt_.placeholder=im?'Describe the images, or drop a reference ad to copy its look…':(EXACT?'Paste the exact dialogue. Two people? Start lines with “Name: …”':'Describe the ad, or drop a reference video…')}
+$('#kind').onchange=kindUI;
 $('#exact').onclick=()=>{EXACT=!EXACT;$('#exact').classList.toggle('on',EXACT);prompt_.placeholder=EXACT?'Paste the exact dialogue. Two people? Start lines with “Name: …”':'Describe the ad, or drop a reference video…';prompt_.focus()};
 
 let MENU=null;
@@ -468,7 +486,9 @@ $$('.sug').forEach(b=>b.onclick=()=>{const s=b.dataset.s;
 $('#send').onclick=go;
 async function go(){const text=prompt_.value.trim();$('#goErr').textContent='';
   if(!text&&!A.ref){$('#goErr').textContent='Write an idea, paste your dialogue, or add a reference ad.';prompt_.focus();return}
-  const fd=new FormData();fd.append(EXACT?'dialogue':'idea',text);fd.append('seconds',$('#len').value);fd.append('aspect',$('#aspect').value);fd.append('voice_mode',$('#voice').value);fd.append('language',$('#lang').value);fd.append('quality',QUAL);
+  const imgs=$('#kind').value==='images';
+  if(imgs&&ST&&ST.makers&&ST.makers.image==='photos'&&!A.pics.length){$('#goErr').innerHTML='Images only needs AI pictures. <button class="linkbtn" id="goSet">Open ⚙ to install the free image AI</button> (or add your own photos with +).';$('#goSet').onclick=()=>{kv();drawer('settings')};return}
+  const fd=new FormData();fd.append('kind',$('#kind').value);fd.append('count',$('#count').value);fd.append(imgs?'idea':(EXACT?'dialogue':'idea'),text);fd.append('seconds',$('#len').value);fd.append('aspect',$('#aspect').value);fd.append('voice_mode',$('#voice').value);fd.append('language',$('#lang').value);fd.append('quality',QUAL);
   if(A.ref)fd.append('reference',A.ref);if(A.music)fd.append('music',A.music);A.pics.forEach(f=>fd.append('refs',f));
   $('#send').classList.remove('ready');const r0=comp.getBoundingClientRect();F.impulse(r0.left+r0.width/2,r0.top+r0.height/2,9);F.set(.9);
   try{const r=await api('/api/projects',{method:'POST',body:fd});comp.classList.add('sent');setTimeout(()=>{comp.classList.remove('sent');prompt_.value='';A.ref=null;A.pics=[];A.music=null;chips();grow();saveDraft();open(r.id)},380)}
@@ -499,7 +519,7 @@ function iaShow(s){const run=s.state==='running',err=s.state==='error',ok=s.stat
   if(run){$('#sText').textContent='Installing AI '+Math.round(s.pct||0)+'%'}}
 async function iaPoll(){clearInterval(IA_T);const tick=async()=>{try{const s=await api('/api/settings/image-ai');iaShow(s);if(s.state!=='running'){clearInterval(IA_T);await status();kv();if(s.state==='done')toast('Free AI pictures are installed')}}catch(e){}};await tick();IA_T=setInterval(tick,1500)}
 $('#iaBtn').onclick=async()=>{try{iaShow(await api('/api/settings/image-ai',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}))}catch(e){toast(e.message)}iaPoll()};
-async function list(){const ps=await api('/api/projects');$('#plist').innerHTML=ps.length?ps.map(p=>`<button class="prow ${p.id===CUR?'cur':''}" data-id="${p.id}"><span class="sdot ${p.status}"></span><b>${esc(p.title||'Ad')}</b><small>${p.status==='running'?(p.progress||0)+'%':esc(STATUS[p.status]||p.status)}${p.quality==='draft'?' · draft':''}</small></button>`).join(''):'<p class="note">Your ads appear here.</p>';
+async function list(){const ps=await api('/api/projects');$('#plist').innerHTML=ps.length?ps.map(p=>`<button class="prow ${p.id===CUR?'cur':''}" data-id="${p.id}"><span class="sdot ${p.status}"></span><b>${esc(p.title||'Ad')}</b><small>${p.status==='running'?(p.progress||0)+'%':esc(STATUS[p.status]||p.status)}${p.kind==='images'?' · images':''}${p.quality==='draft'?' · draft':''}</small></button>`).join(''):'<p class="note">Your ads appear here.</p>';
   $$('.prow').forEach(r=>r.onclick=()=>{drawer(null);open(r.dataset.id)})}
 
 /* ---------- project ---------- */
@@ -524,9 +544,22 @@ async function refresh(force){if(!CUR)return;let p;try{p=await api('/api/project
   if(fin&&(force||LASTFIN!==p.final)){LASTFIN=p.final;const u=fileUrl(p.id,p.final,Math.round(p.updated||0));scr.innerHTML=`<video src="${u}" controls playsinline autoplay muted loop></video>`;$('#pDl').href=u;$('#pDl').setAttribute('download',p.final.split(/[\\/]/).pop())}
   else if(!fin){LASTFIN='';const last=[...(p.clips||[])].reverse().find(c=>c.video);const src=last?fileUrl(p.id,last.video):p.image?fileUrl(p.id,p.image):'';const cur=scr.dataset.src||'';
     if(src&&src!==cur){scr.dataset.src=src;scr.innerHTML=last?`<video src="${src}" playsinline autoplay muted loop></video>`:`<img src="${src}" alt="">`}else if(!src&&!scr.querySelector('.veil')){scr.dataset.src='';scr.innerHTML='<div class="veil">Waiting for the first frame…</div>'}}
+  const imgs=p.kind==='images';$('.stage').classList.toggle('hidden',imgs);$('.shots-h').classList.toggle('hidden',imgs);$('#shots').classList.toggle('hidden',imgs);$('#galWrap').classList.toggle('hidden',!imgs);
+  if(imgs){$('#pSteps').innerHTML=['analyse','plan','images'].filter(s=>p.steps[s]!=='skipped'||s!=='analyse').map(s=>`<li class="${p.steps[s]}"><i></i>${esc({analyse:'Reading the reference',plan:'Writing the image prompts',images:'Making the images'}[s])}</li>`).join('');
+    const gs=JSON.stringify((p.stills||[]).map(x=>[x.image,x.status]))+p.status+p.quality;if(force||gs!==LAST){LAST=gs;gallery(p)}
+    $('#gZip').classList.toggle('hidden',!(p.status==='done'));$('#gZip').href='/api/projects/'+p.id+'/zip';$('#gUp').classList.toggle('hidden',!(p.status==='done'&&p.quality==='draft'));$('#gRerun').classList.toggle('hidden',busy);
+    if(!busy){clearInterval(TIMER);TIMER=setInterval(refresh,8000)}return}
   const sig=JSON.stringify((p.clips||[]).map(c=>[c.video,c.status,c.camera_move,c.shake,c.line,c.seconds]))+p.status;
   if(force||sig!==LAST){LAST=sig;shots(p)}
   if(!busy){clearInterval(TIMER);TIMER=setInterval(refresh,8000)}}
+function gallery(p){const ar=(p.aspect||'9:16').replace(':','/');$('#gallery').style.setProperty('--ar',ar);const busy=p.status==='running'||p.status==='queued';
+  $('#gallery').innerHTML=(p.stills||[]).map((x,i)=>{const u=x.image?fileUrl(p.id,x.image,x.seed):'';const nm=`${String(i+1).padStart(2,'0')} ${x.caption||'image'}.png`;
+    return `<div class="tile" style="animation-delay:${i*50}ms"><div class="im ${u?'':'wait'}">${u?`<img src="${u}" alt="${esc(x.caption)}" data-z="${u}">`:''}</div><div class="cap">${i+1}. ${esc(x.caption||'')}</div>
+    <div class="row2">${u?`<a class="btn" href="${u}" download="${esc(nm)}">Download</a>`:''}<button class="btn" data-redo="${i}" ${busy?'disabled':''}>New take</button></div></div>`}).join('')||'<p class="note">Images appear here as they are made.</p>';
+  $$('#gallery [data-z]').forEach(im=>im.onclick=()=>{const z=document.createElement('div');z.className='zoom';z.innerHTML=`<img src="${im.dataset.z}" alt="">`;z.onclick=()=>z.remove();document.body.appendChild(z)});
+  $$('#gallery [data-redo]').forEach(b=>b.onclick=async()=>{b.disabled=true;try{await api(`/api/projects/${CUR}/images/${b.dataset.redo}/redo`,{method:'POST'});toast('Making a new take of image '+(+b.dataset.redo+1));kick()}catch(e){toast(e.message);b.disabled=false}})}
+$('#gUp').onclick=async()=>{await api(`/api/projects/${CUR}/upgrade`,{method:'POST'});toast('Making the final images at full quality');kick()};
+$('#gRerun').onclick=async()=>{await api(`/api/projects/${CUR}/rerun`,{method:'POST'});toast('Making new images');kick()};
 function shots(p){const cs=p.clips||[];$('#shotsHint').textContent=cs.length?'Click a shot to change its words, camera move or shake':'Shots appear as soon as the script is written';
   $('#shots').innerHTML=cs.map((c,i)=>`<button class="shot" data-i="${i}" style="animation-delay:${i*40}ms"><div class="th ${c.video?'':'wait'}">${c.video?`<video src="${fileUrl(p.id,c.video)}#t=0.5" muted playsinline preload="metadata"></video>`:p.image?`<img src="${fileUrl(p.id,p.image)}" alt="" style="opacity:.35">`:''}<span class="n">${i+1}</span></div><p>${esc(c.line)}</p><small>${Number(c.seconds).toFixed(1)} s · ${esc(MOVE_LABEL[c.camera_move]||c.camera_move)}${c.shake>0?' · handheld':''}</small></button>`).join('');
   $$('.shot').forEach(b=>{const v=b.querySelector('video');if(v){b.onmouseenter=()=>v.play().catch(()=>{});b.onmouseleave=()=>{v.pause()}}b.onclick=()=>sheet(+b.dataset.i)})}
@@ -573,7 +606,7 @@ $('#upGo').onclick=async()=>{if(P&&(P.status==='running'||P.status==='queued')){
 /* draft: what you are typing and choosing is saved as you go, and comes back after an update or reload */
 const DKEY='gs-draft';
 function saveDraft(){const open=$('#clipSheet').classList.contains('on')&&EDIT>=0;
-  lsSet(DKEY,{prompt:prompt_.value,len:$('#len').value,aspect:$('#aspect').value,voice:$('#voice').value,lang:$('#lang').value,exact:EXACT,qual:QUAL,pid:CUR,
+  lsSet(DKEY,{kind:$('#kind').value,count:$('#count').value,prompt:prompt_.value,len:$('#len').value,aspect:$('#aspect').value,voice:$('#voice').value,lang:$('#lang').value,exact:EXACT,qual:QUAL,pid:CUR,
     sheet:open?{i:EDIT,line:$('#csLine').value,prompt:$('#csPrompt').value,move:$('.mv.on')?.dataset.m||'',shake:$('#csShake').value,amt:$('#csAmt').value}:null})}
 let _dt=0;const draftSoon=()=>{clearTimeout(_dt);_dt=setTimeout(saveDraft,250)};
 ['input','change'].forEach(t=>document.addEventListener(t,draftSoon,true));document.addEventListener('click',()=>setTimeout(draftSoon,60),true);
@@ -582,7 +615,7 @@ async function saveAtt(){try{const db=await idb();await new Promise(r=>{const tx
 async function loadAtt(){try{const db=await idb();return await new Promise(r=>{const q=db.transaction('att').objectStore('att').get('cur');q.onsuccess=()=>r(q.result);q.onerror=()=>r(null)})}catch(e){return null}}
 function setSel(id,v){const el=$('#'+id);if(v&&[...el.options].some(o=>o.value===v))el.value=v}
 async function restore(){const d=lsGet(DKEY);
-  if(d){prompt_.value=d.prompt||'';grow();setSel('len',d.len);setSel('aspect',d.aspect);setSel('voice',d.voice);setSel('lang',d.lang);$('#lang').dataset.set=1;
+  if(d){prompt_.value=d.prompt||'';grow();setSel('len',d.len);setSel('aspect',d.aspect);setSel('voice',d.voice);setSel('lang',d.lang);setSel('kind',d.kind);setSel('count',d.count);kindUI();$('#lang').dataset.set=1;
     if(d.exact&&!EXACT){EXACT=true;$('#exact').classList.add('on')}if(d.qual){QUAL=d.qual;$('#modeTxt').textContent=QUAL==='draft'?'Draft':'Final'}}
   const a=await loadAtt();if(a&&(a.ref||(a.pics||[]).length||a.music)){A.ref=a.ref||null;A.pics=a.pics||[];A.music=a.music||null;chips()}
   const pid=location.hash.length>1?location.hash.slice(1):d&&d.pid;

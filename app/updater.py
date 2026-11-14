@@ -47,6 +47,15 @@ def _get(url: str, timeout=20) -> bytes:
         return r.read()
 
 
+def _v(s: str) -> tuple:
+    """'2.10.1' -> (2, 10, 1) so versions compare correctly."""
+    out = []
+    for part in (s or "0").strip().split("."):
+        num = "".join(ch for ch in part if ch.isdigit())
+        out.append(int(num) if num else 0)
+    return tuple(out)
+
+
 def check(force: bool = False) -> dict:
     if not force and _cache["data"] and time.time() - _cache["t"] < 120:
         return _cache["data"]
@@ -64,7 +73,7 @@ def check(force: bool = False) -> dict:
                         break
             except Exception:
                 pass
-            data = {"available": bool(remote) and remote != local_version(), "remote": remote, "local": local_version(), "notes": notes}
+            data = {"available": bool(remote) and _v(remote) > _v(local_version()), "remote": remote, "local": local_version(), "notes": notes}
         except Exception as e:
             data = {"available": False, "reason": "offline: " + str(e)[:120]}
     _cache.update(t=time.time(), data=data)
