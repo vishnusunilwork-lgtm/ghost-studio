@@ -253,6 +253,9 @@ def ollama_up() -> bool:
 
 def script_installed(cfg=None) -> bool:
     from . import llm
+    import importlib.util
+    if importlib.util.find_spec("faster_whisper") is None:
+        return False
     have = llm.installed()
     return any(h.split(":")[0] in ("qwen2.5", "qwen3", "llama3.1", "llama3.2", "gemma2", "gemma3", "mistral") for h in have)
 
@@ -279,8 +282,11 @@ def install_script(cfg):
     if not ollama_up():
         raise RuntimeError("Ollama is not running. Install it free from ollama.com, open it once, then press Install again.")
     model = _script_model()
-    _ollama_pull(aid, model, 0, 75)
-    _ollama_pull(aid, "qwen2.5vl:3b" if memory_gb() < 24 else "qwen2.5vl:7b", 75, 100)  # eyes for the quality check
+    _ollama_pull(aid, model, 0, 65)
+    _ollama_pull(aid, "qwen2.5vl:3b" if memory_gb() < 24 else "qwen2.5vl:7b", 65, 90)  # eyes for the quality check
+    # ears for reference ads: speech-to-text (faster-whisper, MIT)
+    _pip(aid, ["faster-whisper"], 90, 93)
+    _hf_download(aid, "Systran/faster-whisper-small", 93, 100)
     cfg["models"]["llm"] = model
 
 
@@ -433,7 +439,7 @@ class MusicServer:
         cls.start(log)
         body = {"prompt": caption, "lyrics": lyrics or "[Instrumental]", "audio_duration": max(10, min(600, float(seconds))),
                 "vocal_language": language or "unknown", "audio_format": "mp3", "batch_size": max(1, min(4, takes)),
-                "inference_steps": 8, "thinking": not fast, "use_random_seed": seed < 0, "seed": seed}
+                "inference_steps": 8, "thinking": (not fast) or (lyrics or "[Instrumental]") != "[Instrumental]" or bool(describe), "use_random_seed": seed < 0, "seed": seed}
         if bpm:
             body["bpm"] = int(bpm)
         if describe:  # the music engine writes caption + lyrics itself

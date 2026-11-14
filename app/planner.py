@@ -61,6 +61,9 @@ def plan(cfg: dict, *, idea: str = "", dialogue: str = "", reference: dict | Non
     src = (f"REFERENCE AD to recreate (same kind of people, place, framing, camera moves, action and micro-expressions, "
            f"but new fictional faces): {reference}") if reference else f"IDEA: {idea}"
     need_script = not dialogue.strip()
+    n_clips = max(1, round(seconds / (max_s - 1.0))) if need_script else max(1, len(split_lines(dialogue)))
+    if reference and not (reference.get("transcript") or "").strip():
+        src += "\n(The reference's speech could not be heard: copy its look, people, framing and camera moves, and write a fresh script.)"
     prompt = f"""You are a film director and prompt engineer for the open video model LTX-2 (it makes video AND the spoken audio with lip-sync from a first-frame image).
 Make a {seconds} s {aspect} ad for {b['name']} in {lang}. About the brand: {b['about']}
 {src}
@@ -68,6 +71,8 @@ Make a {seconds} s {aspect} ad for {b['name']} in {lang}. About the brand: {b['a
 Voice: {'people speak on camera' if voice_mode == 'oncamera' else 'a narrator speaks over the pictures (people do not talk)' if voice_mode == 'narrator' else 'mostly on camera, with a short narrator line at the end'}.
 Rules: {RULES}
 Split the speech into clips of at most {max_s} s each (about 15 {lang} words), at natural pauses, never mid-phrase.
+Make EXACTLY {n_clips} clips so the ad really lasts about {seconds} seconds. Give each clip a different shot (close-up, medium, detail, wide…) and a different camera move.
+The title must be a real 2-5 word name for this ad (never "short name").
 For every clip write an LTX-2 prompt as one rich paragraph: who (same character description every time), exact action and micro-expressions second by second, where, light, camera framing and move, then the speech as: He/She says in {lang}: "<line>" (spoken once, natural pace, ends before the clip ends), then ambient sound. No music, no subtitles, no text.
 Pick a camera_move per clip from {MOVES} and a handheld shake 0-1.5 (0 = tripod).
 Return JSON only:
@@ -80,8 +85,19 @@ Return JSON only:
         if not llm.available():
             raise RuntimeError("Ollama is not running")
         data = llm.ask_json(cfg["models"]["llm"], prompt)
+        if len(data.get("clips", [])) < max(1, int(n_clips * 0.7)):  # too short: ask once more, firmly
+            more = llm.ask_json(cfg["models"]["llm"], prompt + f"\n\nIMPORTANT: your last answer had only {len(data.get('clips', []))} clip(s). "
+                                f"Return the full JSON again with EXACTLY {n_clips} clips.", temperature=0.4)
+            if len(more.get("clips", [])) > len(data.get("clips", [])):
+                data = more
+        if len(data.get("clips", [])) < max(1, int(n_clips * 0.7)):
+            raise RuntimeError(f"the script AI wrote only {len(data.get('clips', []))} of {n_clips} clips")
     except Exception as e:  # works without any model, so the app is usable from minute one
         data = _fallback(idea, dialogue, reference, seconds, lang, b, str(e), aspect)
+    t = (data.get("title") or "").strip()
+    if not t or t.lower() in ("short name", "title", "name", "new ad"):
+        first = (data.get("clips") or [{}])[0].get("line", "") or idea or "New ad"
+        data["title"] = " ".join(first.split()[:5]).strip(" .,!?:;") or "New ad"
     for c in data.get("clips", []):
         c["seconds"] = max(2.0, min(max_s + 0.5, float(c.get("seconds") or max_s)))
         if c.get("camera_move") not in MOVES:
@@ -91,9 +107,15 @@ Return JSON only:
 
 
 def _fallback(idea, dialogue, reference, seconds, lang, b, why, aspect="9:16"):
-    lines = split_lines(dialogue) if dialogue.strip() else [
-        {"speaker": "", "line": f"{idea or 'इस दिवाली'}…"},
-        {"speaker": "", "line": f"{b['spoken']} ऐप डाउनलोड करें।"}]
+    if dialogue.strip():
+        lines = split_lines(dialogue)
+    else:
+        n = max(2, round(seconds / 6.5))
+        body = [f"{idea or 'इस दिवाली'}…", "अपनों के साथ हर पल ख़ास बनाइए।", "अपनी फ़ोटो और नाम के साथ शुभकामनाएँ भेजिए।",
+                "हर त्योहार, अपनी भाषा में।", "आज ही शुरू कीजिए।"] if lang == "Hindi" else \
+               [f"{idea or 'This festival'}…", "Make every moment with your family special.", "Send wishes with your own photo and name.",
+                "Every festival, in your language.", "Start today."]
+        lines = [{"speaker": "", "line": body[i % len(body)]} for i in range(n - 1)] + [{"speaker": "", "line": f"{b['spoken']} ऐप डाउनलोड करें।" if lang == "Hindi" else f"Download {b['spoken']} today."}]
     look = "a fictional Indian adult in festive everyday clothes, warm smile, real skin texture"
     moves = ["push_in", "none", "pan_right", "push_in", "tilt_up", "none"]
     clips = []
@@ -207,14 +229,27 @@ def plan_music(cfg: dict, *, idea: str = "", style: str = "bollywood", vocals: s
     try:
         if not llm.available():
             raise RuntimeError("no local script AI")
-        verses = max(1, round(seconds / 45))
-        data = llm.ask_json(cfg["models"]["llm"], f"""You are a hit songwriter and music producer.
-Brand context (do not force the name in): {cfg['brand']['about']}
+        plan_lines = ("one verse of 4 short lines and a chorus of 2 lines" if seconds <= 40 else
+                      "verse (4 lines), chorus (4 lines), verse (4 lines), chorus" if seconds <= 100 else
+                      "verse, chorus, verse, chorus, bridge (2 lines), chorus")
+        script = (" using Devanagari script" if lang in ("Hindi", "Marathi") else " in its own script")
+        data = llm.ask_json(cfg["models"]["llm"], f"""You are a professional {lang} lyricist for ad jingles and film songs.
 Song idea: {idea or 'a warm festival song'}
 Style: {base}
-Length: about {seconds} seconds.
-{'Write the lyrics in ' + lang + (' using Devanagari script' if lang in ('Hindi', 'Marathi') else ' in its own script') + f'. Structure with tags on their own lines: [Verse], [Chorus], [Bridge], [Outro]. About {verses} verse(s) and a memorable chorus. Natural singable lines, no brand claims, no real people.' if want_lyrics else 'Lyrics are given; do not change them.'}
-Return JSON only: {{"title":"short song title","caption":"one line for the music model: genre, instruments, mood, tempo, vocal type (e.g. warm female vocals)","bpm":100{', "lyrics":"..."' if want_lyrics else ''}}}""", temperature=0.8)
+Length: about {seconds} seconds, so write {plan_lines}.
+{('Write the lyrics in simple, everyday, correct ' + lang + script + '. Every word must be a real common word a child would know; no invented words, no mixed scripts. '
+  'Each line 4-7 words, easy to sing, gentle rhymes. Tags on their own lines: [Verse], [Chorus], [Bridge]. No brand names, no claims, no real people.') if want_lyrics else 'Lyrics are given; do not change them.'}
+Return JSON only: {{"title":"short song title","caption":"one line for the music model: genre, instruments, mood, tempo, vocal type (e.g. warm female vocals)","bpm":100{', "lyrics":"..."' if want_lyrics else ''}}}""", temperature=0.7)
+        if want_lyrics and data.get("lyrics"):
+            try:  # second pass: a strict proofread catches made-up words
+                fix = llm.ask_json(cfg["models"]["llm"], f"""Proofread these {lang} song lyrics. Replace any word that is not a real, common {lang} word,
+fix grammar, keep the meaning, keep every [tag] line and the number of lines. Return JSON only: {{"lyrics":"..."}}
+Lyrics:
+{data['lyrics']}""", temperature=0.2)
+                if fix.get("lyrics") and len(fix["lyrics"]) > 0.5 * len(data["lyrics"]):
+                    data["lyrics"] = fix["lyrics"]
+            except Exception:
+                pass
         out["title"] = data.get("title") or out["title"]
         out["caption"] = (data.get("caption") or out["caption"]).strip()
         if data.get("bpm"):

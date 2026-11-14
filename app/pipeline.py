@@ -136,11 +136,15 @@ class Runner:
             frames = key_frames(Path(p["reference"]), d / "ref")
             text = p.get("dialogue_ref") or self.eng.transcribe(Path(p["reference"]))
             p["ref_frames"], p["ref_text"] = frames, text
+            if not text:
+                p["log"].append(time.strftime("%H:%M:%S ") + "Could not hear the reference's speech (install Script AI to copy its words). Writing a fresh script.")
             try:
                 from . import llm
                 ref = planner.analyse_reference(self.cfg, frames, text) if llm.available() else {"summary": "reference ad", "scenes": frames}
             except Exception as e:
                 ref = {"summary": "reference ad (vision model unavailable: %s)" % e}
+            if isinstance(ref, dict):
+                ref["transcript"] = text
             p["ref_analysis"] = ref
             self._done(p, "analyse")
         else:

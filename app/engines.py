@@ -478,7 +478,8 @@ class Engines:
         if self.mock or not _has("faster_whisper"):
             return ""
         from faster_whisper import WhisperModel
-        m = _pipe("whisper", lambda: WhisperModel(self.cfg["models"]["whisper"], device="cuda" if has_cuda() else "cpu"))
+        size = self.cfg["models"]["whisper"] if has_cuda() else "small"
+        m = _pipe("whisper", lambda: WhisperModel(size, device="cuda" if has_cuda() else "cpu", compute_type="float16" if has_cuda() else "int8"))
         segs, _ = m.transcribe(str(media), language=None, vad_filter=True)
         return " ".join(s.text.strip() for s in segs)
 

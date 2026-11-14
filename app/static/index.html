@@ -336,6 +336,7 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
           <button class="opt tog" id="exact" title="Use my words exactly, as the dialogue"><span class="tg"></span>Exact words</button>
         </div>
       </div>
+      <p class="note hidden" id="songTip" style="text-align:center;margin:8px 0 0">Tip: singing in Hindi and other Indian languages is the hardest part for free music AI. For the clearest words, paste your own lyrics (Song · my lyrics) and use Final. Instrumental is always clean.</p>
       <p class="err" id="goErr"></p>
       <div class="sugs" id="sugs">
         <button class="sug" data-s="ref"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="5" width="13" height="14" rx="2"/><path d="m16 10 5-3v10l-5-3"/></svg>Copy a reference ad with new faces</button>
@@ -480,9 +481,9 @@ prompt_.addEventListener('input',grow);
 prompt_.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();go()}});
 function kindUI(){const k=$('#kind').value,im=k==='images',mu=k==='music',vi=k==='video';
   const show=(id,on)=>$('#'+id).classList.toggle('hidden',!on);
-  show('countOpt',im);show('lockOpt',im);show('lenOpt',vi);show('voiceOpt',vi);show('vmusicOpt',vi);show('exact',vi);show('aspectOpt',!mu);show('mstyleOpt',mu);show('mvocalOpt',mu);show('mlenOpt',mu);
+  show('countOpt',im);show('songTip',mu&&$('#lang').value!=='English'&&$('#mvocal').value!=='instrumental');show('lockOpt',im);show('lenOpt',vi);show('voiceOpt',vi);show('vmusicOpt',vi);show('exact',vi);show('aspectOpt',!mu);show('mstyleOpt',mu);show('mvocalOpt',mu);show('mlenOpt',mu);
   prompt_.placeholder=mu?($('#mvocal').value==='mine'?'Paste your lyrics (you can add [Verse] and [Chorus] lines)…':'Describe the song: mood, story, occasion… e.g. a warm Diwali song about family'):im?'Describe the images, or drop a reference ad to copy its look…':(EXACT?'Paste the exact dialogue. Two people? Start lines with “Name: …”':'Describe the ad, or drop a reference video…')}
-$('#mvocal').onchange=kindUI;
+$('#mvocal').onchange=kindUI;$('#lang').addEventListener('change',kindUI);
 $('#kind').onchange=kindUI;
 $('#exact').onclick=()=>{EXACT=!EXACT;$('#exact').classList.toggle('on',EXACT);prompt_.placeholder=EXACT?'Paste the exact dialogue. Two people? Start lines with “Name: …”':'Describe the ad, or drop a reference video…';prompt_.focus()};
 
