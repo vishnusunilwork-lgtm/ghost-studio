@@ -34,6 +34,23 @@ BUILD = ""
 STORE = Store(ROOT / CFG["paths"]["projects"])
 RUNNER = Runner(CFG, STORE)
 app = FastAPI(title="AI Film Studio Local")
+
+
+def _background_boost():
+    """After start: give Apple chips the fast picture engine, then pre-load the picture model when idle."""
+    import time as _t
+    from . import addons
+    _t.sleep(5)
+    try:
+        addons.ensure_fast_pictures(CFG)
+        if addons.memory_gb() >= 24 and not RUNNER.busy:
+            RUNNER.eng.warm()
+    except Exception as e:
+        print("boost skipped:", e)
+
+
+import threading as _th  # noqa: E402
+_th.Thread(target=_background_boost, daemon=True).start()
 app.mount("/static", StaticFiles(directory=ROOT / "app" / "static"), name="static")
 
 

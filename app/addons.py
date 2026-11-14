@@ -195,8 +195,69 @@ def _safe(fn, err):
 
 
 def install_pictures(cfg):
-    _pip("pictures", ["torch", "transformers", "diffusers>=0.43.0", "accelerate", "sentencepiece", "safetensors", "huggingface_hub"], 0, 30)
+    _pip("pictures", ["torch", "transformers", "diffusers>=0.43.0", "accelerate", "sentencepiece", "safetensors", "huggingface_hub"], 0, 25)
+    if IS_MAC and platform.machine() == "arm64":
+        try:
+            _pip("pictures", ["mflux>=0.18.0"], 25, 30)  # Apple-chip native speed-up (optional)
+        except Exception:
+            pass
     _hf_download("pictures", _pictures_model(cfg), 30, 100)
+
+
+def ensure_fast_pictures(cfg):
+    """Existing installs on Apple chips quietly get the MLX speed-up."""
+    import importlib.util
+    if not (IS_MAC and platform.machine() == "arm64") or importlib.util.find_spec("mflux"):
+        return
+    try:
+        import diffusers  # noqa: F401  (only if pictures are installed)
+    except Exception:
+        return
+    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "mflux>=0.18.0"], capture_output=True, text=True)
+
+
+# ---------------------------------------------------------------- add-on: script AI (Ollama model)
+def _script_model() -> str:
+    m = memory_gb()
+    return "qwen2.5:14b" if m >= 32 else "qwen2.5:7b" if m >= 12 else "qwen2.5:3b"
+
+
+def ollama_up() -> bool:
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=3):
+            return True
+    except Exception:
+        return False
+
+
+def script_installed(cfg=None) -> bool:
+    from . import llm
+    have = llm.installed()
+    return any(h.split(":")[0] in ("qwen2.5", "qwen3", "llama3.1", "llama3.2", "gemma2", "gemma3", "mistral") for h in have)
+
+
+def install_script(cfg):
+    aid = "script"
+    if not ollama_up():
+        raise RuntimeError("Ollama is not running. Install it free from ollama.com, open it once, then press Install again.")
+    model = _script_model()
+    _set(aid, step=f"Downloading the script AI ({model})", detail="")
+    req = urllib.request.Request("http://127.0.0.1:11434/api/pull", data=json.dumps({"model": model, "stream": True}).encode(),
+                                 headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=7200) as r:
+        for line in r:
+            try:
+                d = json.loads(line)
+            except Exception:
+                continue
+            if d.get("error"):
+                raise RuntimeError(d["error"])
+            if d.get("total"):
+                done, tot = d.get("completed", 0), d["total"]
+                _set(aid, pct=round(99 * done / tot, 1), detail=f"{done / 1e9:.1f} of {tot / 1e9:.1f} GB")
+            elif d.get("status"):
+                _set(aid, detail=d["status"])
+    cfg["models"]["llm"] = model
 
 
 # ---------------------------------------------------------------- add-on: music (ACE-Step 1.5)
@@ -405,6 +466,9 @@ def install_motion(cfg):
 
 # ---------------------------------------------------------------- registry
 ADDONS = {
+    "script": {"name": "Script AI", "desc": "Writes scripts, lyrics and every prompt (much better than the built-in templates). Qwen 2.5 in Ollama (Apache 2.0).",
+               "size": "about 5 GB", "time": "a few seconds per script", "install": install_script, "installed": script_installed,
+               "fits": lambda: (ollama_up(), "" if ollama_up() else "Needs the free Ollama app: get it at ollama.com, open it, then come back.")},
     "pictures": {"name": "AI pictures", "desc": "Photo-real images for shots and Images only. FLUX.2 klein (Apache 2.0).",
                  "size": "about 10 GB", "time": "1–3 min per picture on a Mac", "install": install_pictures, "installed": pictures_installed,
                  "fits": lambda: ((memory_gb() >= 16 or cuda_vram_gb() >= 8), "" if (memory_gb() >= 16 or cuda_vram_gb() >= 8) else "Needs 16 GB memory or more.")},

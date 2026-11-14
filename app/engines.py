@@ -219,6 +219,13 @@ class Engines:
         return self._card(prompt, out, width, height, seed, fallback)
 
     def _local_image(self, prompt, out, width, height, seed, ref_images, steps, mac=False):
+        if mac and _mflux_ok():
+            try:
+                return self._mflux_image(prompt, out, width, height, seed, ref_images)
+            except Exception as e:  # fall back to the slower PyTorch path
+                print("Fast pictures (MLX) failed, using PyTorch:", e)
+                _MFLUX["broken"] = True
+                free()
         import torch
         from PIL import Image
         mid = self.cfg["models"]["image_mac" if mac else "image"]
@@ -245,6 +252,33 @@ class Engines:
             kw["image"] = [Image.open(p).convert("RGB") for p in ref_images]
         pipe(**kw).images[0].save(out)
         return out
+
+    def _mflux_image(self, prompt, out, width, height, seed, ref_images):
+        """Apple-chip native (MLX) FLUX.2 klein: same model files, about 3-4x faster than PyTorch on a Mac."""
+        from mflux.models.common.config.model_config import ModelConfig
+        from mflux.models.flux2.variants.edit.flux2_klein_edit import Flux2KleinEdit
+        q = int(self.cfg["quality"].get("mac_quantize", 8)) or None
+        model = _pipe("mflux", lambda: Flux2KleinEdit(quantize=q, model_config=ModelConfig.flux2_klein_4b()))
+        s = min(1.0, 1024 / max(width, height))
+        w, h = int(width * s) // 16 * 16, int(height * s) // 16 * 16
+        refs = [str(p) for p in (ref_images or []) if p and Path(p).exists()][:3]
+        res = model.generate_image(seed=int(seed) % 2**31, prompt=prompt, num_inference_steps=4, width=w, height=h,
+                                   guidance=1.0, image_paths=refs or None)
+        res.image.save(out)
+        return out
+
+    def warm(self):
+        """Load the picture model ahead of time so the first picture starts straight away."""
+        if self.mock or self.plan()["image"] != "local":
+            return
+        try:
+            if _mflux_ok():
+                from mflux.models.common.config.model_config import ModelConfig
+                from mflux.models.flux2.variants.edit.flux2_klein_edit import Flux2KleinEdit
+                q = int(self.cfg["quality"].get("mac_quantize", 8)) or None
+                _pipe("mflux", lambda: Flux2KleinEdit(quantize=q, model_config=ModelConfig.flux2_klein_4b()))
+        except Exception as e:
+            print("warm-up skipped:", e)
 
     def _card(self, prompt, out, width, height, seed, photo: Path | None):
         """No image AI: use the person's own photo, else a soft colour card (honest placeholder)."""
@@ -406,6 +440,15 @@ class Engines:
         m = _pipe("whisper", lambda: WhisperModel(self.cfg["models"]["whisper"], device="cuda" if has_cuda() else "cpu"))
         segs, _ = m.transcribe(str(media), language=None, vad_filter=True)
         return " ".join(s.text.strip() for s in segs)
+
+
+_MFLUX: dict = {}
+
+
+def _mflux_ok() -> bool:
+    if _MFLUX.get("broken") or platform.system() != "Darwin" or platform.machine() != "arm64":
+        return False
+    return _has("mflux") and _has("mlx")
 
 
 def _motion_ready() -> bool:

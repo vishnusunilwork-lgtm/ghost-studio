@@ -38,8 +38,33 @@ def _json_from(text: str):
         raise ValueError("The local model did not return JSON: " + text[:300])
 
 
+def installed() -> list[str]:
+    try:
+        with urllib.request.urlopen(OLLAMA + "/api/tags", timeout=3) as r:
+            return [m["name"] for m in json.loads(r.read()).get("models", [])]
+    except Exception:
+        return []
+
+
+PREFER = ["qwen2.5", "qwen3", "llama3", "gemma", "mistral", "phi"]
+
+
+def pick(model: str, vision: bool = False) -> str:
+    """The configured model if it is downloaded, else the best one that is."""
+    have = installed()
+    if not have or model in have or (model + ":latest") in have:
+        return model
+    pool = [m for m in have if ("vl" in m or "llava" in m or "vision" in m) == vision] or have
+    for fam in PREFER:
+        for m in pool:
+            if m.startswith(fam):
+                return m
+    return pool[0]
+
+
 def ask_json(model: str, prompt: str, images: list[bytes] | None = None, temperature: float = 0.6) -> dict:
     """One call, JSON answer. images = raw PNG/JPEG bytes (vision model only)."""
+    model = pick(model, vision=bool(images))
     msg = {"role": "user", "content": prompt}
     if images:
         msg["images"] = [base64.b64encode(b).decode() for b in images]

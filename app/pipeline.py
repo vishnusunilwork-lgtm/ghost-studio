@@ -411,16 +411,18 @@ class Runner:
         idx = [only] if only is not None else range(len(p["stills"]))
         n = len(p["stills"]) or 1
         first = Path(p["stills"][0]["image"]) if only is not None and p["stills"][0].get("image") else None
+        took: list[float] = []
         for i in idx:
             s = p["stills"][i]
-            self._say(p, "images", f"Image {i + 1} of {n}: {s.get('caption', '')}", 15 + int(80 * i / n))
+            eta = f" · about {int(sum(took) / len(took))} s each" if took else (" · first one also loads the model" if i == 0 else "")
+            self._say(p, "images", f"Image {i + 1} of {n}: {s.get('caption', '')}{eta}", 15 + int(80 * i / n))
+            t0 = time.time()
             f = d / f"image{i + 1:02d}_{s['seed']}{'_draft' if draft else ''}.png"
-            ref_imgs = [*refs] + ([first] if first and i > 0 else [])
+            ref_imgs = [*refs]  # only your own photos: an automatic reference doubled the time per image
             self.eng.image(s["prompt"], f, w, h, seed=int(s["seed"]), ref_images=ref_imgs[:4] or None, steps=steps,
                            fallback=refs[i % len(refs)] if refs else None)
             s["image"], s["status"] = str(f), "done"
-            if i == 0 and first is None:
-                first = f
+            took.append(time.time() - t0)
             self.store.save(p)
         for st in ("videos", "voice", "edit"):
             p["steps"][st] = "skipped"
