@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ghost Studio · starting</title>
+<style>
+:root{--bg:#0a0a0b;--ink:#ededee;--mute:#9a9aa1;--edge:rgba(255,255,255,.12);color-scheme:dark}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:radial-gradient(circle at 50% 40%,#16181f,var(--bg) 60%);color:var(--ink);font:15px/1.6 "Inter",system-ui,-apple-system,"Segoe UI",sans-serif;display:grid;place-items:center;padding:0 16px}
+.card{width:min(440px,100%);padding:34px 30px;border-radius:26px;background:rgba(30,30,36,.42);border:1px solid var(--edge);box-shadow:inset 0 1px 0 rgba(255,255,255,.09),0 30px 90px -30px rgba(0,0,0,.9);
+  -webkit-backdrop-filter:blur(22px) saturate(160%);backdrop-filter:blur(22px) saturate(160%);text-align:center}
+svg{width:64px;height:64px;color:var(--ink)}
+.spin g{transform-origin:13px 13px;animation:o 2.4s linear infinite}
+@keyframes o{to{transform:rotate(360deg)}}
+h1{font-size:22px;font-weight:600;margin:16px 0 4px;letter-spacing:-.01em}
+p{color:var(--mute);margin:0}
+.tip{margin-top:18px;font-size:13px;min-height:42px;transition:opacity .4s}
+.bar{height:3px;border-radius:9px;background:rgba(255,255,255,.08);overflow:hidden;margin-top:22px}
+.bar i{display:block;height:100%;width:40%;background:linear-gradient(90deg,transparent,#e8f1ff,transparent);animation:s 1.6s ease-in-out infinite}
+@keyframes s{from{transform:translateX(-100%)}to{transform:translateX(260%)}}
+@media(prefers-reduced-motion:reduce){.spin g,.bar i{animation:none}}
+</style>
+</head>
+<body>
+<div class="card">
+  <svg class="spin" viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><g><ellipse cx="13" cy="13" rx="10.5" ry="5.2" transform="rotate(-32 13 13)"/><ellipse cx="13" cy="13" rx="10.5" ry="5.2" transform="rotate(38 13 13)" opacity=".45"/><circle cx="15.6" cy="11.4" r="2.1" fill="currentColor" stroke="none"/></g></svg>
+  <h1 id="h">Starting Ghost Studio…</h1>
+  <p id="sub">This page opens the app by itself as soon as it's ready.</p>
+  <div class="bar"><i></i></div>
+  <p class="tip" id="tip">The very first time, it sets itself up. That takes about 5 minutes.</p>
+</div>
+<script>
+const URL_APP='http://localhost:7860/';
+const tips=['The very first time, it sets itself up. That takes about 5 minutes.','After this, opening Ghost Studio takes a few seconds.','Updates arrive by themselves: click “Update now” when you see it.','Your ads stay on this computer. Nothing is uploaded.'];
+let i=0;setInterval(()=>{const t=document.getElementById('tip');t.style.opacity=0;setTimeout(()=>{i=(i+1)%tips.length;t.textContent=tips[i];t.style.opacity=1},400)},6000);
+let done=false;const go=()=>{if(!done){done=true;location.replace(URL_APP)}};
+function probe(){if(done)return;const img=new Image();img.onload=go;img.src=URL_APP+'static/ping.png?'+Date.now();
+  try{fetch(URL_APP+'api/status',{mode:'no-cors',cache:'no-store'}).then(go,()=>{})}catch(e){}}
+probe();setInterval(probe,1500);
+const t0=Date.now();setInterval(()=>{if(!done&&Date.now()-t0>12*60*1000){document.getElementById('h').textContent='Taking longer than usual';document.getElementById('sub').textContent='Check your internet, then open Ghost Studio again from its icon. Still stuck? Tell Vishnu.'}},5000);
+</script>
+</body>
+</html>

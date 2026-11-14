@@ -44,7 +44,7 @@ def _get(url: str, timeout=20) -> bytes:
 
 
 def check(force: bool = False) -> dict:
-    if not force and _cache["data"] and time.time() - _cache["t"] < 600:
+    if not force and _cache["data"] and time.time() - _cache["t"] < 120:
         return _cache["data"]
     r = repo()
     if not r:
@@ -93,6 +93,8 @@ def restart_soon(delay: float = 1.0):
     """Replace this process with a fresh copy of the app (same port, same window)."""
     def go():
         time.sleep(delay)
+        if os.environ.get("GHOST_SERVICE"):
+            os._exit(0)  # the background engine starts the new version straight away
         os.chdir(ROOT)
         os.execv(sys.executable, [sys.executable, "-m", "uvicorn", "app.server:app",
                                   "--host", "127.0.0.1", "--port", os.environ.get("GHOST_PORT", "7860")])

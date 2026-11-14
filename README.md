@@ -36,7 +36,7 @@ Open **https://vishnusunilwork-lgtm.github.io/ghost-studio/** and copy the line 
 - **Mac:** paste it in **Terminal** and press Enter.
 - **Windows:** paste it in **PowerShell** and press Enter.
 
-You get a **Ghost Studio** icon on your Desktop. It updates itself.
+You get a **Ghost Studio** app icon on your Desktop. Click it and the app opens in your browser: no Terminal after the first install. It updates itself (**Update now** button), and you can stop it under ⚙ → **Stop Ghost Studio**.
 
 ## For the team (Mac)
 

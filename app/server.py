@@ -126,6 +126,18 @@ def update_apply():
     return {"ok": True, "sha": sha[:7]}
 
 
+@app.post("/api/stop")
+def stop_app():
+    """Stops the background engine until the Ghost Studio icon is opened again."""
+    import os
+    import threading
+    import time as _t
+    (ROOT / ".ghost").mkdir(exist_ok=True)
+    (ROOT / ".ghost" / "stop").write_text("1")
+    threading.Thread(target=lambda: (_t.sleep(0.8), os._exit(0)), daemon=True).start()
+    return {"ok": True}
+
+
 class ApiSettings(BaseModel):
     fal_key: str | None = None
     monthly_limit_usd: float | None = None

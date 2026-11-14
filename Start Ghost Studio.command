@@ -1,96 +1,114 @@
 #!/bin/bash
-# Ghost Studio — double-click to start.
-# Every start it checks for a newer version and updates itself (no account needed).
+# Ghost Studio (Mac). The Ghost Studio app icon runs this file.
+#   (no option)  open Ghost Studio: start the quiet background engine if needed, then open the browser
+#   --service    the background engine: keeps the app running, restarts it after updates
+#   --once       one run of the engine: update check, setup, start (used by --service)
 # Your ads (projects/), your settings (config.local.yaml) and the installed parts (.venv/) are never touched.
 
-REPO="vishnusunilwork-lgtm/ghost-studio"   # filled in by the person who set up the team project, e.g. yourname/ghost-studio
+REPO="vishnusunilwork-lgtm/ghost-studio"
+PORT=7860
 
-main() {
 SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 cd "$(dirname "$SELF")" || exit 1
 mkdir -p .ghost/bin
-export PATH="$PWD/.ghost/bin:$PATH"
-clear
-echo ""
-echo "  ◯  Ghost Studio"
-echo "  ---------------------------------------------"
-echo "  Keep this window open while you use the app. To stop: close this window."
-echo ""
+export PATH="$PWD/.ghost/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+up() { curl -s -o /dev/null --max-time 1 "http://127.0.0.1:$PORT/api/status"; }
+say_status() { printf '%s' "$1" > .ghost/status.txt; echo "$(date '+%H:%M:%S') $1"; }
 
-# ---------- 1) Updates (public project, no sign-in needed) ----------
-if [ "$1" != "--no-update" ] && [[ "$REPO" == */* ]]; then
-  printf '%s' "$REPO" > .ghost/repo
-  REMOTE=$(curl -fsSL --max-time 15 "https://raw.githubusercontent.com/$REPO/main/VERSION?$(date +%s)" 2>/dev/null | tr -d '[:space:]')
-  LOCAL=$(cat VERSION 2>/dev/null | tr -d '[:space:]')
-  if [ -n "$REMOTE" ] && { [ "$REMOTE" != "$LOCAL" ] || [ ! -f app/server.py ]; }; then
-    echo "  Getting Ghost Studio $REMOTE…"
-    rm -rf .ghost/new && mkdir -p .ghost/new
-    if curl -fsSL --max-time 300 "https://github.com/$REPO/archive/refs/heads/main.tar.gz" -o .ghost/new.tgz && tar -xzf .ghost/new.tgz -C .ghost/new; then
-      SRC=$(find .ghost/new -mindepth 1 -maxdepth 1 -type d | head -1)
-      if [ -f "$SRC/app/server.py" ]; then
-        cp -R "$SRC"/. ./
-        chmod +x "Start Ghost Studio.command" 2>/dev/null
-        rm -rf .ghost/new .ghost/new.tgz
-        echo "  Updated to $(cat VERSION 2>/dev/null)."
-        exec bash "$SELF" --no-update
-      fi
+# ------------------------------------------------------------------ open (the icon)
+open_app() {
+  if ! up; then
+    rm -f .ghost/stop
+    [ -f .ghost/server.log ] && [ "$(wc -c < .ghost/server.log)" -gt 5000000 ] && mv -f .ghost/server.log .ghost/server.old.log
+    ( nohup /bin/bash "$SELF" --service >> .ghost/server.log 2>&1 & ) >/dev/null 2>&1
+    if [ -f launcher/starting.html ]; then
+      open "file://$PWD/launcher/starting.html"
+      exit 0
     fi
-    echo "  Could not update right now — starting the version you have."
-  elif [ -z "$REMOTE" ]; then
-    echo "  Could not check for updates (offline?) — starting the version you have."
+    osascript -e 'display notification "Starting… the first time takes about 5 minutes." with title "Ghost Studio"' >/dev/null 2>&1
+    for _ in $(seq 1 900); do up && break; sleep 1; done
   fi
-fi
-if [ ! -f app/server.py ]; then
-  echo "  The app files are missing and could not be downloaded."
-  echo "  Check your internet connection, then try again."
-  read -r; exit 1
-fi
-
-# ---------- 2) Python 3.10 or newer ----------
-if [ ! -x ".venv/bin/python" ]; then
-  PY=""
-  for c in python3.13 python3.12 python3.11 python3.10 /opt/homebrew/bin/python3 /usr/local/bin/python3 python3; do
-    if command -v "$c" >/dev/null 2>&1 && "$c" -c 'import sys; sys.exit(0 if sys.version_info >= (3,10) else 1)' 2>/dev/null; then PY="$c"; break; fi
-  done
-  if [ -z "$PY" ]; then
-    echo "  Getting Python (one time)…"
-    curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="$PWD/.ghost/bin" INSTALLER_NO_MODIFY_PATH=1 sh >/dev/null 2>&1
-    uv venv --python 3.11 .venv >/dev/null 2>&1 && uv pip install --python .venv/bin/python pip >/dev/null 2>&1 \
-      || { echo "  Could not get Python. Send a screenshot of this window to Vishnu."; read -r; exit 1; }
-  else
-    echo "  Setting up (one time)…"
-    "$PY" -m venv .venv || { echo "  Could not set up Python. Send a screenshot of this window to Vishnu."; read -r; exit 1; }
-  fi
-fi
-
-# ---------- 3) The app's parts (installs only what is missing) ----------
-if ! .venv/bin/python -c "import fastapi, uvicorn, multipart, yaml, PIL" 2>/dev/null; then
-  echo "  Installing the app (one time, ~2 min)…"
-  .venv/bin/python -m pip install -q --upgrade pip
-  .venv/bin/python -m pip install -q fastapi "uvicorn[standard]" python-multipart pyyaml pillow \
-    || { echo "  Install failed. Send a screenshot of this window to Vishnu."; read -r; exit 1; }
-fi
-
-# ---------- 4) ffmpeg (the video editor engine) ----------
-for d in /opt/homebrew/bin /usr/local/bin; do [ -x "$d/ffprobe" ] && export PATH="$PATH:$d"; done
-if ! command -v ffprobe >/dev/null 2>&1; then
-  .venv/bin/python -c "import static_ffmpeg" 2>/dev/null || { echo "  Getting the video editor (one time)…"; .venv/bin/python -m pip install -q static-ffmpeg; }
-  FFDIR=$(.venv/bin/python -c "import static_ffmpeg,shutil,os; static_ffmpeg.add_paths(); print(os.path.dirname(shutil.which('ffprobe') or ''))" 2>/dev/null | tail -1)
-  [ -n "$FFDIR" ] && export PATH="$FFDIR:$PATH"
-fi
-
-# ---------- 5) Script AI (optional, uses Ollama if installed) ----------
-if command -v ollama >/dev/null 2>&1; then (ollama serve >/dev/null 2>&1 &); fi
-
-# ---------- 6) Start ----------
-echo "  Starting Ghost Studio $(cat VERSION 2>/dev/null)… your browser opens in a moment."
-( sleep 4; open "http://localhost:7860" ) &
-.venv/bin/python -m uvicorn app.server:app --host 127.0.0.1 --port 7860 2>&1 | grep -v "GET /api\|GET /files\|GET /static"
-echo ""
-echo "  Ghost Studio stopped. If that was unexpected, send a screenshot of this window to Vishnu."
-read -r
+  open "http://localhost:$PORT"
 }
 
+# ------------------------------------------------------------------ the background engine
+service() {
+  fails=0
+  while true; do
+    [ -f .ghost/stop ] && { rm -f .ghost/stop; say_status "Stopped"; exit 0; }
+    t0=$(date +%s)
+    /bin/bash "$SELF" --once
+    if [ $(( $(date +%s) - t0 )) -lt 20 ]; then fails=$((fails + 1)); else fails=0; fi
+    if [ "$fails" -ge 5 ]; then say_status "Could not start. Open Ghost Studio again, or send .ghost/server.log to Vishnu."; exit 1; fi
+    sleep 2
+  done
+}
 
-main "$@"
-exit
+once() {
+  # 1) updates (public project, no sign-in)
+  if [[ "$REPO" == */* ]]; then
+    printf '%s' "$REPO" > .ghost/repo
+    REMOTE=$(curl -fsSL --max-time 15 "https://raw.githubusercontent.com/$REPO/main/VERSION?$(date +%s)" 2>/dev/null | tr -d '[:space:]')
+    LOCAL=$(cat VERSION 2>/dev/null | tr -d '[:space:]')
+    if [ -n "$REMOTE" ] && { [ "$REMOTE" != "$LOCAL" ] || [ ! -f app/server.py ]; }; then
+      say_status "Getting Ghost Studio $REMOTE…"
+      rm -rf .ghost/new && mkdir -p .ghost/new
+      if curl -fsSL --max-time 300 "https://github.com/$REPO/archive/refs/heads/main.tar.gz" -o .ghost/new.tgz && tar -xzf .ghost/new.tgz -C .ghost/new; then
+        SRC=$(find .ghost/new -mindepth 1 -maxdepth 1 -type d | head -1)
+        if [ -f "$SRC/app/server.py" ]; then
+          cp -R "$SRC"/. ./
+          chmod +x "Start Ghost Studio.command" 2>/dev/null
+          rm -rf .ghost/new .ghost/new.tgz
+          say_status "Updated to $(cat VERSION 2>/dev/null)"
+          exit 0            # the engine loop starts the new version right away
+        fi
+      fi
+    fi
+  fi
+  [ -f app/server.py ] || { say_status "Could not download Ghost Studio. Check your internet."; exit 1; }
+
+  # 2) Python 3.10+ (its own copy)
+  if [ ! -x ".venv/bin/python" ]; then
+    PY=""
+    for c in python3.13 python3.12 python3.11 python3.10 /opt/homebrew/bin/python3 /usr/local/bin/python3 python3; do
+      if command -v "$c" >/dev/null 2>&1 && "$c" -c 'import sys; sys.exit(0 if sys.version_info >= (3,10) else 1)' 2>/dev/null; then PY="$c"; break; fi
+    done
+    say_status "Setting up (one time, about 5 minutes)…"
+    if [ -z "$PY" ]; then
+      curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="$PWD/.ghost/bin" INSTALLER_NO_MODIFY_PATH=1 sh >/dev/null 2>&1
+      uv venv --python 3.11 .venv >/dev/null 2>&1 && uv pip install --python .venv/bin/python pip >/dev/null 2>&1 \
+        || { say_status "Could not get Python."; exit 1; }
+    else
+      "$PY" -m venv .venv || { say_status "Could not set up Python."; exit 1; }
+    fi
+  fi
+
+  # 3) the app's parts
+  if ! .venv/bin/python -c "import fastapi, uvicorn, multipart, yaml, PIL" 2>/dev/null; then
+    say_status "Installing the app (one time, about 2 minutes)…"
+    .venv/bin/python -m pip install -q --upgrade pip
+    .venv/bin/python -m pip install -q fastapi "uvicorn[standard]" python-multipart pyyaml pillow || { say_status "Install failed."; exit 1; }
+  fi
+
+  # 4) ffmpeg
+  if ! command -v ffprobe >/dev/null 2>&1; then
+    .venv/bin/python -c "import static_ffmpeg" 2>/dev/null || { say_status "Getting the video editor (one time)…"; .venv/bin/python -m pip install -q static-ffmpeg; }
+    FFDIR=$(.venv/bin/python -c "import static_ffmpeg,shutil,os; static_ffmpeg.add_paths(); print(os.path.dirname(shutil.which('ffprobe') or ''))" 2>/dev/null | tail -1)
+    [ -n "$FFDIR" ] && export PATH="$FFDIR:$PATH"
+  fi
+
+  # 5) optional script AI
+  if command -v ollama >/dev/null 2>&1 && ! curl -s --max-time 1 http://127.0.0.1:11434 >/dev/null; then (ollama serve >/dev/null 2>&1 &); fi
+
+  # 6) start
+  say_status "Ready"
+  export GHOST_SERVICE=1 GHOST_PORT=$PORT
+  exec .venv/bin/python -m uvicorn app.server:app --host 127.0.0.1 --port $PORT --log-level warning
+}
+
+case "$1" in
+  --service) service ;;
+  --once) once ;;
+  *) open_app ;;
+esac
+exit 0
