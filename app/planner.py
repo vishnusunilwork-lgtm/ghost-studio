@@ -189,11 +189,12 @@ Describe it for remaking with new, fictional people. Return JSON only:
 
 def plan(cfg: dict, *, idea: str = "", dialogue: str = "", reference: dict | None = None, seconds: int = 30,
          voice_mode: str = "oncamera", language: str | None = None, aspect: str = "9:16", style: str = "auto", fast: bool = False,
-         cast: str = "auto") -> dict:
+         cast: str = "auto", photo: bool = False) -> dict:
     lang = language or cfg.get("language", "Hindi")
     cast = cast_of((idea or "") + " " + (dialogue or ""), cast)
     b = cfg["brand"]
-    max_s = float(cfg["quality"]["clip_seconds"])
+    # photo-motion ads need more, shorter shots to feel alive (a still held for 7 s looks frozen)
+    max_s = 4.8 if photo else float(cfg["quality"]["clip_seconds"])
     src = (f"REFERENCE AD to recreate (same kind of people, place, framing, camera moves, action and micro-expressions, "
            f"but new fictional faces): {reference}") if reference else f"IDEA: {idea}"
     need_script = not dialogue.strip()

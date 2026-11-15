@@ -220,7 +220,8 @@ class Runner:
         pl = planner.plan(self.cfg, idea=p.get("idea", ""), dialogue=p.get("dialogue", ""), reference=ref,
                           seconds=int(p.get("seconds", 30)), voice_mode=p.get("voice_mode", "oncamera"),
                           language=p.get("language"), aspect=p.get("aspect") or "9:16", style=self._style(p, ref),
-                          fast=p.get("quality") == "draft", cast=p.get("cast", "auto"))
+                          fast=p.get("quality") == "draft", cast=p.get("cast", "auto"),
+                          photo=self.eng.plan()["video"] == "photo_motion")
         p["plan"] = {k: v for k, v in pl.items() if k != "clips"}
         p["title"] = p.get("title") if p.get("title") not in (None, "", "New ad") else pl.get("title") or "New ad"
         p["clips"] = [{**c, "status": "waiting", "seed": random.randint(1, 10**6)} for c in pl.get("clips", [])]
@@ -305,10 +306,19 @@ class Runner:
                     self.store.save(p)
         self._done(p, "images")
 
+    FRAMINGS = ["Medium shot, 50mm lens, the main character in the left third of the frame",
+                "Tight close-up of the face, 85mm lens, eyes sharp, background softly blurred",
+                "Wide shot, 24mm lens, the whole place visible, the character small in the frame",
+                "Low-angle shot, 28mm lens, looking up at the character",
+                "Three-quarter side angle, 35mm lens, the character looking off-frame",
+                "Close-up from slightly above, 70mm lens, shallow depth of field"]
+
     def _shot_image(self, p, i, w, h, steps, refs, main):
         c = p["clips"][i]
         f = self.store.dir(p["id"]) / f"shot{i + 1:02d}_{c['seed']}.png"
         prompt = c.get("image_prompt") or f"{p['plan']['image_prompt']} Moment: {c.get('line', '')}"
+        if i > 0:  # every shot gets a clearly different framing, so the ad cuts instead of repeating one picture
+            prompt = f"{self.FRAMINGS[i % len(self.FRAMINGS)]}. {prompt}"
         self.eng.image(prompt, f, w, h, seed=int(c["seed"]), ref_images=[main, *refs][:2], steps=steps,
                        fallback=refs[i % len(refs)] if refs else None)
         c["image"] = str(f)
@@ -382,6 +392,13 @@ class Runner:
             self.eng.speech(text, f, p.get("language") or self.cfg.get("language", "Hindi"), mine if k % 2 == 0 else other,
                             p.get("voice_style", "warm") if k < 2 else "calm")
             c["narration_file"] = str(f)
+            # each shot lasts as long as its line (+ a breath), so the ad has no dead air between lines
+            if not c.get("narration"):
+                try:
+                    from .editor import probe
+                    c["seconds"] = round(max(2.5, probe(f)["duration"] + 0.55), 2)
+                except Exception:
+                    pass
         self._done(p, "voice")
 
     def _talk(self, pid):

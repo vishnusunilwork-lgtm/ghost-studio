@@ -614,7 +614,7 @@ function kindUI(){const k=$('#kind').value,im=k==='images',mu=k==='music',vi=k==
   show('countOpt',im);show('castOpt',vi||im);show('vgenderOpt',vi||du);show('vstyleOpt',vi||du);show('styleOpt',!mu&&!du);show('songTip',mu&&$('#lang').value!=='English'&&$('#mvocal').value!=='instrumental');show('lockOpt',im);show('lenOpt',vi);show('voiceOpt',vi);show('vmusicOpt',vi);show('exact',vi);show('aspectOpt',!mu&&!du);show('mstyleOpt',mu);show('mvocalOpt',mu);show('mlenOpt',mu);
   prompt_.placeholder=du?'Add the video with + (or drop it here), choose the language to dub into below. Optional: a note about the video…':mu?($('#mvocal').value==='mine'?'Paste your lyrics (you can add [Verse] and [Chorus] lines)…':'Describe the song: mood, story, occasion… e.g. a warm Diwali song about family'):im?'Describe the images, or drop a reference ad to copy its look…':(EXACT?'Paste the exact dialogue. Two people? Start lines with “Name: …”':'Describe the ad, or drop a reference video…')}
 let REVIEW=false;$('#review').onclick=()=>{REVIEW=!REVIEW;$('#review').classList.toggle('on',REVIEW)};
-$('#mvocal').onchange=kindUI;$('#lang').addEventListener('change',kindUI);
+$('#mvocal').onchange=kindUI;$('#vmusic').addEventListener('change',()=>{VM_TOUCHED=true});$('#lang').addEventListener('change',kindUI);
 $('#kind').onchange=kindUI;
 $('#exact').onclick=()=>{EXACT=!EXACT;$('#exact').classList.toggle('on',EXACT);prompt_.placeholder=EXACT?'Paste the exact dialogue. Two people? Start lines with “Name: …”':'Describe the ad, or drop a reference video…';prompt_.focus()};
 
@@ -668,7 +668,9 @@ async function go(){const text=prompt_.value.trim();$('#goErr').textContent='';
 
 /* ---------- status / settings / history ---------- */
 const MK={image:{nvidia:'AI images (NVIDIA)',local:'AI images (this Mac)',service:'AI images (video service)',photos:'Your photos / colour cards'},video:{service:'Real video + speech (video service)',photo_motion:'Photo motion: pictures + camera moves'},voice:{natural:'Natural voices (add-on)',mac:'Mac voice (free, offline)',windows:'Windows voice (free, offline)',tone:'Test tone'}};
+let VM_TOUCHED=false;
 async function status(){try{ST=await api('/api/status');const mk=ST.makers||{},talk=mk.video!=='photo_motion';
+  if(!VM_TOUCHED&&ST.addons&&ST.addons.music&&ST.addons.music.installed)$('#vmusic').value='1';  // music on by default when it can be made
   $('#sDot').className='dot '+(ST.engine==='mock'?'warn':'ok');
   $('#sText').textContent=ST.engine==='mock'?'Test mode':mk.video==='service'?'Real video · service':'Photo motion';
   kindUI();$('#voice').querySelector('[value=oncamera]').textContent=talk?'People talk':'People talk (needs video service)';
