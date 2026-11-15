@@ -99,9 +99,24 @@ def _device():
 
 def _pipe(key, loader):
     if key not in _LOADED:
-        free()
+        from .llm import _ram_gb
+        if _ram_gb() < 31:  # small memory: one big model at a time. 32 GB+: keep them all ready (no reloading)
+            free()
         _LOADED[key] = loader()
     return _LOADED[key]
+
+
+# Apple MLX keeps its compute streams per thread: a model made in one thread fails in another
+# ("There is no Stream(cpu, 0) in current thread"). So every MLX load and every MLX picture runs on ONE thread.
+_MLX_POOL = None
+
+
+def _mlx(fn):
+    global _MLX_POOL
+    if _MLX_POOL is None:
+        from concurrent.futures import ThreadPoolExecutor
+        _MLX_POOL = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mlx")
+    return _MLX_POOL.submit(fn).result()
 
 
 def _run(args):
@@ -301,10 +316,10 @@ class Engines:
     def _local_image(self, prompt, out, width, height, seed, ref_images, steps, mac=False):
         if mac and _mflux_ok():
             try:
-                return self._mflux_image(prompt, out, width, height, seed, ref_images)
+                return _mlx(lambda: self._mflux_image(prompt, out, width, height, seed, ref_images))
             except Exception as e:  # fall back to the slower PyTorch path for this picture only
                 print("Fast pictures (MLX) failed, using PyTorch:", e)
-                _MFLUX["fails"] = _MFLUX.get("fails", 0) + 1
+                _MFLUX["fails"] = _MFLUX.get("fails", 0) + (0 if "Stream" in str(e) else 1)
                 if _MFLUX["fails"] >= 3:
                     _MFLUX["broken"] = True
                 free()
@@ -361,13 +376,15 @@ class Engines:
         s = min(1.0, long_side / max(width, height))
         w, h = int(width * s) // 16 * 16, int(height * s) // 16 * 16
         if _mflux_ok():
-            from mflux.models.common.config.model_config import ModelConfig
-            from mflux.models.z_image.variants.z_image import ZImage
-            q = int(self.cfg["quality"].get("mac_quantize", 8)) or None
-            m = _pipe("zimage", lambda: ZImage(quantize=q, model_config=ModelConfig.z_image_turbo()))
-            img = m.generate_image(seed=int(seed) % 2**31, prompt=prompt, num_inference_steps=8, width=w, height=h)
-            (img.image if hasattr(img, "image") else img).save(out)
-            return out
+            def run():
+                from mflux.models.common.config.model_config import ModelConfig
+                from mflux.models.z_image.variants.z_image import ZImage
+                q = int(self.cfg["quality"].get("mac_quantize", 8)) or None
+                m = _pipe("zimage", lambda: ZImage(quantize=q, model_config=ModelConfig.z_image_turbo()))
+                img = m.generate_image(seed=int(seed) % 2**31, prompt=prompt, num_inference_steps=8, width=w, height=h)
+                (img.image if hasattr(img, "image") else img).save(out)
+                return out
+            return _mlx(run)
         import torch
 
         def load():
@@ -389,10 +406,12 @@ class Engines:
             return
         try:
             if _mflux_ok():
-                from mflux.models.common.config.model_config import ModelConfig
-                from mflux.models.flux2.variants.txt2img.flux2_klein import Flux2Klein
-                q = int(self.cfg["quality"].get("mac_quantize", 8)) or None
-                _pipe("mflux", lambda: Flux2Klein(quantize=q, model_config=ModelConfig.flux2_klein_4b()))
+                def load():
+                    from mflux.models.common.config.model_config import ModelConfig
+                    from mflux.models.flux2.variants.txt2img.flux2_klein import Flux2Klein
+                    q = int(self.cfg["quality"].get("mac_quantize", 8)) or None
+                    _pipe("mflux", lambda: Flux2Klein(quantize=q, model_config=ModelConfig.flux2_klein_4b()))
+                _mlx(load)
         except Exception as e:
             print("warm-up skipped:", e)
 

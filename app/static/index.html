@@ -666,6 +666,7 @@ function renderAddons(r){const L=r.addons||[];$('#addSys').textContent=`This com
       ${!a.fits&&!a.installed?`<p class="note why">${esc(a.why)}</p>`:''}
       ${run||err?`<div class="prog ${err?'err':''}"><div class="ptop2"><b>${esc(a.step)}</b><span>${Math.round(a.pct||0)}%</span></div><div class="ptrack"><i style="width:${a.pct||0}%"></i></div><p class="note">${esc(a.detail||'')}${run?` · running for ${mins} min · you can keep working`:''}</p></div>`:''}
       ${a.upgrade&&!run?`<p class="note why">${esc(a.upgrade)}</p>`:''}
+      ${a.id==='voices'&&!a.installed&&!run?`<a class="btn" href="https://huggingface.co/ai4bharat/indic-parler-tts" target="_blank" rel="noopener" style="margin-bottom:6px">Open the voice model page (Agree and access)</a>`:''}
       ${a.needs_token&&!run?`<div class="hfbox"><p class="note">One time: the voice model's makers (AI4Bharat) ask for a free Hugging Face account. 1) Sign up free at huggingface.co. 2) Open huggingface.co/ai4bharat/indic-parler-tts and press <b>Agree and access</b>. 3) Settings → Access Tokens → New token (Read). Paste it here: it stays on this computer.</p><input type="password" class="inp" id="hfTok" placeholder="hf_…" autocomplete="off" spellcheck="false"><button class="btn" id="hfSave" style="margin-top:6px;width:100%">Save token</button></div>`:''}
       ${!a.installed&&!run&&(a.fits||err)?`<button class="btn" data-install="${a.id}">${err?'Try again':a.upgrade?'Upgrade':'Install'}</button>`:''}${sub(a)}</div>`}).join('');
   const hs=$('#hfSave');if(hs)hs.onclick=async()=>{try{const r=await api('/api/settings/hf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:$('#hfTok').value})});
@@ -911,7 +912,10 @@ async function checkUpdate(force){try{UPD=await api('/api/update'+(force?'?force
   if(UPD.available&&later!==UPD.remote){$('#upVer').textContent=UPD.remote;$('#upNotes').textContent=UPD.notes||'Improvements and fixes.';$('#upbar').classList.remove('hidden')}else $('#upbar').classList.add('hidden')}catch(e){}}
 $('#verBtn').onclick=()=>{if(UPD&&UPD.available){try{sessionStorage.removeItem('gs-later')}catch(e){}$('#upVer').textContent=UPD.remote;$('#upNotes').textContent=UPD.notes||'Improvements and fixes.';$('#upbar').classList.remove('hidden')}else{toast('You have the latest version ('+(ST?.version||'')+')');checkUpdate(true)}};
 $('#upLater').onclick=()=>{try{sessionStorage.setItem('gs-later',UPD?.remote||'')}catch(e){}$('#upbar').classList.add('hidden')};
-$('#upGo').onclick=async()=>{let cur=null;try{cur=(await api('/api/status')).current}catch(e){}if(cur){toast(`“${cur.title||'An ad'}” is being made (${cur.progress||0}%). Pause it or wait, then update.`);return}
+$('#upGo').onclick=async()=>{let cur=null;try{cur=(await api('/api/status')).current}catch(e){}
+  if(cur){if(!confirm(`“${cur.title||'An ad'}” is being made (${cur.progress||0}%).\n\nPause it and update now? Everything made so far is kept: open it afterwards and press Continue.`))return;
+    try{await api(`/api/projects/${cur.id}/stop`,{method:'POST'})}catch(e){}toast('Pausing… then updating');
+    for(let k=0;k<90;k++){await new Promise(r=>setTimeout(r,1000));try{if(!(await api('/api/status')).current)break}catch(e){}}}
   saveDraft();await saveAtt();const before=ST?.version;lsSet('gs-upd',{from:before,to:UPD?.remote});
   const c=document.createElement('div');c.className='cover';c.innerHTML='<div><canvas class="cmark"></canvas>Updating Ghost Studio…<small>About 10–30 seconds. Your ads, settings and what you were typing are kept.</small></div>';document.body.appendChild(c);try{ghostMark(c.querySelector('canvas'),84)}catch(e){}
   try{await api('/api/update',{method:'POST'})}catch(e){c.remove();lsSet('gs-upd',null);toast(e.message);return}

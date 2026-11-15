@@ -616,7 +616,8 @@ def install_voices(cfg):
     if why == "needs_token":
         raise RuntimeError("The voice model's makers (AI4Bharat) ask for a free Hugging Face account. Paste your free token below, then press Install again.")
     if why == "needs_agree":
-        raise RuntimeError("Open huggingface.co/ai4bharat/indic-parler-tts while signed in, press “Agree and access”, then press Install again.")
+        raise RuntimeError("Your token works, but this account hasn't been given access yet. Press “Open the voice model page”, sign in, "
+                           "press “Agree and access” (AI4Bharat may take a little while to approve), then press Try again.")
     if why:
         raise RuntimeError(why)
     base = ["torch", "soundfile", "numpy", "huggingface_hub"]
