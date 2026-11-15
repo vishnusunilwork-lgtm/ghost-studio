@@ -466,7 +466,9 @@ class Google:
             op, pre = self._call("video", self.video_models, [self.location], "predictLongRunning", body)
         t0 = time.time()
         while time.time() - t0 < 900:
-            time.sleep(4 if time.time() - t0 < 60 else 8)
+            for _ in range(8 if time.time() - t0 < 60 else 16):  # Pause / Delete stops waiting at once
+                time.sleep(0.5)
+                check_stop()
             st = self._post(f"{pre}:fetchPredictOperation", {"operationName": op["name"]}, 120)
             if not st.get("done"):
                 continue

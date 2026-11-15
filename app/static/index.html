@@ -614,7 +614,8 @@ const ASKS=['What shall we film today?','Which ad are we remaking?','Tell me the
 function headline(){const t=ASKS[Math.floor(Math.random()*ASKS.length)];$('#ask').innerHTML=t.split(' ').map((w,i)=>`<span style="animation-delay:${i*55}ms">${esc(w)}</span>`).join(' ')}
 
 /* ---------- views + drawers ---------- */
-function show(v){for(const id of['home','proj']){const el=$('#'+id);const on=id===v;el.classList.toggle('hidden',!on);if(on){el.classList.remove('enter');void el.offsetWidth;el.classList.add('enter')}}}
+function stopMedia(sel){$$(sel+' video,'+sel+' audio').forEach(m=>{try{m.pause();m.removeAttribute('src');m.load()}catch(e){}})}
+function show(v){if(v!=='proj')stopMedia('#proj');for(const id of['home','proj']){const el=$('#'+id);const on=id===v;el.classList.toggle('hidden',!on);if(on){el.classList.remove('enter');void el.offsetWidth;el.classList.add('enter')}}}
 function drawer(id){$$('.drawer').forEach(d=>d.classList.toggle('on',d.id===id));$('#scrim').classList.toggle('on',!!id)}
 $('#scrim').onclick=()=>drawer(null);$$('[data-close]').forEach(b=>b.onclick=()=>drawer(null));
 addEventListener('keydown',e=>{if(e.key==='Escape'){drawer(null);closeMenu()}if(e.key==='/'&&document.activeElement.tagName!=='TEXTAREA'&&!$('#home').classList.contains('hidden')){e.preventDefault();$('#prompt').focus()}});
@@ -784,7 +785,7 @@ async function list(){const ps=await api('/api/projects');$('#plist').innerHTML=
   $$('[data-ren]').forEach(b=>b.onclick=async e=>{e.stopPropagation();const row=b.closest('.prow'),cur=row.querySelector('b').textContent;const t=prompt('New name for this project:',cur);if(t&&t.trim()&&t.trim()!==cur){await renameP(b.dataset.ren,t.trim());list()}});
   $$('[data-del]').forEach(b=>b.onclick=async e=>{e.stopPropagation();await deleteP(b.dataset.del,b.closest('.prow').querySelector('b').textContent);list()})}
 async function renameP(id,t){try{await api('/api/projects/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:t})});toast('Renamed');if(id===CUR)refresh(true)}catch(e){toast(e.message)}}
-async function deleteP(id,name){if(!confirm(`Delete “${name}” and all its files from this computer? This can't be undone.`))return false;try{await api('/api/projects/'+id,{method:'DELETE'});toast('Deleted');if(id===CUR)goHome();return true}catch(e){toast(e.message);return false}}
+async function deleteP(id,name){if(!confirm(`Delete “${name}” and all its files from this computer? This can't be undone.`))return false;if(id===CUR)stopMedia('#proj');$$('video,audio').forEach(m=>{if((m.currentSrc||m.src||'').includes(id)){try{m.pause();m.removeAttribute('src');m.load()}catch(e){}}});try{await api('/api/projects/'+id,{method:'DELETE'});toast('Deleted');if(id===CUR)goHome();return true}catch(e){toast(e.message);return false}}
 $('#pTitle').onclick=()=>{const h=$('#pTitle');if(h.isContentEditable)return;h.contentEditable='true';h.focus();document.getSelection().selectAllChildren(h)};
 $('#pTitle').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();e.target.blur()}if(e.key==='Escape'){e.target.textContent=P?.title||'';e.target.blur()}};
 $('#pTitle').onblur=async()=>{const h=$('#pTitle');h.contentEditable='false';const t=h.textContent.trim();if(P&&t&&t!==P.title)await renameP(P.id,t);else if(P)h.textContent=P.title};

@@ -855,7 +855,7 @@ def delete_project(pid: str):
     """Deletes the project and all its files from this computer."""
     import time as _t
     _get(pid)
-    RUNNER.stop(pid)
+    RUNNER.forget(pid)  # stops a running or waiting job; nothing is written to this project again
     for _ in range(40):  # wait for a running job to let go
         if RUNNER.current != pid:
             break

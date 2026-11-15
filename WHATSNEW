@@ -1,3 +1,4 @@
+3.29.1: Deleting a project now removes it completely: its video and sound stop playing at once, anything still being made for it stops, and its folder never comes back.
 3.29.0: Same person in every shot: every shot now starts from a picture of the same character (same face, hair and outfit), and the full look is written into every prompt. No more added camera shake on real video; handheld shake is now an option (Phone UGC style, or set it on a shot) and looks like a real hand.
 3.28.0: The same video settings as the Google Cloud console, under ⚙ → Google Cloud: model (Veo 3.1 Lite / Fast / best), resolution (720p, 1080p, 4K), image-to-video or text-to-video, video length, results per shot (1–4) and generate audio, with the price per second shown.
 3.27.1: The Sign in with Google button now also shows when an older API key is saved (it replaces the key).

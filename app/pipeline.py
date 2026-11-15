@@ -61,6 +61,7 @@ class Store:
         self.root = root
         root.mkdir(parents=True, exist_ok=True)
         self.lock = threading.Lock()
+        self.gone: set[str] = set()  # deleted projects: a job still finishing may never bring their folder back
 
     def dir(self, pid: str) -> Path:
         return self.root / pid
@@ -70,6 +71,8 @@ class Store:
 
     def save(self, p: dict):
         with self.lock:
+            if p.get("id") in self.gone:
+                return
             d = self.dir(p["id"])
             d.mkdir(parents=True, exist_ok=True)
             p["updated"] = time.time()
@@ -136,6 +139,11 @@ class Runner:
             except FileNotFoundError:
                 pass
 
+    def forget(self, pid: str):
+        """Delete: stop everything for this project (running or waiting) and never write to it again."""
+        self.store.gone.add(pid)
+        self.stop(pid)
+
     @property
     def busy(self) -> bool:
         return self.current is not None
@@ -160,7 +168,7 @@ class Runner:
             pid = None
             try:
                 pid, task, kw = self.q.get()
-                if pid in self.cancel or not (self.store.dir(pid) / "project.json").exists():
+                if pid in self.cancel or pid in self.store.gone or not (self.store.dir(pid) / "project.json").exists():
                     continue  # paused or deleted while waiting
                 self.current = pid
                 E.STOP["flag"] = False
@@ -176,6 +184,8 @@ class Runner:
             except BaseException as e:  # anything else: log it and keep the worker alive
                 print("worker error:", e)
             finally:
+                if pid and pid in self.store.gone:  # deleted while it was being made: remove anything written meanwhile
+                    shutil.rmtree(self.store.dir(pid), ignore_errors=True)
                 if pid:
                     self.cancel.discard(pid)
                 self.current = None
