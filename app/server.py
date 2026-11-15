@@ -1,6 +1,7 @@
 """AI Film Studio Local - web app on http://localhost:7860 (only this computer)."""
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 
@@ -607,3 +608,238 @@ def files(pid: str, name: str):
     if base not in f.parents or not f.is_file():
         raise HTTPException(404, "Not found")
     return FileResponse(f)
+
+
+# ---------------------------------------------------------------- Talk to Ghost (assistant)
+from fastapi.responses import StreamingResponse  # noqa: E402
+
+from .agent import Agent, context as agent_context  # noqa: E402
+from .agent.tools import ToolError  # noqa: E402
+
+
+class GhostBackend:
+    """The real app, as the assistant's tools see it. Each method reuses the same code the buttons use,
+    so the assistant can never do something a button could not."""
+
+    def project(self, pid):
+        try:
+            return STORE.load(pid)
+        except Exception:
+            return None
+
+    def projects(self):
+        out = []
+        for row in STORE.list()[:60]:
+            p = self.project(row["id"])
+            if p:
+                out.append(p)
+        return out
+
+    def _p(self, pid):
+        p = self.project(pid)
+        if not p:
+            raise ToolError(f"No project with id {pid}")
+        return p
+
+    def _call(self, fn, *a, **k):
+        try:
+            return fn(*a, **k)
+        except HTTPException as e:
+            raise ToolError(str(e.detail))
+
+    @staticmethod
+    def _ix(p, key, index, what):
+        n = len(p.get(key) or [])
+        if not n:
+            raise ToolError(f"This project has no {what}s")
+        if not 1 <= index <= n:
+            raise ToolError(f"There are only {n} {what}s (1–{n})")
+        return index - 1
+
+    # read
+    def list_projects(self, query="", limit=8):
+        ps = self.projects()
+        ps = agent_context.search(ps, query, k=limit) if query else ps[:limit]
+        return {"text": "; ".join(f"{p['id']}: {p.get('kind', 'video')} “{p.get('title', '')}” ({p.get('status')})" for p in ps) or "No projects yet."}
+
+    def get_project(self, project_id):
+        return {"text": agent_context.describe(self._p(project_id))}
+
+    # act
+    def open_project(self, project_id):
+        p = self._p(project_id)
+        return {"text": f"Opened “{p.get('title')}”", "open": project_id}
+
+    def change_picture(self, project_id, index, instruction, all=False):
+        p = self._p(project_id)
+        i = self._ix(p, "stills", index, "picture")
+        self._call(change, project_id, Change(target="image", i=i, instruction=instruction, scope="all" if all else "one"))
+        return {"text": f"Changing {'every picture' if all else f'picture {index}'}: {instruction}", "refresh": project_id}
+
+    def retake_picture(self, project_id, index, fresh=False):
+        p = self._p(project_id)
+        i = self._ix(p, "stills", index, "picture")
+        self._call(redo_image, project_id, i, "new" if fresh else "same")
+        return {"text": f"{'New take' if fresh else 'Retake'} of picture {index} started", "refresh": project_id}
+
+    def set_main_look(self, project_id, index):
+        p = self._p(project_id)
+        self._call(set_main_look, project_id, self._ix(p, "stills", index, "picture"))
+        return {"text": f"Picture {index} is now the main look", "refresh": project_id}
+
+    def change_shot(self, project_id, index, instruction, all=False):
+        p = self._p(project_id)
+        i = self._ix(p, "clips", index, "shot")
+        self._call(change, project_id, Change(target="clip", i=i, instruction=instruction, scope="all" if all else "one"))
+        return {"text": f"Changing {'every shot' if all else f'shot {index}'}: {instruction}", "refresh": project_id}
+
+    def retake_shot(self, project_id, index):
+        p = self._p(project_id)
+        self._call(redo, project_id, self._ix(p, "clips", index, "shot"))
+        return {"text": f"New take of shot {index} started", "refresh": project_id}
+
+    def change_song(self, project_id, take, instruction, amount="medium"):
+        p = self._p(project_id)
+        if not any(int(t.get("n", 0)) == take for t in p.get("tracks") or []):
+            raise ToolError(f"There is no take {take}")
+        self._call(change, project_id, Change(target="song", i=take, instruction=instruction,
+                                              strength={"little": 0.7, "medium": 0.5, "lot": 0.3}.get(amount, 0.5)))
+        return {"text": f"Changing take {take}: {instruction} (it will be a new take)", "refresh": project_id}
+
+    def more_song_takes(self, project_id):
+        self._call(more_music, project_id)
+        return {"text": "Making another take", "refresh": project_id}
+
+    def rewrite_text(self, project_id, field, instruction, index=None):
+        p = self._p(project_id)
+        lang = p.get("language")
+        if field == "picture_prompt":
+            i = self._ix(p, "stills", index, "picture")
+            new = planner.rewrite(CFG, p["stills"][i]["prompt"], instruction, "image_prompt")
+            p["stills"][i]["prompt"] = new
+        elif field in ("line", "shot_prompt"):
+            i = self._ix(p, "clips", index, "shot")
+            k = "line" if field == "line" else "video_prompt"
+            new = planner.rewrite(CFG, p["clips"][i].get(k, ""), instruction, "line" if k == "line" else "image_prompt", lang)
+            self._call(edit_clip, project_id, i, ClipEdit(**{k: new}))
+            p = self._p(project_id)
+        elif field in ("lyrics", "style"):
+            if not p.get("song"):
+                raise ToolError("This project has no song")
+            k = "lyrics" if field == "lyrics" else "caption"
+            new = planner.rewrite(CFG, p["song"].get(k, ""), instruction, "lyrics" if k == "lyrics" else "caption", lang)
+            p["song"][k] = new
+        else:
+            if not p.get("plan"):
+                raise ToolError("This project has no main picture prompt")
+            new = planner.rewrite(CFG, p["plan"].get("image_prompt", ""), instruction, "image_prompt")
+            p["plan"]["image_prompt"] = new
+        STORE.save(p)
+        return {"text": f"Saved the new text: {new[:300]}", "refresh": project_id}
+
+    def undo(self, project_id, target, index=None):
+        p = self._p(project_id)
+        if target == "all":
+            self._call(undo, project_id, Undo(target="all"))
+        elif target == "picture":
+            i = self._ix(p, "stills", index, "picture")
+            if not p["stills"][i].get("history"):
+                raise ToolError(f"Picture {index} has no change to undo")
+            self._call(undo, project_id, Undo(target="image", i=i))
+        else:
+            i = self._ix(p, "clips", index, "shot")
+            if not p["clips"][i].get("history"):
+                raise ToolError(f"Shot {index} has no change to undo")
+            self._call(undo, project_id, Undo(target="clip", i=i))
+        return {"text": "Undone", "refresh": project_id}
+
+    def pause(self, project_id):
+        self._call(stop_project, project_id)
+        return {"text": "Pausing", "refresh": project_id}
+
+    def resume(self, project_id):
+        self._call(resume_project, project_id)
+        return {"text": "Continuing", "refresh": project_id}
+
+    def remember(self, kind, text, means=""):
+        try:
+            knowledge.add(kind, text, means)
+        except ValueError as e:
+            raise ToolError(str(e))
+        return {"text": f"I'll remember: {text}" + (f" means {means}" if means else "")}
+
+    # gated (run only after the person's OK)
+    def create_project(self, kind, idea, count=None, seconds=None, quality=None, aspect=None, language=None, same_as=None):
+        base = self.project(same_as) if same_as else None
+        base = base or {}
+        q = {"fast": "draft", "quality": "final"}.get(quality or "", base.get("quality") or "draft")
+        p = STORE.new(idea=idea, dialogue="", seconds=max(8, min(180, int(seconds or base.get("seconds") or 30))),
+                      voice_mode=base.get("voice_mode", "oncamera"), language=language or base.get("language") or CFG.get("language", "Hindi"),
+                      title="New ad", mode="idea", aspect=aspect or base.get("aspect") or ("16:9" if kind == "music" else "9:16"),
+                      quality=q, kind=kind, count=max(1, min(8, int(count or base.get("count") or 4))),
+                      music_style=base.get("music_style", "bollywood"), vocals=base.get("vocals", "ai"),
+                      music_seconds=max(10, min(600, int(seconds or base.get("music_seconds") or 60))), ai_music=bool(base.get("ai_music")),
+                      review=False, same_look=True, ai_motion=False, style=base.get("style", "auto"), refs=list(base.get("refs") or []))
+        RUNNER.submit(p["id"], "all")
+        return {"text": f"Started a new {kind} project ({'Fast' if q == 'draft' else 'Quality'})", "open": p["id"]}
+
+    def upgrade_quality(self, project_id):
+        self._call(upgrade, project_id)
+        return {"text": "Re-making it in Quality", "refresh": project_id}
+
+    def start_again(self, project_id):
+        self._call(rerun, project_id)
+        return {"text": "Starting again", "refresh": project_id}
+
+    def delete_project(self, project_id):
+        p = self._p(project_id)
+        self._call(delete_project, project_id)
+        return {"text": f"Deleted “{p.get('title')}”"}
+
+
+AGENT = Agent(CFG, GhostBackend())
+
+
+class Talk(BaseModel):
+    session: str = "default"
+    text: str = ""
+    project: str | None = None
+    confirm: bool | None = None
+
+
+@app.post("/api/agent/chat")
+def agent_chat(body: Talk):
+    """Streams what the assistant does as it happens (one JSON object per line)."""
+    import queue as _q
+    q: _q.Queue = _q.Queue()
+
+    def work():
+        try:
+            AGENT.turn(body.session, body.text[:2000], body.project, q.put, body.confirm)
+        finally:
+            q.put(None)
+    _th.Thread(target=work, daemon=True).start()
+
+    def gen():
+        while True:
+            ev = q.get()
+            if ev is None:
+                return
+            yield json.dumps(ev, ensure_ascii=False) + "\n"
+    return StreamingResponse(gen(), media_type="application/x-ndjson", headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/agent/history")
+def agent_history(session: str = "default"):
+    s = agent_context.load(session)
+    msgs = [{"role": m["role"], "text": m["content"]} for m in s["messages"]
+            if m["role"] in ("user", "assistant") and m.get("content") and not m.get("tool_calls")]
+    return {"messages": msgs[-40:], "pending": [str(c[0]) for c in (s.get("pending") or {}).get("calls", [])]}
+
+
+@app.post("/api/agent/reset")
+def agent_reset(body: Talk):
+    s = agent_context.load(body.session)
+    s.update(messages=[], summary=[], pending=None)
+    agent_context.save(s)
+    return {"ok": True}

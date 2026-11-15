@@ -23,6 +23,7 @@ After that you can change any clip's line, camera move or shake. Press **Make th
 - **Shots.** Click a shot to change its words, camera move, shake or move strength. Each camera tile shows its move when you point at it.
 - **✨ Change.** On any picture, shot or song take, type what to change in plain words (“shorter hair”, “brown eyes”, “make it a man”, “blue saree”, “more upbeat”, “male voice”), or tap a suggestion. Ghost edits that same one and keeps everything else. Pick **All of them** to change every picture or shot. **↶ Undo** brings back the version from before. **New take** is still there when you want something completely different.
 - **✨ Rewrite.** In ✎ Edit, every line, prompt and lyric has a Rewrite button (“shorter”, “more emotional”, “in Malayalam”). Check the result, then Save.
+- **Talk to Ghost** (top bar). Tell Ghost what to do in your own words, in English, Hindi, Hinglish or Malayalam: “make the dog in picture 2 older”, “same as my Onam song but for Diwali”, “undo”. Every action and its result is shown, and big actions wait for your OK. How it is built: docs/ARCHITECTURE.md.
 - **Clock icon (top left)** opens all your ads. The **gear** shows what this computer is using.
 
 ## Free mode and the optional video service

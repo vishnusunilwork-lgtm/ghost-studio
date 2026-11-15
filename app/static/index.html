@@ -315,6 +315,33 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
 .mem{display:flex;flex-direction:column;gap:6px;margin:8px 0}.mem .mi{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border-radius:12px;background:var(--glass-soft);border:1px solid var(--edge);font-size:13px;line-height:1.4}
 .mem .mi span{flex:1;min-width:0;overflow-wrap:anywhere}.mem .mi b{font-weight:600}.mem .mi button{flex:none;color:var(--mute);width:22px;height:22px;border-radius:50%}.mem .mi button:hover{color:var(--ink);background:var(--hover)}
 .memadd{display:flex;flex-direction:column;gap:6px;margin-top:8px}.memadd .btn{height:38px}
+/* Talk to Ghost */
+.talkb{display:flex;align-items:center;gap:7px;height:34px;padding:0 13px;border-radius:99px;border:1px solid var(--edge);background:var(--glass-soft);color:var(--ink);font-size:13px;margin-right:4px;transition:border-color .2s,background .2s}
+.talkb:hover{border-color:var(--edge-hi);background:var(--hover)}
+@media(max-width:640px){.talkb span{display:none}.talkb{width:38px;padding:0;justify-content:center}}
+#talk{display:flex;flex-direction:column}
+.tk-log{flex:1;overflow:auto;padding:6px 14px 12px;display:flex;flex-direction:column;gap:10px}
+.tk-b{max-width:88%;padding:10px 13px;border-radius:18px;font-size:14px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;animation:enter .3s var(--ease) both}
+.tk-b.u{align-self:flex-end;background:var(--ink);color:#0a0a0b;border-bottom-right-radius:6px}
+.tk-b.a{align-self:flex-start;background:var(--glass-soft);border:1px solid var(--edge);border-bottom-left-radius:6px}
+.tk-act{align-self:flex-start;display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--mute);padding:2px 4px;max-width:92%}
+.tk-act i{flex:none;width:16px;height:16px;border-radius:50%;border:1.5px solid var(--edge-hi);border-top-color:var(--ink);animation:spin 1s linear infinite;margin-top:2px;font-style:normal;display:grid;place-items:center;font-size:10px}
+.tk-act.ok i{animation:none;border-color:var(--ok);color:var(--ok)}.tk-act.bad i{animation:none;border-color:var(--bad);color:var(--bad)}.tk-act.ok,.tk-act.bad{color:var(--ink)}
+.tk-act small{display:block;color:var(--mute)}
+@keyframes spin{to{transform:rotate(360deg)}}
+.tk-route{align-self:flex-start;font-size:11px;color:var(--faint);padding:0 4px;letter-spacing:.02em}
+.tk-think{align-self:flex-start;display:flex;gap:4px;padding:10px 4px}.tk-think i{width:6px;height:6px;border-radius:50%;background:var(--mute);animation:blink 1.2s infinite}.tk-think i:nth-child(2){animation-delay:.2s}.tk-think i:nth-child(3){animation-delay:.4s}
+@keyframes blink{0%,80%,100%{opacity:.2}40%{opacity:1}}
+.tk-ok{align-self:stretch;padding:12px;border-radius:16px;border:1px solid var(--edge-hi);background:var(--glass);display:flex;flex-direction:column;gap:8px;font-size:13.5px}
+.tk-ok ul{margin:0;padding-left:18px}.tk-ok .r{display:flex;gap:8px;justify-content:flex-end}.tk-ok .btn{height:36px;font-size:13px}
+.tk-sug{display:flex;flex-direction:column;gap:6px;margin-top:6px}.tk-sug button{text-align:left;padding:10px 12px;border-radius:14px;border:1px solid var(--edge);background:var(--glass-soft);color:var(--mute);font-size:13.5px}.tk-sug button:hover{color:var(--ink);border-color:var(--edge-hi)}
+.tk-foot{padding:10px 12px 14px;border-top:1px solid var(--line)}
+.tk-in{display:flex;gap:8px;align-items:flex-end;padding:6px 6px 6px 14px;border-radius:22px;border:1px solid var(--edge);background:var(--glass-soft)}
+.tk-in:focus-within{border-color:var(--edge-hi)}
+.tk-in textarea{flex:1;background:none;border:0;outline:0;resize:none;max-height:140px;font:14.5px/1.5 var(--font);color:var(--ink);padding:6px 0}
+#tkSend{flex:none;width:34px;height:34px;border-radius:50%;background:var(--ink);color:#0a0a0b;display:grid;place-items:center}#tkSend:disabled{opacity:.3}
+.tk-hint{margin:8px 4px 0;font-size:11.5px;color:var(--faint)}
+@media(prefers-reduced-motion:reduce){.tk-act i,.tk-think i{animation:none}}
 </style>
 </head>
 <body>
@@ -330,6 +357,7 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v4h4"/><path d="M12 8v4l3 2"/></svg>
   </button>
   <div class="sp"></div>
+  <button class="talkb" id="talkBtn" title="Talk to Ghost: tell it what to do in your own words"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/><path d="M8.5 12h.01M12 12h.01M15.5 12h.01"/></svg><span>Talk to Ghost</span></button>
   <button class="ver" id="verBtn" title="Version">v…</button>
   <button class="status" id="statusBtn" title="This computer"><span class="dot" id="sDot"></span><span id="sText">Starting…</span></button>
   <button class="icon" id="setBtn" aria-label="Settings" title="Settings">
@@ -454,6 +482,12 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
     <button class="btn" id="sStop" style="margin:8px 6px 0;width:calc(100% - 12px)">Stop Ghost Studio</button>
     <p class="note"><b>Draft</b> makes a quick preview; <b>Make it final</b> re-makes the same takes at full quality. Label AI-made videos as AI-generated.</p>
   </div>
+</aside>
+<aside class="drawer right" id="talk" aria-label="Talk to Ghost">
+  <div class="dhead"><h3>Talk to Ghost</h3><button class="icon" id="tkNew" title="New chat" aria-label="New chat"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button><button class="icon" data-close aria-label="Close">✕</button></div>
+  <div class="tk-log" id="tkLog" aria-live="polite"></div>
+  <div class="tk-foot"><div class="tk-in"><textarea id="tkIn" rows="1" placeholder="Tell Ghost what to do…"></textarea><button id="tkSend" aria-label="Send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button></div>
+  <p class="tk-hint">Runs on this computer. Every action Ghost takes is shown here, and big ones wait for your OK.</p></div>
 </aside>
 <aside class="drawer right" id="clipSheet" aria-label="Edit shot">
   <div class="dhead"><h3 id="csTitle">Shot</h3><button class="icon" data-close aria-label="Close">✕</button></div>
@@ -783,6 +817,45 @@ async function change(target,i,instruction,scope,strength){const r=await api(`/a
 async function undoIt(target,i){await api(`/api/projects/${CUR}/undo`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target,i:i||0})});kick()}
 function undoBtn(sel,p,busy){const u=(p.undo||[]).slice(-1)[0],b=$(sel);b.classList.toggle('hidden',!u||busy);if(u){b.textContent=`↶ Undo “${u.what.length>28?u.what.slice(0,28)+'…':u.what}”`;b.title='Undo the last change made to all of them'}}
 $('#gUndo').onclick=$('#pUndo').onclick=async()=>{try{await undoIt('all');toast('Back to before')}catch(e){toast(e.message)}};
+
+/* ---------- Talk to Ghost: streamed agent events ---------- */
+let TKS=(()=>{try{return localStorage.getItem('gs-talk')||''}catch(e){return''}})();
+if(!TKS){TKS='c'+Math.random().toString(36).slice(2,10);try{localStorage.setItem('gs-talk',TKS)}catch(e){}}
+let TKBUSY=false;
+const tkLog=()=>$('#tkLog');
+function tkAdd(html,cls){const d=document.createElement('div');d.className=cls;d.innerHTML=html;tkLog().appendChild(d);tkLog().scrollTop=1e9;return d}
+function tkEmpty(){if(tkLog().children.length)return;const ex=['Make 3 pictures of a desi dog','Make the hair in picture 2 shorter','Same as my last project, but for Diwali','Song take 1: more upbeat, male voice','Remember: our shop means a small kirana store in Kochi'];
+  const d=tkAdd(`<p class="note" style="padding:0 2px">Tell Ghost what to do in your own words. It can make, change, retake, undo, rewrite and remember.</p><div class="tk-sug">${ex.map(x=>`<button>${esc(x)}</button>`).join('')}</div>`,'tk-empty');
+  d.querySelectorAll('button').forEach(b=>b.onclick=()=>{$('#tkIn').value=b.textContent;$('#tkIn').focus()})}
+async function tkHistory(){try{const h=await api('/api/agent/history?session='+TKS);tkLog().innerHTML='';h.messages.forEach(m=>tkAdd(esc(m.text),'tk-b '+(m.role==='user'?'u':'a')));tkEmpty()}catch(e){tkEmpty()}}
+const ROUTE={0:'⚡ instant command',1:'fast model',2:'careful model'};
+async function tkSend(text,confirm){if(TKBUSY)return;if(!text&&confirm==null)return;TKBUSY=true;$('#tkSend').disabled=true;
+  tkLog().querySelector('.tk-empty')?.remove();$$('#tkLog .tk-ok .btn').forEach(b=>b.disabled=true);
+  if(text)tkAdd(esc(text),'tk-b u');let think=tkAdd('<i></i><i></i><i></i>','tk-think');let lastAct=null;
+  const clear=()=>{if(think){think.remove();think=null}};
+  try{const r=await fetch('/api/agent/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session:TKS,text:text||'',project:CUR||null,confirm})});
+    if(!r.ok||!r.body)throw new Error('Ghost could not answer ('+r.status+')');
+    const rd=r.body.getReader(),dec=new TextDecoder();let buf='';
+    for(;;){const {value,done}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});let k;
+      while((k=buf.indexOf('\n'))>=0){const line=buf.slice(0,k).trim();buf=buf.slice(k+1);if(!line)continue;let e;try{e=JSON.parse(line)}catch(x){continue}
+        if(e.t==='route'){tkAdd(esc(ROUTE[e.tier]||'')+(e.model?' · '+esc(e.model):''),'tk-route')}
+        else if(e.t==='thinking'){if(!think)think=tkAdd('<i></i><i></i><i></i>','tk-think');tkLog().appendChild(think)}
+        else if(e.t==='action'){clear();lastAct=tkAdd(`<i></i><span>${esc(e.label)}</span>`,'tk-act')}
+        else if(e.t==='result'){const el=lastAct||tkAdd('<i></i><span></span>','tk-act');el.classList.add(e.ok?'ok':'bad');el.querySelector('i').textContent=e.ok?'✓':'!';if(!e.ok||e.name==='rewrite_text')el.querySelector('span').insertAdjacentHTML('beforeend',`<small>${esc(e.text)}</small>`);lastAct=null}
+        else if(e.t==='confirm'){clear();const c=tkAdd(`<b>Ghost wants to:</b><ul>${e.plan.map(x=>`<li>${esc(x)}</li>`).join('')}</ul><div class="r"><button class="btn">Cancel</button><button class="btn solid">Go ahead</button></div>`,'tk-ok');
+          const [no,go]=c.querySelectorAll('.btn');no.onclick=()=>tkSend('',false);go.onclick=()=>tkSend('',true)}
+        else if(e.t==='message'){clear();tkAdd(esc(e.text),'tk-b a')}
+        else if(e.t==='note'){tkAdd(esc(e.text),'tk-route')}
+        else if(e.t==='open'){open(e.project)}
+        else if(e.t==='refresh'){if(e.project===CUR)kick()}
+        else if(e.t==='done'){clear()}}}
+  }catch(e){clear();tkAdd(esc(e.message),'tk-b a')}
+  finally{clear();TKBUSY=false;$('#tkSend').disabled=false;status()}}
+$('#talkBtn').onclick=()=>{drawer('talk');if(!tkLog().children.length)tkHistory();setTimeout(()=>$('#tkIn').focus(),300)};
+$('#tkSend').onclick=()=>{const t=$('#tkIn').value.trim();if(!t)return;$('#tkIn').value='';$('#tkIn').style.height='';tkSend(t)};
+$('#tkIn').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();$('#tkSend').click()}};
+$('#tkIn').oninput=e=>{const t=e.target;t.style.height='auto';t.style.height=Math.min(140,t.scrollHeight)+'px'};
+$('#tkNew').onclick=async()=>{try{await api('/api/agent/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session:TKS})})}catch(e){}tkLog().innerHTML='';tkEmpty()};
 
 function kick(){clearInterval(TIMER);TIMER=setInterval(refresh,2000);refresh(true)}
 $('#pReedit').onclick=async()=>{await api(`/api/projects/${CUR}/reedit`,{method:'POST'});toast('Re-exporting');kick()};

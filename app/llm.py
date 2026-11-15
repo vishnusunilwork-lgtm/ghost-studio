@@ -82,3 +82,23 @@ def ask_json(model: str, prompt: str, images: list[bytes] | None = None, tempera
     r = _post("/api/chat", {"model": model, "messages": [msg], "stream": False, "format": "json",
                             "keep_alive": "10m", "options": {"temperature": temperature, "num_ctx": 8192}})
     return _json_from(r.get("message", {}).get("content", ""))
+
+
+def size_of(name: str) -> float:
+    """'qwen2.5:14b' -> 14.0 (billions of parameters, from the tag)."""
+    m = re.search(r"(\d+(?:\.\d+)?)\s*b\b", name.lower())
+    return float(m.group(1)) if m else 7.0
+
+
+def text_models() -> list[str]:
+    return [m for m in installed() if not any(v in m for v in ("vl", "llava", "vision", "embed"))]
+
+
+def chat(model: str, messages: list[dict], tools: list[dict] | None = None, temperature: float = 0.2,
+         timeout: int = 300) -> dict:
+    """One model step with native tool calling (Ollama /api/chat 'tools'). Returns the assistant message."""
+    body = {"model": model, "messages": messages, "stream": False, "keep_alive": "10m",
+            "options": {"temperature": temperature, "num_ctx": 8192}}
+    if tools:
+        body["tools"] = tools
+    return _post("/api/chat", body, timeout=timeout).get("message", {}) or {}
