@@ -95,7 +95,8 @@ TOOLS: list[Tool] = [
          {"kind": {"type": "string", "enum": ["images", "video", "music"]}, "idea": S,
           "count": {"type": "integer", "minimum": 1, "maximum": 8}, "seconds": {"type": "integer", "minimum": 8, "maximum": 600},
           "quality": {"type": "string", "enum": ["fast", "quality"]}, "aspect": {"type": "string", "enum": ["9:16", "4:5", "1:1", "16:9"]},
-          "language": S, "same_as": S}, ["kind", "idea"], kind="gated",
+          "language": S, "same_as": S}, ["kind", "idea"], kind="act",
+         gate=lambda a: a.get("kind") != "images" or int(a.get("count") or 1) > 4,  # a few pictures: straight away; video/music: OK first
          label=lambda a: f"Make new {a['kind']}: “{a['idea']}”" + (f" ({a['count']})" if a.get("count") else "")),
     Tool("upgrade_quality", "Re-make a Fast project in Quality.", {"project_id": PID}, kind="gated", label=lambda a: "Re-make it in Quality"),
     Tool("start_again", "Throw away the results and make the project again from the start.", {"project_id": PID}, kind="gated",

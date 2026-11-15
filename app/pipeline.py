@@ -39,6 +39,20 @@ LABEL = {"analyse": "Reading the reference", "plan": "Writing script and prompts
          "videos": "Making the video clips", "voice": "Making the narration", "music": "Making the music", "edit": "Editing and exporting"}
 
 
+def load_brand() -> dict:
+    """The brand kit saved once under ⚙ (logo, colours, font): used by Performance ads."""
+    from . import addons
+    f = addons.GHOST / "brand" / "brand.json"
+    try:
+        b = json.loads(f.read_text(encoding="utf-8"))
+    except Exception:
+        b = {}
+    for k in ("logo", "font"):
+        if b.get(k) and not Path(b[k]).exists():
+            b.pop(k)
+    return b
+
+
 class Store:
     def __init__(self, root: Path):
         self.root = root
@@ -249,6 +263,8 @@ class Runner:
         q = self.cfg["quality"]
         if p.get("kind") == "dub":
             return self._dub(pid)
+        if p.get("kind") == "perf":
+            return self._perf(pid)
         # 1 reference
         ref = None
         if p.get("reference"):
@@ -301,6 +317,217 @@ class Runner:
         self._music_for_ad(pid)
         # 6 edit
         self._edit(pid)
+
+    # ------------------------------------------------------------ Performance ad mode (see perf.py)
+    def _perf(self, pid):
+        from . import llm, perf
+        p = self.store.load(pid)
+        d = self.store.dir(pid)
+        pf = p.setdefault("perf", {})
+        lang = p.get("language") or self.cfg.get("language", "Hindi")
+        fast = llm.fast_model(self.cfg["models"]["llm"]) if llm.available() else ""
+
+        def ask(prompt, fallback):
+            if not llm.available():
+                return fallback()
+            try:
+                r = llm.ask_json(fast or self.cfg["models"]["llm"], prompt, temperature=0.5)
+                return r if r else fallback()
+            except Exception as e:
+                p["log"].append(time.strftime("%H:%M:%S ") + f"Script AI unavailable ({str(e)[:80]}), using the simple writer")
+                return fallback()
+        # 1 brief: read every input once
+        if not pf.get("brief"):
+            self._say(p, "analyse", "1 · Reading your brief" + (" and landing page" if p.get("url") else ""), 3)
+            page = ""
+            if p.get("url"):
+                try:
+                    page = perf.fetch_page(p["url"])
+                except Exception as e:
+                    p["log"].append(time.strftime("%H:%M:%S ") + f"Could not open the landing page ({str(e)[:80]}); using your text only")
+            source = "\n".join(x for x in (p.get("idea", ""), p.get("dialogue", ""), page, p.get("notes", "")) if x)
+            b = ask(perf.brief_prompt(p.get("idea", ""), page + "\n" + p.get("notes", ""), lang, p.get("platform", "both")),
+                    lambda: perf.fallback_brief(p.get("idea", ""), page, lang))
+            if not isinstance(b.get("product"), dict):
+                b = {**perf.fallback_brief(p.get("idea", ""), page, lang), **{k: v for k, v in b.items() if k in ("claims", "cta")}}
+            b = perf.finish_brief(b, source, {"offer": p.get("offer", ""), "cta": p.get("cta", ""), "name": p.get("product", ""),
+                                              "disclaimer": p.get("disclaimer", ""), "platform": p.get("platform", "both")})
+            pf["brief"], pf["source_chars"] = b, len(source)
+            miss = [m for m in (b.get("missing") or []) if m][:3]
+            if miss:
+                p["log"].append(time.strftime("%H:%M:%S ") + "Assumed (add them to the brief next time): " + "; ".join(map(str, miss)))
+            blocked = [c["text"] for c in b["claims"] if c["status"] == "blocked"]
+            p["log"].append(time.strftime("%H:%M:%S ") + f"Brief: {len(b['claims']) - len(blocked)} approved claim(s)"
+                            + (f", {len(blocked)} blocked (not in your material): " + " · ".join(blocked[:4]) if blocked else ""))
+            p["title"] = p.get("title") if p.get("title") not in (None, "", "New ad") else (b["product"].get("name") or "Performance ad")
+            self._done(p, "analyse")
+        b = pf["brief"]
+        # 2 ideas: 4 angles, scored, the best 2 go on
+        if not pf.get("angles"):
+            self._say(p, "plan", "2 · Writing 4 ad ideas and scoring them", 8)
+            got = ask(perf.ideas_prompt(b, lang), lambda: perf.fallback_ideas(b)).get("angles") or []
+            have = {a.get("kind") for a in got}
+            got += [a for a in perf.fallback_ideas(b)["angles"] if a["kind"] not in have]
+            pf["angles"] = perf.rank([a for a in got if a.get("kind") in perf.ANGLES][:4])
+            self.store.save(p)
+        # 3 script: 15 s on the beat, for the top 2
+        if not pf.get("variants"):
+            self._say(p, "plan", "3 · Writing the 15-second scripts", 12)
+            top = pf["angles"][:1] if p.get("dialogue") else pf["angles"][:2]
+            pf["variants"] = []
+            for n, a in enumerate(top, 1):
+                if p.get("dialogue"):  # a finished script: its lines become the voiceover on the beat
+                    parts = planner.split_lines(p["dialogue"], 9)
+                    s = perf.fallback_script(b, a)
+                    for sh, ln in zip(s["shots"], parts):
+                        sh["voiceover"] = ln.get("line", "")
+                else:
+                    s = ask(perf.script_prompt(b, a, lang), lambda: perf.fallback_script(b, a))
+                sc = perf.clean_script(s, b)
+                a["scores"]["product_on_screen"] = min(a["scores"]["product_on_screen"], round(5 * min(1.0, sc["product_share"] / 0.6)))
+                pf["variants"].append({"n": n, "kind": a["kind"], "angle": perf.ANGLE_NAME[a["kind"]], "hook": a.get("hook"), "script": sc})
+            self._done(p, "plan")
+        # 4 + 5 pictures and video: each variant is made like an ad of its own (inside this project's folder)
+        refs = [Path(r) for r in p.get("refs") or []]
+        for v in pf["variants"]:
+            if v.get("child"):
+                continue
+            cid = f"{pid}/v{v['n']}"
+            shots = v["script"]["shots"]
+            look = " The product looks exactly as in the reference photo." if refs else ""
+            child = {"id": cid, "parent": pid, "kind": "video", "title": v["angle"], "idea": p.get("idea", ""), "aspect": "9:16",
+                     "quality": p.get("quality", "final"), "language": lang, "voice_mode": "narrator", "ai_music": p.get("ai_music", True),
+                     "voice_gender": p.get("voice_gender", "female"), "voice_style": p.get("voice_style", "excited"),
+                     "refs": [str(r) for r in refs], "status": "running", "log": [], "steps": {s: "waiting" for s in STEPS},
+                     "plan": {"image_prompt": shots[2]["image_prompt"] + look, "people": []}, "seconds": 15,
+                     "clips": [{"speaker": "N", "line": sh["voiceover"], "narration": sh["voiceover"], "seconds": float(sh["end"] - sh["start"]),
+                                "image_prompt": sh["image_prompt"] + (look if sh["product_visible"] else "") + " No text, no logos, no price tags.",
+                                "video_prompt": (sh["motion"] or "natural movement") + ". No text, no logos.", "camera_move": "push_in",
+                                "shake": 0.2, "status": "waiting", "seed": random.randint(1, 10**6)} for sh in shots]}
+            child["steps"]["analyse"] = child["steps"]["plan"] = "done"
+            self.store.save(child)
+            v["child"] = cid
+            self.store.save(p)
+        for v in pf["variants"]:
+            cid = v["child"]
+            c = self.store.load(cid)
+            if c.get("final") and Path(c["final"]).exists():
+                continue
+            self._say(p, "images", f"4 · Key pictures for idea {v['n']}: {v['angle']}", 20 + 20 * (v["n"] - 1))
+            if not c.get("image") or not Path(c["image"]).exists():
+                self._images(cid)
+            c = self.store.load(cid)
+            (gw, gh), _, draft = sizes(c)
+            k = 1 if draft else 2
+            q = self.cfg["quality"]
+            steps_ = int(q.get("image_steps_draft", 20)) if draft else int(q["image_steps"])
+            for i, cl in enumerate(c["clips"]):  # one still per shot: static ads + the first frame of each video
+                if not cl.get("image") or not Path(cl["image"]).exists():
+                    self._shot_image(c, i, gw * k, gh * k, steps_, refs, Path(c["image"]))
+                    self.store.save(c)
+            self._done(p, "images")
+            self._say(p, "videos", f"5 · Video for idea {v['n']}", 45 + 10 * (v["n"] - 1))
+            self._videos(cid, resume=True)
+            self._perf_review(p, v)
+            self._say(p, "voice", f"Voice and music for idea {v['n']}", 65)
+            self._voice(cid)
+            self._talk(cid)
+            self._music_for_ad(cid)
+            self._edit(cid)
+        self._done(p, "videos")
+        self._done(p, "voice")
+        p["steps"]["music"] = "done"
+        # 6 finishing + 7 check: by script, exact
+        self._perf_finish(pid)
+
+    def _perf_review(self, p, v):
+        """Each shot: hard cuts inside it, and (with the vision model) one frame a second for wrong product,
+        warped hands/faces or garbled text. A failed shot is re-made once; everything else is kept."""
+        from . import perf, qc
+        cid = v["child"]
+        c = self.store.load(cid)
+        moving = (c.get("engine_plan") or {}).get("video") != "photo_motion"
+        vision = qc.available()
+        log = v.setdefault("review", [])
+        for i, cl in enumerate(c["clips"]):
+            if not cl.get("video") or not Path(cl["video"]).exists():
+                continue
+            probs = []
+            if moving and perf.scene_cuts(Path(cl["video"])) > 0:
+                probs.append("a cut inside the shot")
+            if vision:
+                frames = perf.frames_1fps(Path(cl["video"]), self.store.dir(cid) / f"qc{i + 1:02d}") if moving else [Path(cl["image"])]
+                for f in frames:
+                    self._say(p, "videos", f"5 · Checking idea {v['n']}, shot {i + 1} ({f.stem})")
+                    r = qc.check(f)
+                    if not r.get("ok"):
+                        probs.append(r.get("problem") or "defect")
+                        break
+            if probs and not cl.get("redone"):
+                log.append({"shot": i + 1, "problems": probs, "action": "re-made"})
+                self._say(p, "videos", f"5 · Shot {i + 1} of idea {v['n']}: {probs[0]} — re-making only this shot")
+                cl["seed"], cl["redone"], cl["status"] = random.randint(1, 10**6), True, "waiting"
+                if not moving:
+                    (gw, gh), _, draft = sizes(c)
+                    q = self.cfg["quality"]
+                    self._shot_image(c, i, gw * (1 if draft else 2), gh * (1 if draft else 2),
+                                     int(q.get("image_steps_draft", 20)) if draft else int(q["image_steps"]),
+                                     [Path(r) for r in c.get("refs") or []], Path(c["image"]))
+                self.store.save(c)
+                self._videos(cid, only=i)
+                c = self.store.load(cid)
+            else:
+                log.append({"shot": i + 1, "problems": probs, "action": "kept" if not probs else "kept (already re-made once)"})
+        self.store.save(p)
+
+    def _perf_finish(self, pid):
+        from . import addons, perf
+        p = self.store.load(pid)
+        d = self.store.dir(pid)
+        pf = p["perf"]
+        b = pf["brief"]
+        brand = load_brand()
+        logo = brand.get("logo")
+        fonts = addons.GHOST / "fonts"
+        out_dir = d / "deliver"
+        out_dir.mkdir(exist_ok=True)
+        outputs = []
+        fmts = list(perf.FORMATS)
+        total = len(pf["variants"]) * len(fmts) * 2
+        k = 0
+        for v in pf["variants"]:
+            c = self.store.load(v["child"])
+            master = Path(c["final"])
+            tag = f"Ad{v['n']}_{v['kind']}"
+            for fmt in fmts:
+                k += 1
+                self._say(p, "edit", f"6 · Logo, text, end slate and size {fmt} for idea {v['n']}", 80 + int(15 * k / total))
+                f = out_dir / f"{tag}_{fmt.replace(':', 'x')}.mp4"
+                rec = perf.finish_video(master, f, fmt, v["script"], b, brand, logo, fonts, d / "work")
+                outputs.append({"file": str(f), "fmt": fmt, "type": "video", "variant": v["n"], "rec": rec,
+                                "problems": perf.check_output(f, fmt, rec, b, True, brand)})
+            picks = [(0, v["script"]["shots"][0]["on_screen"] or b["product"].get("name") or v.get("hook") or ""),
+                     (2, v["script"]["shots"][2]["on_screen"] or b["product"].get("name") or "")]
+            for si, headline in picks:
+                img = c["clips"][si].get("image")
+                if not img or not Path(img).exists():
+                    continue
+                for fmt in fmts:
+                    k += 1
+                    f = out_dir / f"{tag}_still{si + 1}_{fmt.replace(':', 'x')}.jpg"
+                    rec = perf.finish_still(Path(img), f, fmt, headline, b, brand, logo, fonts)
+                    outputs.append({"file": str(f), "fmt": fmt, "type": "image", "variant": v["n"], "rec": rec,
+                                    "problems": perf.check_output(f, fmt, rec, b, False, brand)})
+        self._done(p, "edit")
+        bad = [o for o in outputs if o["problems"]]
+        pf["outputs"] = [{k2: v2 for k2, v2 in o.items() if k2 != "rec"} for o in outputs]
+        pf["checked"] = {"passed": len(outputs) - len(bad), "failed": len(bad), "at": time.time()}
+        p["final"] = next((o["file"] for o in outputs if o["type"] == "video" and o["fmt"] == "9:16" and not o["problems"]),
+                          next((o["file"] for o in outputs if o["type"] == "video"), None))
+        p["log"].append(time.strftime("%H:%M:%S ") + f"7 · Final check: {len(outputs) - len(bad)} of {len(outputs)} files passed"
+                        + ("" if not bad else " — problems: " + "; ".join(f"{Path(o['file']).name}: {o['problems'][0]}" for o in bad[:4])))
+        p["status"], p["progress"] = "done", 100
+        self.store.save(p)
 
     def _review_stop(self, p) -> bool:
         """"Check prompts first": stop after writing so you can edit, then Continue makes it."""
@@ -755,6 +982,8 @@ class Runner:
             return self._compose(pid, takes=1) if p.get("song") else self._all(pid)
         if p.get("kind") == "dub":
             return self._dub_finish(pid) if (p.get("dub") or {}).get("segments") else self._dub(pid)
+        if p.get("kind") == "perf":
+            return self._perf(pid)
         if not p.get("clips"):
             return self._all(pid)
         if not p.get("image") or not Path(p["image"]).exists():

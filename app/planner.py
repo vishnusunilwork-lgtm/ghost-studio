@@ -14,7 +14,10 @@ RULES = ("No money, income, debt, loan, cure or guaranteed-result claims. No fea
 LITERAL = ("Make exactly what the person asked and nothing more. Do NOT add religion, prayer, gods, idols, temples, festivals, "
            "garlands, blessings or a devotional mood unless the idea mentions them. When the idea is short (for example 'one man'), "
            "fill in only ordinary, realistic, everyday details: a common Indian person of a believable age, everyday clothes, "
-           "an everyday Indian place (street, home, shop, office, market), natural light, a natural expression.")
+           "an everyday Indian place (street, home, shop, office, market), natural light, a natural expression. "
+           "SCENE LOGIC: read every word. Keep real-world sizes, counts, gravity, light and physics true (an ant is tiny next to an "
+           "elephant; 3 cats means exactly three) unless the person deliberately asks otherwise (\"a giant ant\", \"a tiny elephant\"): "
+           "then show that surreal scale clearly. Say who is where, how big, facing which way, and what the camera sees.")
 
 MOVES = ["none", "push_in", "pull_out", "pan_left", "pan_right", "tilt_up", "tilt_down"]
 
@@ -192,7 +195,14 @@ def plan(cfg: dict, *, idea: str = "", dialogue: str = "", reference: dict | Non
          cast: str = "auto", photo: bool = False) -> dict:
     lang = language or cfg.get("language", "Hindi")
     cast = cast_of((idea or "") + " " + (dialogue or ""), cast)
-    b = cfg["brand"]
+    b = dict(cfg.get("brand") or {})
+    try:  # the brand kit (⚙) if you saved one; Ghost itself is general purpose and adds no brand
+        from .pipeline import load_brand
+        kit = load_brand()
+        if kit.get("name"):
+            b = {"name": kit["name"], "spoken": kit["name"], "about": b.get("about", "") if b.get("name") == kit["name"] else ""}
+    except Exception:
+        pass
     # photo-motion ads need more, shorter shots to feel alive (a still held for 7 s looks frozen)
     max_s = 4.8 if photo else float(cfg["quality"]["clip_seconds"])
     src = (f"REFERENCE AD to recreate (same kind of people, place, framing, camera moves, action and micro-expressions, "
@@ -202,10 +212,10 @@ def plan(cfg: dict, *, idea: str = "", dialogue: str = "", reference: dict | Non
     if reference and not (reference.get("transcript") or "").strip():
         src += "\n(The reference's speech could not be heard: copy its look, people, framing and camera moves, and write a fresh script.)"
     prompt = f"""You are a film director and prompt engineer for an image-to-video model (it makes video AND the spoken audio with lip-sync from a first-frame image).
-Make a {seconds} s {aspect} ad for {b['name']} in {lang}. About the brand (background only; the ad's story comes from the idea): {b['about']}
+Make a {seconds} s {aspect} video in {lang}{(' for ' + b['name'] + '. About the brand (background only; the story comes from the idea): ' + (b.get('about') or '')) if b.get('name') else ', exactly about the idea'}.
 {LITERAL}
 {src}
-{'Write the script yourself: a strong 2-second hook, natural spoken ' + lang + ', a clear call to action to download ' + b['spoken'] + ' at the end.' if need_script else 'Use EXACTLY this dialogue, every word, in order:' + chr(10) + dialogue}
+{'Write the script yourself: a strong 2-second hook, natural spoken ' + lang + (', a clear call to action for ' + b['spoken'] + ' at the end.' if b.get('name') else ', and a natural ending (a call to action only if the idea is an ad for something).') if need_script else 'Use EXACTLY this dialogue, every word, in order:' + chr(10) + dialogue}
 Voice: {'the characters speak on camera' if voice_mode == 'oncamera' else 'a narrator speaks over the pictures (the characters do not talk)' if voice_mode == 'narrator' else 'mostly on camera, with a short narrator line at the end'}.
 Rules: {RULES} {people_note(idea or dialogue) if cast == 'people' else CAST_NOTE[cast]} {knowledge.hints((idea or '') + ' ' + (dialogue or ''))}
 {('DIRECTION STYLE (follow it exactly): ' + STYLES_DIR[style]['guide']) if style in STYLES_DIR and cast == 'people' else ''}
@@ -277,10 +287,10 @@ def _fallback(idea, dialogue, reference, seconds, lang, b, why, aspect="9:16"):
         lines = split_lines(dialogue)
     else:
         n = max(2, round(seconds / 6.5))
-        body = [f"{idea}…" if idea else "यह देखिए…", "अपनी बात, अपनी भाषा में।", "अपनी फ़ोटो और नाम के साथ भेजिए।", "आज ही शुरू कीजिए।"] \
-            if lang == "Hindi" else [f"{idea}…" if idea else "Look at this…", "Say it your way, in your language.",
-                                     "Share it with your own photo and name.", "Start today."]
-        lines = [{"speaker": "", "line": body[i % len(body)]} for i in range(n - 1)] + [{"speaker": "", "line": f"{b['spoken']} ऐप डाउनलोड करें।" if lang == "Hindi" else f"Download {b['spoken']} today."}]
+        body = [f"{idea}…" if idea else "यह देखिए…"] if lang == "Hindi" else [f"{idea}…" if idea else "Look at this…"]
+        lines = [{"speaker": "", "line": body[0]}] * max(1, n - 1)  # without the script AI: the idea itself, no invented slogans
+        if b.get("spoken"):
+            lines.append({"speaker": "", "line": f"{b['spoken']} — आज ही।" if lang == "Hindi" else f"{b['spoken']} — today."})
     look = "a fictional ordinary Indian adult in everyday clothes, natural expression, real skin texture"
     moves = ["push_in", "none", "pan_right", "push_in", "tilt_up", "none"]
     clips = []

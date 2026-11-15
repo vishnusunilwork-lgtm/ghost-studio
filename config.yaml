@@ -4,10 +4,10 @@
 
 engine: auto            # auto = best maker this computer has (see app/engines.py). "mock" = test media only
 
-brand:
-  name: ShareChat
-  spoken: ShareChat
-  about: "ShareChat lets people share devotional greetings, mantras and wishes with their own photo and name, in their own language."
+brand:            # empty = general purpose (no brand added). Your brand: ⚙ → Brand kit
+  name: ""
+  spoken: ""
+  about: ""
 
 language: Hindi
 

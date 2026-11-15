@@ -146,9 +146,9 @@ def test_error_goes_back_to_model():
 
 def test_gate_waits_for_ok():
     b = FakeBackend()
-    chat = scripted(call("create_project", kind="images", idea="desi dog at Diwali", count=3), say("unused"))
+    chat = scripted(call("create_project", kind="video", idea="desi dog at Diwali"), say("unused"))
     a = orchestrator.Agent({"models": {"llm": "qwen2.5:14b"}}, b, chat)
-    ev = run(a, "same dog but for diwali, three pictures", sid="t3")
+    ev = run(a, "same dog but for diwali, as a video ad", sid="t3")
     assert not b.done and any(e["t"] == "confirm" for e in ev)
     ev = run(a, "yes", sid="t3")
     assert b.done and b.done[0][0] == "create_project"
@@ -223,6 +223,25 @@ def test_live_results_cannot_break_out():
 def test_json_text_tool_call():
     m = {"content": 'Sure {"name": "pause", "arguments": {}}'}
     assert orchestrator._calls_from(m) == [("pause", {})]
+
+
+def test_make_anything_directly():
+    b = FakeBackend()
+    a = orchestrator.Agent({"models": {"llm": "qwen2.5:14b"}}, b, scripted())  # no model call needed
+    ev = run(a, "generate a cat", pid=None, sid="t10")
+    assert b.done == [("create_project", {"kind": "images", "idea": "cat", "count": 1})] and not any(e["t"] == "confirm" for e in ev)
+    assert router.create_request("make a 20 s video of rain in Kochi")["kind"] == "video"
+    assert router.create_request("make a tagline for chai") is None and router.create_request("make her older") is None
+    assert tools.BY_NAME["create_project"].needs_ok({"kind": "video", "idea": "x"})
+
+
+def test_scene_logic():
+    from app import scene
+    assert "tiny" in scene.explain("an elephant and an ant") and "macro" in scene.explain("an elephant and an ant")
+    assert "Surreal" in scene.explain("a small elephant and a big ant")
+    assert scene.explain("3 cats on a wall").startswith("Exactly 3 cats")
+    assert scene.explain("a man holding a cup") == ""
+    assert "Manglish = Malayalam" in context.CHAT and "never send people to other tools" in context.CHAT
 
 
 if __name__ == "__main__":

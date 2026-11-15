@@ -42,6 +42,8 @@ def wants_action(text: str, project: dict | None) -> bool:
     "take 1 but with a male voice"), or a short request about what is open ("make her older").
     Talk: questions and writing help ("Give me 3 Onam ad taglines", "how do I make good thumbnails?")."""
     t = text.strip()
+    if create_request(t):
+        return True
     if WRITE.search(t) and not STRONG.search(t):
         return False
     has_v, has_m = bool(VERB.search(t)), bool(MEDIA.search(t))
@@ -118,6 +120,11 @@ def grammar(text: str, project: dict | None, pending: bool) -> Route | None:
     m = re.fullmatch(r"(?:make )?(?:" + ITEM + r" )?" + N + r" (?:the )?main look", t)
     if m:
         return Route(0, calls=[("set_main_look", {"index": num(m.group(1))})], why="main look")
+    c = create_request(text)
+    simple = not re.search(r"\b(and then|then|but|also|after that|phir)\b|,", t)
+    explicit = re.search(r"\b(new|pictures?|images?|photos?|pics?|videos?|reels?|songs?|music)\b", t)
+    if c and simple and (not project or explicit):  # one clear "make X": no model needed; anything richer goes to a model
+        return Route(0, calls=[("create_project", c)], why="make: " + c["kind"])
     m = re.fullmatch(r"remember[:,]? (.+?) (?:means|=|is) (.+)", text.strip(), re.I)
     if m:
         return Route(0, calls=[("remember", {"kind": "means", "text": m.group(1).strip(" '\""), "means": m.group(2).strip()})], why="teach")
@@ -125,6 +132,44 @@ def grammar(text: str, project: dict | None, pending: bool) -> Route | None:
     if m and len(m.group(1).split()) <= 12:
         return Route(0, calls=[("remember", {"kind": "always", "text": m.group(1).strip()})], why="teach")
     return None
+
+
+CREATE = re.compile(r"^(?:please |pls |can you |could you |ghost,? )?(generate|create|make|draw|design|paint|render|imagine|show me|"
+                    r"give me)(?: me)?(?: (an?|the|some|one|two|three|four|five|six|seven|eight|\d+))? (.+?)[.!?]*$", re.I)
+NOT_MEDIA = re.compile(r"\b(taglines?|slogans?|captions?|poems?|story|stories|essay|email|letter|message|post|hashtags?|tips|list|"
+                       r"plan|summary|script|lyrics only|recipe|code|table|names?|ideas?|joke|quiz|translation|answer)\b", re.I)
+EDITISH = re.compile(r"^(her|his|him|it|its|this|that|these|those|them|their|she|he|the same)\b|\b(shorter|longer|older|younger|brighter|darker|"
+                     r"bigger|smaller|again|instead|(picture|pic|image|shot|clip|take|scene) (no\.? ?)?\d+|number \d+)\b", re.I)
+WORDS_N = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "a": 1, "an": 1}
+
+
+def create_request(text: str) -> dict | None:
+    """"generate a cat", "make 3 pictures of a desi dog", "create a video of rain in Kochi", "make a song about Onam"
+    -> make it straight away (like ChatGPT / Gemini do), no model needed to understand it."""
+    t = " ".join(text.strip().split())
+    m = CREATE.match(t)
+    if not m or NOT_MEDIA.search(m.group(3)) or EDITISH.search(m.group(3)) or len(t.split()) > 60:
+        return None  # "make her hair shorter in picture 2" is a change, not something new
+    what, n = m.group(3).strip(), m.group(2)
+    low = what.lower()
+    kind = "images"
+    if re.search(r"\b(video|reel|clip|animation|ad film|commercial|short film|ad)\b", low):
+        kind = "video"
+    elif re.search(r"\b(song|music|jingle|bhajan|lullaby|rap|track|tune|bgm|gaana|paattu)\b", low):
+        kind = "music"
+    idea = re.sub(r"^(?:(?:\d+|an?|one|two|three|four|five|six|seven|eight) )?(?:(?:ai |hd |realistic |nice |beautiful )?(?:pictures?|images?|photos?|pics?|"
+                  r"wallpapers?|posters?|videos?|reels?|clips?|songs?|music|jingles?)\s*(?:of|about|for|on|showing|with)?\s*)", "", what, flags=re.I).strip()
+    idea = what if kind == "music" else (idea or what)  # a song keeps "a song about Onam": the words matter
+    a = {"kind": kind, "idea": idea}
+    if kind == "images":
+        num_ = re.match(r"(\d+|one|two|three|four|five|six|seven|eight)\b", low)
+        cnt = int(n) if n and n.isdigit() else WORDS_N.get((n or "").lower(), 0) or (
+            int(num_.group(1)) if num_ and num_.group(1).isdigit() else WORDS_N.get(num_.group(1), 0) if num_ else 0)
+        a["count"] = max(1, min(8, cnt or 1))
+    if kind == "video":
+        sec = re.search(r"(\d+)\s*(?:s|sec|seconds?)\b", low)
+        a["seconds"] = int(sec.group(1)) if sec else 15
+    return a
 
 
 def complexity(text: str) -> float:

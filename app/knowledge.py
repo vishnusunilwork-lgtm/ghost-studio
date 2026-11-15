@@ -154,7 +154,8 @@ def hints(idea: str) -> str:
 
 def apply(prompt: str) -> str:
     """For the picture model: make sure every Indian/taught word is spelled out as a look, and add standing wishes."""
-    p = (prompt or "").strip()
+    from . import scene
+    p = scene.apply((prompt or "").strip())  # real sizes, deliberate size swaps, exact counts, a camera that shows them
     low = p.lower()
     extra = []
     for line in meanings(p):
