@@ -836,7 +836,9 @@ def install(aid: str, cfg) -> dict:
         return st
     need = float(a["size"].split()[1]) if a["size"].split()[1].replace(".", "").isdigit() else 0
     if need and free_disk_gb() and free_disk_gb() < need + 3:
-        _set(aid, state="error", step="Not enough free disk space", detail=f"Needs about {need:.0f} GB free; this computer has {free_disk_gb():.0f} GB.")
+        _set(aid, state="error", step="Not enough free disk space",
+             detail=f"Needs about {need + 3:.0f} GB free (the {need:.0f} GB add-on plus room to work); this computer has {free_disk_gb():.0f} GB. "
+                    "Free some space (Downloads, old videos, Trash), then press Try again.")
         return _st(aid)
 
     def work():

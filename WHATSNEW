@@ -1,3 +1,4 @@
+3.21.1: Clearer "Not enough free disk space" message: it now shows the full space an add-on needs (its size plus room to work).
 3.21.0: Real moving video on your Mac, free: install ⚙ → Add-ons → AI motion (on this Mac). A dog really walks through the market, people move, the camera travels. Made on the Mac itself (no cloud, no cost per video), about 1–3 minutes per shot on recent Macs. Ghost uses Google Cloud first when it is connected, then AI motion, then photo motion.
 3.20.0: Connect your company's Google Cloud (⚙ → Google Cloud): the same models as the Google Cloud console make your ads: Veo 3.1 real moving video with its own sound and lip-sync, and Gemini image pictures. All shots are made at the same time. Ghost picks the newest model your project has and stops at your monthly limit.
 3.19.0: Talking pictures look alive: several mouth shapes (open, half, rounded for o/u sounds), smooth changes between them and natural eye blinks. Works for animals and people.
