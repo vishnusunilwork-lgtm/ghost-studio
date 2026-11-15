@@ -95,7 +95,11 @@ class Runner:
         p = self.store.load(pid)
         p["status"] = "queued"
         p.pop("error", None)
+        if task == "all":
+            p.pop("shrunk", None)  # a fresh start makes every file anew
         self.store.save(p)
+        if p.get("shrunk") and task != "regrow":
+            self.q.put((pid, "regrow", {}))  # 🧬 a shrunk project first grows its files back, then does the job
         self.q.put((pid, task, kw))
 
     def stop(self, pid: str):
@@ -182,6 +186,60 @@ class Runner:
 
     def _done(self, p, step):
         p["steps"][step] = "done"
+        self.store.save(p)
+
+    # ------------------------------------------------------------ 🧬 Ghost DNA: grow a shrunk project's files back
+    def _regrow(self, pid):
+        from . import dna
+        p = self.store.load(pid)
+        if not p.get("shrunk"):
+            return
+        d = self.store.dir(pid)
+        stills = p.get("stills") or []
+        if stills:
+            _, (ow, oh), draft = sizes(p)
+            k = 0.5 if draft else 1.0
+            w, h = int(ow * k) // 16 * 16, int(oh * k) // 16 * 16
+            q = self.cfg["quality"]
+            steps = int(q.get("image_steps_draft", 20)) if draft else int(q["image_steps"])
+            refs = [Path(r) for r in p.get("refs") or []]
+            ai = p.get("anchor_i")
+            order = sorted(range(len(stills)), key=lambda i: 0 if i == ai else 1)  # the main look first: the others follow it
+            todo = [i for i in order if stills[i].get("dna")]
+            scores = []
+            for n, i in enumerate(todo):
+                s = stills[i]
+                self._say(p, "images", f"🧬 Regrowing picture {i + 1} from its recipe ({n + 1} of {len(todo)})", 10 + int(85 * n / max(1, len(todo))))
+                info = s["dna"]
+                anchor = Path(stills[info["anchor"]]["image"]) if info.get("anchor") is not None else None
+                ref_imgs = ([anchor] if anchor else []) + refs
+                prompt = (self.LOCK + s["prompt"]) if anchor else s["prompt"]
+                out = d / info["name"]
+                self.eng.image(prompt, out, w, h, seed=int(s["seed"]), ref_images=ref_imgs[:3] or None, steps=steps,
+                               fallback=refs[i % len(refs)] if refs else None, best=not draft)
+                prev = Path(info["preview"])
+                s["match"] = dna.similarity(prev, out) if prev.exists() else None
+                scores.append(s["match"] or 0)
+                s["image"] = str(out)
+                s.pop("dna")
+                if i == ai:
+                    p["anchor"] = str(out)
+                self.store.save(p)
+            if scores:
+                p["log"].append(time.strftime("%H:%M:%S ") + f"🧬 Regrew {len(scores)} picture(s); closest match {max(scores)}%, "
+                                f"lowest {min(scores)}% (100% = the same picture; below about 90% = a close variation, "
+                                "usually because a model was updated since)")
+        clips = p.get("clips") or []
+        if clips and any(c.get("dna") for c in clips):
+            self._say(p, "images", "🧬 Regrowing the shots from their recipes", 10)
+            self._images(pid)
+            self._videos(pid, resume=True)
+            self._talk(pid)
+            p = self.store.load(pid)
+            for c in p.get("clips") or []:
+                c.pop("dna", None)
+        p.pop("shrunk", None)
+        p["status"], p["progress"] = "done", 100
         self.store.save(p)
 
     # ------------------------------------------------------------ the one click

@@ -435,7 +435,7 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
           <a class="btn solid hidden" id="pDl" download><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 4v12M6 11l6 6 6-6M5 20h14"/></svg>Download MP4</a>
           <button class="btn hidden" id="pUp">Make it in Quality</button>
           <button class="btn hidden" id="pReedit">Re-export with my changes</button>
-          <button class="btn hidden" id="pUndo">↶ Undo</button><button class="btn hidden" id="pRerun">Start this ad again</button>
+          <button class="btn hidden" id="pUndo">↶ Undo</button><button class="btn hidden" id="pRegrow" title="This project was shrunk: make the shot pictures and clips again from their recipes">🧬 Regrow</button><button class="btn hidden" id="pRerun">Start this ad again</button>
         </div>
         <ul class="steps" id="pSteps"></ul>
         <p class="perr" id="pErr"></p>
@@ -449,7 +449,7 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
       <details class="lyrics hidden" id="lyrBox"><summary>Lyrics</summary><pre id="lyrics"></pre></details>
     </div>
     <div class="gallery-wrap hidden" id="galWrap">
-      <div class="galbar"><a class="btn solid" id="gZip" download><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 4v12M6 11l6 6 6-6M5 20h14"/></svg>Download all</a><button class="btn hidden" id="gUp">Make them in Quality</button><button class="btn hidden" id="gUndo">↶ Undo</button><button class="btn" id="gRerun">Start again</button></div>
+      <div class="galbar"><a class="btn solid" id="gZip" download><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 4v12M6 11l6 6 6-6M5 20h14"/></svg>Download all</a><button class="btn hidden" id="gUp">Make them in Quality</button><button class="btn hidden" id="gUndo">↶ Undo</button><button class="btn hidden" id="gRegrow" title="Make the full pictures again from their recipes">🧬 Regrow</button><button class="btn" id="gRerun">Start again</button></div>
       <p class="note galhint hidden" id="galHint"><b>Retake</b> keeps the same person and place as the ★ main look. <b>New take</b> starts fresh. Tap ☆ on any picture to make it the main look.</p>
       <div class="gallery" id="gallery"></div>
     </div>
@@ -487,6 +487,12 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
       <div id="brainOn" class="hidden"><p class="note" id="brInfo"></p><button class="btn" id="brRemove" style="width:100%">Remove key (back to free, on this computer)</button></div>
       <p class="note" style="margin-top:10px">Whole-web search (optional): a free <b>Brave Search API</b> key makes Ghost search the entire web, not only news, weather and Wikipedia.</p>
       <input type="password" id="brvKey" class="inp" placeholder="Brave Search API key (optional)" autocomplete="off" spellcheck="false"><button class="btn" id="brvSave" style="margin-top:6px;width:100%">Save search key</button>
+    </div>
+    <div class="sect"><h4>Storage <span class="tag">🧬 Ghost DNA</span></h4>
+      <p class="note"><b>Shrink</b> keeps each picture's recipe (prompt + seed, a few hundred bytes) and a small preview instead of the big files, like DNA keeps the recipe for a body. Finished videos, songs and your uploads stay as they are. <b>🧬 Regrow</b> makes the full files again when you need them.</p>
+      <button class="btn" id="stShow" style="width:100%">Show space used</button>
+      <div id="stList" class="mem" style="margin-top:8px"></div>
+      <button class="btn" id="stAll" style="margin-top:8px;width:100%">Shrink every finished project not used for 14 days</button>
     </div>
     <div class="sect"><h4>Google Cloud <span class="tag">best quality</span></h4>
       <div id="gOff"><p class="note">Use your company's Google Cloud project for the <b>same models as the Google Cloud console</b>: <b>Veo 3.1</b> real moving video with its own sound and lip-sync, and <b>Gemini image</b> pictures. Every shot is made at the same time, so an ad takes about as long as one clip (usually 1–2 minutes). Google bills the project (Veo 3.1 Lite 720p with sound ≈ $0.05 a second); Ghost stops at your monthly limit.</p>
@@ -698,6 +704,12 @@ $('#gSave').onclick=async()=>{const k=$('#gKey').value.trim(),p=$('#gProject').v
   try{await api('/api/settings/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({google_key:k||null,google_project:p})});$('#gKey').value='';await status();kv();await gTest()}catch(e){toast(e.message)}};
 $('#gTest').onclick=gTest;
 $('#gRemove').onclick=()=>{if(confirm('Disconnect Google Cloud from Ghost on this computer?'))api('/api/settings/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({remove_google:true})}).then(()=>status()).then(kv).then(()=>toast('Disconnected — back to free'))};
+const MB=b=>b>=1e9?(b/1e9).toFixed(1)+' GB':Math.max(0.1,b/1e6).toFixed(b<1e7?1:0)+' MB';
+async function stShow(){try{const r=await api('/api/storage');$('#stList').innerHTML=`<p class="note">Projects use ${MB(r.total)} · ${r.free_gb} GB free on this computer.</p>`+(r.projects.map(x=>`<div class="row2" style="align-items:center"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(x.title||'Untitled')} · <b>${MB(x.bytes)}</b></span>${x.shrunk?'<span class="note" style="padding:0">🧬 shrunk</span>':`<button class="btn" data-shrink="${x.id}" ${x.status==='running'||x.status==='queued'?'disabled':''}>Shrink</button>`}</div>`).join('')||'<p class="note">No projects yet.</p>');
+  $$('#stList [data-shrink]').forEach(b=>b.onclick=async()=>{b.disabled=true;try{const r=await api(`/api/projects/${b.dataset.shrink}/shrink`,{method:'POST'});toast(`🧬 Shrunk: ${MB(r.freed)} freed`);stShow()}catch(e){toast(e.message);b.disabled=false}})}catch(e){toast(e.message)}}
+$('#stShow').onclick=stShow;
+$('#stAll').onclick=async()=>{if(!confirm('Shrink every finished project not used for 14 days? Finished videos and songs stay; pictures and working files can be regrown later.'))return;try{const r=await api('/api/storage/shrink-all?days=14',{method:'POST'});toast(r.projects?`🧬 ${r.projects} project(s) shrunk, ${MB(r.freed)} freed`:'Nothing old enough to shrink');stShow()}catch(e){toast(e.message)}};
+async function regrow(){try{await api(`/api/projects/${CUR}/regrow`,{method:'POST'});toast('🧬 Regrowing the full files from their recipes');kick()}catch(e){toast(e.message)}}
 async function saveApi(body){try{await api('/api/settings/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});$('#apiKey').value='';await status();kv();toast(body.remove?'Key removed — back to free photo motion':'Saved')}catch(e){toast(e.message)}}
 $('#apiSave').onclick=()=>{const k=$('#apiKey').value.trim();if(!k){toast('Paste the key first');return}saveApi({fal_key:k})};
 $('#apiLimitSave').onclick=()=>saveApi({monthly_limit_usd:+$('#apiLimit').value});
@@ -783,7 +795,7 @@ async function refresh(force){if(!CUR)return;let p;try{p=await api('/api/project
   $('#pSteps').innerHTML=(ST?.steps||Object.keys(p.steps||{})).map(s=>`<li class="${p.steps[s]}"><i></i>${esc((ST?.labels||{})[s]||s)}</li>`).join('');
   $('#pLog').textContent=(p.log||[]).join('\n');$('#pErr').textContent=p.status==='error'?(p.error||'')+' — press “Copy problem report” and send it to Vishnu.':'';$('#pReport').classList.toggle('hidden',p.status!=='error');
   const fin=p.status==='done'&&p.final;
-  ['pDl','pReedit','pRerun'].forEach(i=>$('#'+i).classList.toggle('hidden',!fin&&i!=='pRerun'));$('#pRerun').classList.toggle('hidden',busy);
+  ['pDl','pReedit','pRerun'].forEach(i=>$('#'+i).classList.toggle('hidden',!fin&&i!=='pRerun'));$('#pRerun').classList.toggle('hidden',busy);$('#pRegrow').classList.toggle('hidden',busy||!p.shrunk);
   $('#pUp').classList.toggle('hidden',!(fin&&p.quality==='draft'));undoBtn('#pUndo',p.kind==='images'?{}:p,busy);
   scr.classList.toggle('busy',busy);
   const key=fin?p.final+p.updated:'';
@@ -803,7 +815,7 @@ async function refresh(force){if(!CUR)return;let p;try{p=await api('/api/project
     if(!busy){clearInterval(TIMER);TIMER=setInterval(refresh,8000)}return}$('#galWrap').classList.toggle('hidden',!imgs);
   if(imgs){$('#pSteps').innerHTML=['analyse','plan','images'].filter(s=>p.steps[s]!=='skipped'||s!=='analyse').map(s=>`<li class="${p.steps[s]}"><i></i>${esc({analyse:'Reading the reference',plan:'Writing the image prompts',images:'Making the images'}[s])}</li>`).join('');
     const gs=JSON.stringify((p.stills||[]).map(x=>[x.image,x.status]))+p.status+p.quality;if(force||gs!==LAST){LAST=gs;gallery(p)}
-    $('#gZip').classList.toggle('hidden',!(p.status==='done'));$('#gZip').href='/api/projects/'+p.id+'/zip';$('#gUp').classList.toggle('hidden',!(p.status==='done'&&p.quality==='draft'));$('#gRerun').classList.toggle('hidden',busy);undoBtn('#gUndo',p,busy);
+    $('#gZip').classList.toggle('hidden',!(p.status==='done'));$('#gZip').href='/api/projects/'+p.id+'/zip';$('#gUp').classList.toggle('hidden',!(p.status==='done'&&p.quality==='draft'));$('#gRerun').classList.toggle('hidden',busy);$('#gRegrow').classList.toggle('hidden',busy||!p.shrunk);undoBtn('#gUndo',p,busy);
     if(!busy){clearInterval(TIMER);TIMER=setInterval(refresh,8000)}return}
   const sig=JSON.stringify((p.clips||[]).map(c=>[c.video,c.status,c.camera_move,c.shake,c.line,c.seconds]))+p.status;
   if(force||sig!==LAST){LAST=sig;shots(p)}
@@ -828,9 +840,9 @@ $('#mEdit').onclick=()=>P&&planOpen(P);
 $('#mMore').onclick=async()=>{try{await api(`/api/projects/${CUR}/music/more`,{method:'POST'});toast('Making another take');kick()}catch(e){toast(e.message)}};
 $('#mRerun').onclick=async()=>{await api(`/api/projects/${CUR}/rerun`,{method:'POST'});toast('Starting again');kick()};
 function gallery(p){const ar=(p.aspect||'9:16').replace(':','/');$('#gallery').style.setProperty('--ar',ar);const busy=p.status==='running'||p.status==='queued';
-  $('#gallery').innerHTML=(p.stills||[]).map((x,i)=>{const u=x.image?fileUrl(p.id,x.image,x.seed):'';const nm=`${String(i+1).padStart(2,'0')} ${x.caption||'image'}.png`;
+  $('#gallery').innerHTML=(p.stills||[]).map((x,i)=>{const u=x.image?fileUrl(p.id,x.image,x.seed):'';const nm=`${String(i+1).padStart(2,'0')} ${x.caption||'image'}.${(x.image||'.png').split('.').pop()}`;
     const main=p.anchor_i===i&&p.same_look!==false;
-    return `<div class="tile ${main?'main':''}" style="animation-delay:${i*50}ms"><div class="im ${u?'':'wait'}">${u?`<img src="${u}" alt="${esc(x.caption)}" data-z="${u}">`:''}${u&&p.same_look!==false?(main?'<span class="star on" title="Main look: retakes keep this person and place">★ Main look</span>':`<button class="star" data-main="${i}" title="Use this as the main look">☆</button>`):''}</div><div class="cap">${i+1}. ${esc(x.caption||'')}</div>
+    return `<div class="tile ${main?'main':''}" style="animation-delay:${i*50}ms"><div class="im ${u?'':'wait'}">${u?`<img src="${u}" alt="${esc(x.caption)}" data-z="${u}">`:''}${u&&p.same_look!==false?(main?'<span class="star on" title="Main look: retakes keep this person and place">★ Main look</span>':`<button class="star" data-main="${i}" title="Use this as the main look">☆</button>`):''}</div><div class="cap">${i+1}. ${esc(x.caption||'')}${x.dna?' <span class="tag" title="Only the recipe and this small preview are kept. Press 🧬 Regrow for the full picture.">🧬 recipe</span>':x.match!=null?` <span class="tag" title="How close the regrown picture is to the original (100% = the same)">regrown ${x.match}%</span>`:''}</div>
     <div class="row3">${u?`<a class="btn ic" href="${u}" download="${esc(nm)}" title="Download"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 4v12M6 11l6 6 6-6M5 20h14"/></svg></a>`:''}<button class="btn ic" data-edit="${i}" title="Edit this picture's prompt">✎</button><button class="btn" data-redo="${i}" data-mode="same" ${busy?'disabled':''} title="Same person and place, new take">Retake</button><button class="btn" data-redo="${i}" data-mode="new" ${busy?'disabled':''} title="Completely fresh: new person and place allowed">New take</button></div>
     <div class="row2"><button class="btn chgb" data-chg="${i}" ${busy||!u?'disabled':''} title="Edit this same picture: hair, eyes, gender, clothes…">✨ Change</button>${(x.history||[]).length?`<button class="btn" data-undo="${i}" ${busy?'disabled':''} title="Back to before: ${esc(x.history[x.history.length-1].what||'')}">↶ Undo</button>`:''}</div>${(x.edits||[]).length?`<div class="edited" title="${esc(x.edits.join(' · '))}">Changed: ${esc(x.edits.slice(-2).join(' · '))}</div>`:''}</div>`}).join('')||'<p class="note">Images appear here as they are made.</p>';
   $$('#gallery [data-z]').forEach(im=>im.onclick=()=>{const z=document.createElement('div');z.className='zoom';z.innerHTML=`<img src="${im.dataset.z}" alt="">`;z.onclick=()=>z.remove();document.body.appendChild(z)});
@@ -842,6 +854,7 @@ function gallery(p){const ar=(p.aspect||'9:16').replace(':','/');$('#gallery').s
   $$('#gallery [data-main]').forEach(b=>b.onclick=async e=>{e.stopPropagation();try{await api(`/api/projects/${CUR}/images/${b.dataset.main}/main`,{method:'POST'});toast('Main look set. Retakes now keep this person and place.');refresh(true)}catch(err){toast(err.message)}});
   $('#galHint').classList.toggle('hidden',p.same_look===false||!(p.stills||[]).some(x=>x.image))}
 $('#gUp').onclick=async()=>{await api(`/api/projects/${CUR}/upgrade`,{method:'POST'});toast('Making the final images at full quality');kick()};
+$('#gRegrow').onclick=regrow;$('#pRegrow').onclick=regrow;
 $('#gRerun').onclick=async()=>{await api(`/api/projects/${CUR}/rerun`,{method:'POST'});toast('Making new images');kick()};
 function shots(p){const cs=p.clips||[];$('#shotsHint').textContent=cs.length?'Click a shot to change its words, camera move or shake':'Shots appear as soon as the script is written';
   $('#shots').innerHTML=cs.map((c,i)=>`<button class="shot" data-i="${i}" style="animation-delay:${i*40}ms"><div class="th ${c.video?'':'wait'}">${c.video?`<video src="${fileUrl(p.id,c.video)}#t=0.5" muted playsinline preload="metadata"></video>`:p.image?`<img src="${fileUrl(p.id,p.image)}" alt="" style="opacity:.35">`:''}<span class="n">${i+1}</span></div><p>${esc(c.line)}</p><small>${Number(c.seconds).toFixed(1)} s · ${esc(MOVE_LABEL[c.camera_move]||c.camera_move)}${c.shake>0?' · handheld':''}</small></button>`).join('');

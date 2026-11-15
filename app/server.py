@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 import shutil
 from pathlib import Path
 
@@ -649,11 +650,13 @@ def zip_images(pid: str):
     import zipfile
     from fastapi.responses import Response
     p = _get(pid)
+    if any(s.get("dna") for s in p.get("stills") or []):
+        raise HTTPException(409, "This project is shrunk (🧬). Press Regrow first to get the full pictures.")
     b = io.BytesIO()
     with zipfile.ZipFile(b, "w", zipfile.ZIP_DEFLATED) as z:
         for n, s in enumerate(p.get("stills") or [], 1):
             if s.get("image") and Path(s["image"]).exists():
-                z.write(s["image"], f"{n:02d} {s.get('caption') or 'image'}.png".replace("/", "-"))
+                z.write(s["image"], f"{n:02d} {s.get('caption') or 'image'}{Path(s['image']).suffix}".replace("/", "-"))
     safe = "".join(ch for ch in (p.get("title") or "images") if ch.isalnum() or ch in " -_").strip() or "images"
     return Response(b.getvalue(), media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{safe} - images.zip"'})
 
@@ -734,6 +737,52 @@ def delete_project(pid: str):
     if d.parent != STORE.root.resolve():
         raise HTTPException(400, "Not a project folder")
     shutil.rmtree(d, ignore_errors=True)
+    return {"ok": True}
+
+
+@app.get("/api/storage")
+def storage():
+    """Space used by each project, and how much the disk has left."""
+    from . import addons, dna
+    items = dna.usage(STORE)
+    return {"projects": items, "total": sum(i["bytes"] for i in items), "free_gb": round(addons.free_disk_gb(), 1)}
+
+
+@app.post("/api/projects/{pid}/shrink")
+def shrink_project(pid: str):
+    """🧬 Keep the recipe, not the files. The finished video, songs and your uploads stay."""
+    from . import dna
+    p = _get(pid)
+    if RUNNER.current == pid or p.get("status") in ("running", "queued"):
+        raise HTTPException(409, "This project is being made. Shrink it when it has finished.")
+    r = dna.shrink(p, STORE.dir(pid))
+    STORE.save(p)
+    return {"ok": True, **r}
+
+
+@app.post("/api/storage/shrink-all")
+def shrink_all(days: float = 14):
+    """Shrink every finished project not opened or changed for `days` days."""
+    from . import dna
+    freed, n = 0, 0
+    for it in dna.usage(STORE):
+        if it["shrunk"] or it["status"] in ("running", "queued") or RUNNER.current == it["id"]:
+            continue
+        if time.time() - (it.get("updated") or 0) < days * 86400:
+            continue
+        p = STORE.load(it["id"])
+        freed += dna.shrink(p, STORE.dir(it["id"]))["freed"]
+        STORE.save(p)
+        n += 1
+    return {"ok": True, "projects": n, "freed": freed}
+
+
+@app.post("/api/projects/{pid}/regrow")
+def regrow_project(pid: str):
+    p = _get(pid)
+    if not p.get("shrunk"):
+        return {"ok": True, "note": "Not shrunk"}
+    RUNNER.submit(pid, "regrow")
     return {"ok": True}
 
 

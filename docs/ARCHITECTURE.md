@@ -100,6 +100,23 @@ and takes roughly 20 s per second of video even with the MLX port; and the face 
 has non-commercial model weights. Wav2Lip is non-commercial. It may be added later as an optional add-on for human
 presenters, after testing on a Mac.
 
+## 🧬 Ghost DNA: shrink old projects (v3.22)
+
+`dna.py`. DNA stores the recipe for a body, not the body. A Ghost picture's recipe (prompt, seed, size, steps, the
+main-look reference) is a few hundred bytes in `project.json`; the picture itself is megabytes. **Shrink** keeps the
+recipe and a 384 px preview; **🧬 Regrow** (`Runner._regrow`) makes the picture again, main look first so the others
+can follow it, and measures how close it came (64×64 comparison, shown as "regrown 99%").
+
+- Only *pure* recipes become DNA: made once from prompt + seed, never ✨ Changed, not a quality-check retake, and
+  (for "same look" pictures) the main look is pure too. Everything else stays as a full-size JPEG (quality 92,
+  about 5–10× smaller than PNG).
+- Video ads keep the finished video, narration, music and uploads; shot pictures and clips are regrown on demand.
+- Any job on a shrunk project (Retake, Change, Re-edit…) regrows first, automatically. Download-all waits for Regrow.
+- Undo history is cleared, because it points at removed files.
+- Honest limit: the same seed gives the same picture only with the same model, settings and computer type. After
+  a model update or on a different Mac, Regrow can give a close variation; that's why the preview is kept and the
+  match is shown. Fully general compression of 2 TB into 1 KB is impossible (8,192 bits can't tell apart that many files).
+
 ## AI motion on this Mac (v3.21)
 
 Three ways Ghost makes a shot, picked automatically: **Google Cloud / video service** (Veo 3.1: motion, sound,
