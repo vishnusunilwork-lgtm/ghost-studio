@@ -21,6 +21,10 @@ PRIVATE = {"on": False}
 CLOUD = {"base": "", "key": "", "model": ""}  # the brain that answered last (shown in the app)
 
 
+# Some services (Groq, behind Cloudflare) refuse Python's default "Python-urllib" User-Agent with 403 / error 1010
+UA = "GhostStudio/3 (+https://github.com/vishnusunilwork-lgtm/ghost-studio)"
+
+
 class CloudDown(Exception):
     pass
 
@@ -51,7 +55,7 @@ def _midnight_utc() -> float:
 
 def _req(e: dict, path: str, body: dict | None = None, timeout: int = 120, stream: bool = False):
     req = urllib.request.Request(e["base"].rstrip("/") + path, data=json.dumps(body).encode() if body is not None else None,
-                                 headers={"Authorization": "Bearer " + e["key"], "Content-Type": "application/json",
+                                 headers={"Authorization": "Bearer " + e["key"], "Content-Type": "application/json", "User-Agent": UA,
                                           **({"HTTP-Referer": "https://github.com/vishnusunilwork-lgtm/ghost-studio", "X-Title": "Ghost Studio"}
                                              if "openrouter" in e["base"] else {})},
                                  method="POST" if body is not None else "GET")

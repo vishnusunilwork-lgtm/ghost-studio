@@ -185,7 +185,7 @@ class Fal:
 
     def _req(self, url, body=None):
         req = urllib.request.Request(url, data=json.dumps(body).encode() if body is not None else None,
-                                     headers={"Authorization": "Key " + self.key, "Content-Type": "application/json"},
+                                     headers={"Authorization": "Key " + self.key, "Content-Type": "application/json", "User-Agent": "GhostStudio/3"},
                                      method="POST" if body is not None else "GET")
         with urllib.request.urlopen(req, timeout=120) as r:
             return json.loads(r.read())
@@ -299,7 +299,7 @@ class Google:
 
     def _post(self, url: str, body: dict, timeout: int = 180) -> dict:
         req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST",
-                                     headers={**self._headers(), "Content-Type": "application/json"})
+                                     headers={**self._headers(), "Content-Type": "application/json", "User-Agent": "GhostStudio/3"})
         try:
             with urllib.request.urlopen(req, timeout=timeout) as r:
                 return json.loads(r.read())

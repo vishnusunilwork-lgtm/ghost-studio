@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import urllib.error
 import re
 import time
 import shutil
@@ -352,8 +353,15 @@ def brain_add(body: BrainAdd):
          "base": base, "key": key, "model": body.model.strip()}
     try:
         models = llm.cloud_models(e)
+    except urllib.error.HTTPError as err:
+        try:
+            why = json.loads(err.read().decode("utf-8", "ignore")).get("error", {}).get("message", "")
+        except Exception:
+            why = ""
+        raise HTTPException(400, f"The service did not accept the key ({err.code}{': ' + why[:120] if why else ''}). "
+                                 "Copy the key again (no spaces), or make a new one.")
     except Exception as err:
-        raise HTTPException(400, "The service did not accept the key: " + str(err)[:160])
+        raise HTTPException(400, "Could not reach the service: " + str(err)[:160])
     if not e["model"] or (models and e["model"] not in models):
         pick = next((m for p in pv.get("prefer", []) for m in models if m == p), None) or \
             next((m for p in pv.get("prefer", []) for m in models if p in m), None) or \
