@@ -485,7 +485,10 @@ class Engines:
                 pick = next((v for v in self.MAC_VOICES.get(lang, []) if v + " " in have), "")
             aiff = out.with_suffix(".aiff")
             _run(["say"] + (["-v", pick] if pick else []) + ["-r", "175", "-o", str(aiff), text])
-            _run([ffmpeg_bin(), "-y", "-loglevel", "error", "-i", str(aiff), "-ar", "48000", "-ac", "1", str(out)])
+            # Macs have few Indian male voices: a deeper version of the voice keeps two characters clearly apart
+            deep = voice == "male" and (pick or "Lekha") not in ("Rishi",)
+            af = ["-af", "aresample=48000,asetrate=48000*0.84,aresample=48000,atempo=1.19"] if deep else []
+            _run([ffmpeg_bin(), "-y", "-loglevel", "error", "-i", str(aiff), *af, "-ar", "48000", "-ac", "1", str(out)])
             aiff.unlink(missing_ok=True)
             return out
         if how == "windows" and not self.mock:

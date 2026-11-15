@@ -110,7 +110,7 @@ def projects():
 async def create(idea: str = Form(""), dialogue: str = Form(""), seconds: int = Form(30),
                  voice_mode: str = Form("oncamera"), language: str = Form(""), title: str = Form(""),
                  aspect: str = Form("9:16"), quality: str = Form("final"), kind: str = Form("video"), count: int = Form(4),
-                 review: str = Form(""), same_look: str = Form("1"), style: str = Form("auto"), voice_gender: str = Form("female"), voice_style: str = Form("warm"), music_style: str = Form("bollywood"), vocals: str = Form("ai"), music_seconds: int = Form(60), ai_music: str = Form(""),
+                 review: str = Form(""), same_look: str = Form("1"), style: str = Form("auto"), voice_gender: str = Form("female"), voice_style: str = Form("warm"), cast: str = Form("auto"), music_style: str = Form("bollywood"), vocals: str = Form("ai"), music_seconds: int = Form(60), ai_music: str = Form(""),
                  reference: UploadFile | None = File(None), music: UploadFile | None = File(None),
                  refs: list[UploadFile] | None = File(None)):
     if kind == "music" and not idea.strip() and not dialogue.strip():
@@ -126,7 +126,8 @@ async def create(idea: str = Form(""), dialogue: str = Form(""), seconds: int = 
                   kind=kind if kind in ("images", "music", "dub") else "video", count=max(1, min(8, count)),
                   music_style=music_style, vocals=vocals if vocals in ("ai", "mine", "instrumental") else "ai",
                   music_seconds=max(10, min(600, music_seconds)), ai_music=ai_music == "1", review=review == "1", same_look=same_look != "0", voice_gender="male" if voice_gender == "male" else "female",
-                  voice_style=voice_style if voice_style in ("warm", "excited", "calm", "news", "devotional") else "warm", style=style if style in ("auto", "interview2", "cinematic", "news", "ugc") else "auto")
+                  voice_style=voice_style if voice_style in ("warm", "excited", "calm", "news", "devotional") else "warm",
+                  cast=cast if cast in ("auto", "people", "animals", "cartoon") else "auto", style=style if style in ("auto", "interview2", "cinematic", "news", "ugc") else "auto")
     d = STORE.dir(p["id"])
     for up, key in ((reference, "reference"), (music, "music")):
         if up and up.filename:

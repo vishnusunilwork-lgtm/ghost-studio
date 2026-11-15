@@ -220,7 +220,7 @@ class Runner:
         pl = planner.plan(self.cfg, idea=p.get("idea", ""), dialogue=p.get("dialogue", ""), reference=ref,
                           seconds=int(p.get("seconds", 30)), voice_mode=p.get("voice_mode", "oncamera"),
                           language=p.get("language"), aspect=p.get("aspect") or "9:16", style=self._style(p, ref),
-                          fast=p.get("quality") == "draft")
+                          fast=p.get("quality") == "draft", cast=p.get("cast", "auto"))
         p["plan"] = {k: v for k, v in pl.items() if k != "clips"}
         p["title"] = p.get("title") if p.get("title") not in (None, "", "New ad") else pl.get("title") or "New ad"
         p["clips"] = [{**c, "status": "waiting", "seed": random.randint(1, 10**6)} for c in pl.get("clips", [])]
@@ -364,13 +364,22 @@ class Runner:
             p["steps"]["voice"] = "skipped"
             self.store.save(p)
             return
-        self._say(p, "voice", "Recording the narrator", 85)
+        self._say(p, "voice", "Recording the voices", 85)
+        # one voice per character: the first speaker gets the chosen voice, the next one the other voice, and so on
+        order = []
+        for c in p["clips"]:
+            if c.get("speaker") and c["speaker"] not in order:
+                order.append(c["speaker"])
+        mine = p.get("voice_gender", "female")
+        other = "male" if mine == "female" else "female"
         for i, c in enumerate(p["clips"]):
             text = c.get("narration") or (c.get("line") if mode == "narrator" else "")
             if not text:
                 continue
+            k = order.index(c["speaker"]) if c.get("speaker") in order and not c.get("narration") else 0
             f = d / f"narr{i + 1:02d}.wav"
-            self.eng.speech(text, f, p.get("language") or self.cfg.get("language", "Hindi"), p.get("voice_gender", "female"), p.get("voice_style", "warm"))
+            self.eng.speech(text, f, p.get("language") or self.cfg.get("language", "Hindi"), mine if k % 2 == 0 else other,
+                            p.get("voice_style", "warm") if k < 2 else "calm")
             c["narration_file"] = str(f)
         self._done(p, "voice")
 
@@ -567,7 +576,7 @@ class Runner:
         self._say(p, "plan", "Writing the image prompts", 8)
         pl = planner.plan_images(self.cfg, idea=p.get("idea", "") or p.get("dialogue", ""), reference=ref,
                                  count=int(p.get("count", 4)), aspect=p.get("aspect") or "9:16", language=p.get("language"),
-                                 style=self._style(p, ref), fast=p.get("quality") == "draft")
+                                 style=self._style(p, ref), fast=p.get("quality") == "draft", cast=p.get("cast", "auto"))
         if p.get("title") in (None, "", "New ad"):
             p["title"] = pl.get("title") or "Images"
         p.pop("anchor", None); p.pop("anchor_i", None)  # a new set starts a new main look

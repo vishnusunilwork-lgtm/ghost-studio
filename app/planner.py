@@ -188,8 +188,10 @@ Describe it for remaking with new, fictional people. Return JSON only:
 
 
 def plan(cfg: dict, *, idea: str = "", dialogue: str = "", reference: dict | None = None, seconds: int = 30,
-         voice_mode: str = "oncamera", language: str | None = None, aspect: str = "9:16", style: str = "auto", fast: bool = False) -> dict:
+         voice_mode: str = "oncamera", language: str | None = None, aspect: str = "9:16", style: str = "auto", fast: bool = False,
+         cast: str = "auto") -> dict:
     lang = language or cfg.get("language", "Hindi")
+    cast = cast_of((idea or "") + " " + (dialogue or ""), cast)
     b = cfg["brand"]
     max_s = float(cfg["quality"]["clip_seconds"])
     src = (f"REFERENCE AD to recreate (same kind of people, place, framing, camera moves, action and micro-expressions, "
@@ -203,9 +205,10 @@ Make a {seconds} s {aspect} ad for {b['name']} in {lang}. About the brand (backg
 {LITERAL}
 {src}
 {'Write the script yourself: a strong 2-second hook, natural spoken ' + lang + ', a clear call to action to download ' + b['spoken'] + ' at the end.' if need_script else 'Use EXACTLY this dialogue, every word, in order:' + chr(10) + dialogue}
-Voice: {'people speak on camera' if voice_mode == 'oncamera' else 'a narrator speaks over the pictures (people do not talk)' if voice_mode == 'narrator' else 'mostly on camera, with a short narrator line at the end'}.
-Rules: {RULES} {people_note(idea or dialogue)} {knowledge.hints((idea or '') + ' ' + (dialogue or ''))}
-{('DIRECTION STYLE (follow it exactly): ' + STYLES_DIR[style]['guide']) if style in STYLES_DIR else ''}
+Voice: {'the characters speak on camera' if voice_mode == 'oncamera' else 'a narrator speaks over the pictures (the characters do not talk)' if voice_mode == 'narrator' else 'mostly on camera, with a short narrator line at the end'}.
+Rules: {RULES} {people_note(idea or dialogue) if cast == 'people' else CAST_NOTE[cast]} {knowledge.hints((idea or '') + ' ' + (dialogue or ''))}
+{('DIRECTION STYLE (follow it exactly): ' + STYLES_DIR[style]['guide']) if style in STYLES_DIR and cast == 'people' else ''}
+Write every spoken line in {lang}'s own script (Hindi in Devanagari, Malayalam in Malayalam script, Tamil in Tamil script…), never in Roman letters, so the voice pronounces it right.
 Split the speech into clips of at most {max_s} s each (about 15 {lang} words), at natural pauses, never mid-phrase.
 Make EXACTLY {n_clips} clips so the ad really lasts about {seconds} seconds. Give each clip a different shot (close-up, medium, detail, wide…) and a different camera move.
 The title must be a real 2-5 word name for this ad (never "short name").
@@ -245,7 +248,7 @@ Return JSON only:
             c["shake"] = sd["shake"]
         if alternate:
             c["speaker"] = "AB"[i % 2]
-    if style == "interview2" and len(data.get("people") or []) < 2:
+    if style == "interview2" and cast == "people" and len(data.get("people") or []) < 2:
         data["people"] = [
             {"key": "A", "look": "fictional Indian woman in her early thirties, shoulder-length dark hair, taupe knit top, small earrings",
              "single_prompt": "Medium close-up, 85mm, a fictional Indian woman in her early thirties with shoulder-length dark hair and a taupe knit top, "
@@ -257,7 +260,9 @@ Return JSON only:
             data["image_prompt"] = ("Wide two-shot, 35mm, two fictional Indian women seated facing each other at a slight angle in a modern office with frosted glass "
                                     "panels and warm wood, soft window light, natural colours, real photo, no text, no logos.")
     data["style"] = style
-    ground_plan(data, idea or dialogue)
+    data["cast"] = cast
+    if cast == "people":
+        ground_plan(data, idea or dialogue)
     for c in data.get("clips", []):
         c["seconds"] = max(2.0, min(max_s + 0.5, float(c.get("seconds") or max_s)))
         if c.get("camera_move") not in MOVES:
@@ -326,6 +331,41 @@ PEOPLE_WORDS = ("person", "people", "woman", "women", "man", "men", "girl", "gir
                 "wedding", "party", "celebration", "celebrating", "dance", "dancing", "crowd", "team", "audience")
 
 
+ANIMALS = ("cow", "cows", "bull", "buffalo", "dog", "dogs", "puppy", "cat", "cats", "kitten", "goat", "sheep", "elephant", "monkey",
+           "parrot", "crow", "lion", "tiger", "horse", "donkey", "camel", "peacock", "rooster", "hen", "chicken", "pig", "rabbit",
+           "fox", "bear", "owl", "eagle", "snake", "fish", "frog", "mouse", "rat", "squirrel", "deer", "duck", "pigeon", "sparrow",
+           "gaay", "gai", "kutta", "kutte", "billi", "bandar", "hathi", "haathi", "tota", "bakri", "pashu", "janwar", "kaka", "pasu", "patti",
+           "गाय", "कुत्ता", "बिल्ली", "बंदर", "हाथी", "तोता", "बकरी", "पशु", "पശു", "പശു", "പട്ടി", "നായ", "പൂച്ച", "ആന", "കുരങ്ങ്", "തത്ത", "ആട്")
+
+
+def animals_in(idea: str) -> list[str]:
+    low = (idea or "").lower()
+    # Latin words: whole words only ("cat" is not in "category"); Indian scripts join words ("പശുവും" = cow + and): substring
+    return [a for a in ANIMALS if (re.search(rf"(?<![a-z]){re.escape(a)}(?![a-z])", low) if a.isascii() else a in low)]
+
+
+def cast_of(idea: str, cast: str = "auto") -> str:
+    """Who is on screen: people, talking animals, or 3D cartoon characters. Auto: animals the idea names are the cast
+    (\"a cow and a dog talk about politics\" = two talking animals, no humans), unless it also asks for people."""
+    if cast in ("people", "animals", "cartoon"):
+        return cast
+    if re.search(r"\b(cartoon|animated|animation|3d character|pixar|kids? show)\b", (idea or "").lower()):
+        return "cartoon"
+    return "animals" if animals_in(idea) and not has_people(idea) else "people"
+
+
+CAST_NOTE = {
+    "animals": ("THE CAST ARE TALKING ANIMALS: exactly the animals the idea names (each one is a speaker: key A, B…). NO humans anywhere "
+                "unless the idea asks for them. Make them photo-real animals in a real Indian place, expressive faces, mouths moving naturally "
+                "as they talk (photo-real talking-animal film style). Animals are Indian by default unless a breed is named: a cow is a desi zebu "
+                "cow with a shoulder hump and dewlap, a dog is an Indian pariah (indie) dog, a cat is an Indian street cat. In each 'look' "
+                "describe the animal: breed, colours, markings, any accessory (a bell, a collar). In video prompts write 'The cow says…', "
+                "never 'He/She says'."),
+    "cartoon": ("THE CAST ARE 3D ANIMATED CHARACTERS: a high-quality 3D animated film look (soft lighting, expressive faces, stylised "
+                "proportions), Indian characters and places by default. Use original characters only, never existing cartoon characters."),
+}
+
+
 def has_people(idea: str) -> bool:
     """Does the idea ask for people? "cat" -> no (only the cat), "girl with a cat" -> yes."""
     low = (idea or "").lower()
@@ -338,10 +378,11 @@ SHOTS = [s[1] for s in SHOT_SPECS]
 
 
 def plan_images(cfg: dict, *, idea: str = "", reference: dict | None = None, count: int = 4, aspect: str = "9:16",
-                language: str | None = None, style: str = "auto", fast: bool = False) -> dict:
+                language: str | None = None, style: str = "auto", fast: bool = False, cast: str = "auto") -> dict:
     """Images only: a set of clearly different still images (close-up, detail, wide…) of the same people and place."""
     count = max(1, min(8, int(count or 4)))
-    people = bool(reference) or has_people(idea)
+    cast = cast_of(idea, cast)
+    people = bool(reference) or (has_people(idea) and cast == "people") or cast == "cartoon"
     specs, quality = (SHOT_SPECS, QUALITY) if people else (SUBJECT_SHOTS, QUALITY_SUBJECT)
     shots = [specs[i % len(specs)] for i in range(count)]
     src = (f"REFERENCE AD to take the look from (same kind of people, place, light and framing, new fictional faces): {reference}"
@@ -350,7 +391,7 @@ def plan_images(cfg: dict, *, idea: str = "", reference: dict | None = None, cou
     prompt = f"""You are an art director and prompt engineer for a photo-real image model.
 Make {count} still images, {aspect} frame. {LITERAL}
 {src}
-Rules: {RULES} {people_note(idea) if people else ''} {knowledge.hints(idea)}
+Rules: {RULES} {people_note(idea) if people and cast == 'people' else CAST_NOTE.get(cast, '')} {knowledge.hints(idea)}
 {('LOOK AND DIRECTION: ' + STYLES_DIR[style]['guide']) if style in STYLES_DIR else ''}
 {"First invent ONE fictional main character and ONE place, described precisely (age, face, hair, skin tone, outfit with colours and pattern, jewellery; place, time, light)."
  if people else
@@ -379,7 +420,7 @@ Return JSON only: {{"title":"short name","subject":"<the {"character" if people 
                            "prompt": f"{d}. {subj}, {a['action'].rstrip('. ')}. {place.rstrip('. ')}. {quality}{tail}"}
                           for (c, d), a in zip(shots, acts)]
         data["character"] = subj
-        if people:
+        if people and cast == "people":
             ground_plan(data, idea)
     except Exception as e:
         if not people:
