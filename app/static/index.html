@@ -345,6 +345,7 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
 .tk-deep{flex:none;width:30px;height:30px;border-radius:50%;opacity:.45;filter:grayscale(1);font-size:15px;margin-bottom:2px}.tk-deep.on{opacity:1;filter:none;background:var(--glass-soft)}
 .tk-srcw{align-self:stretch}.tk-src{font-size:12.5px;color:var(--mute);padding:6px 10px;border-radius:12px;border:1px solid var(--edge);background:var(--glass-soft)}
 .tk-src summary{cursor:pointer}.tk-src a{display:block;color:var(--ink);text-decoration:none;padding:4px 0;border-top:1px solid var(--line)}.tk-src a small{color:var(--mute)}
+.tk-redo{align-self:flex-start;display:flex;gap:6px;margin-top:-4px}.tk-redo button{font-size:12px;color:var(--mute);padding:3px 9px;border-radius:99px;border:1px solid var(--edge)}.tk-redo button:hover{color:var(--ink);border-color:var(--edge-hi)}
 .tk-hint{margin:8px 4px 0;font-size:11.5px;color:var(--faint)}
 @media(prefers-reduced-motion:reduce){.tk-act i,.tk-think i{animation:none}}
 </style>
@@ -496,7 +497,9 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
         <div class="range"><span class="note" style="padding:0">Monthly limit $</span><input type="number" id="apiLimit" class="inp" min="1" max="5000" style="width:90px;flex:none"><button class="btn" id="apiLimitSave" style="height:38px">Save</button></div>
         <button class="btn" id="apiRemove" style="margin-top:10px;width:100%">Remove key (back to free mode)</button></div>
     </div>
-    <button class="btn" id="sReport" style="margin:16px 6px 0;width:calc(100% - 12px)">Copy problem report</button>
+    <button class="btn" id="sHealth" style="margin:16px 6px 0;width:calc(100% - 12px)">Check Ghost (every part, with timings)</button>
+    <div class="mem" id="healthOut" style="margin:8px 6px 0"></div>
+    <button class="btn" id="sReport" style="margin:8px 6px 0;width:calc(100% - 12px)">Copy problem report</button>
     <button class="btn" id="sStop" style="margin:8px 6px 0;width:calc(100% - 12px)">Stop Ghost Studio</button>
     <p class="note"><b>Draft</b> makes a quick preview; <b>Make it final</b> re-makes the same takes at full quality. Label AI-made videos as AI-generated.</p>
   </div>
@@ -587,6 +590,8 @@ $('#brSave').onclick=async()=>{try{const r=await api('/api/settings/brain',{meth
   $('#brModel').innerHTML=ms.map(m=>`<option ${m===best?'selected':''}>${esc(m)}</option>`).join('');$('#brainPick').classList.remove('hidden');toast('Key accepted. Pick a model (the suggested one is fast and smart).')}catch(e){toast(e.message)}};
 $('#brUse').onclick=async()=>{try{await api('/api/settings/brain',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:$('#brProv').value,model:$('#brModel').value})});await status();brainUI();toast('Smarter brain on')}catch(e){toast(e.message)}};
 $('#brRemove').onclick=async()=>{await api('/api/settings/brain',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({remove:true})});await status();brainUI();toast('Back to the free brain on this computer')};
+$('#sHealth').onclick=async()=>{const o=$('#healthOut');o.innerHTML='<p class="note" style="padding:0">Checking…</p>';
+  try{const r=await api('/api/health');o.innerHTML=r.checks.map(c=>`<div class="mi"><span>${c.ok?'✓':'!'} <b>${esc(c.name)}</b>: ${esc(c.detail)} <small style="color:var(--mute)">${c.ms} ms</small></span></div>`).join('')}catch(e){o.innerHTML=esc(e.message)}};
 $('#brvSave').onclick=async()=>{try{await api('/api/settings/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({brave_key:$('#brvKey').value})});$('#brvKey').value='';await status();brainUI();toast('Search key saved')}catch(e){toast(e.message)}};
 /* ---------- what Ghost has learned ---------- */
 function memRender(m){const it=[...(m.means||[]).map(x=>({k:'means',t:x.when,h:`When I write <b>${esc(x.when)}</b> I mean ${esc(x.means)}`})),...(m.always||[]).map(x=>({k:'always',t:x.text,h:`Always: <b>${esc(x.text)}</b>`}))];
@@ -884,18 +889,26 @@ function md(t){const L=esc(t).split('\n');let h='',list='';const close=()=>{if(l
     else if((m=x.match(/^#{1,4}\s+(.*)/))){close();h+=`<b class="h">${m[1]}</b><br>`}
     else{close();h+=x?x+'<br>':'<br>'}}
   close();return h.replace(/(<br>)+$/,'')}
-async function tkSend(text,confirm){if(TKBUSY)return;if(!text&&confirm==null)return;TKBUSY=true;$('#tkSend').disabled=true;
+function tkRedoBar(){$$('#tkLog .tk-redo').forEach(x=>x.remove());const bub=[...$$('#tkLog .tk-b.a')].pop();if(!bub)return;
+  const bar=document.createElement('div');bar.className='tk-redo';bar.innerHTML='<button data-r="regenerate" title="A fresh answer to the same message">↻ Regenerate</button><button data-r="edit" title="Change what you asked">✎ Edit my message</button>';
+  bub.after(bar);bar.querySelectorAll('button').forEach(b=>b.onclick=()=>{const us=[...$$('#tkLog .tk-b.u')],u=us.pop();
+    if(b.dataset.r==='regenerate'){if(!u)return;let n=u.nextElementSibling;while(n){const x=n.nextElementSibling;n.remove();n=x}tkSend(u.textContent,null,'regenerate',true)}
+    else{if(!u)return;$('#tkIn').value=u.textContent;$('#tkIn').focus();TKEDIT=true;toast('Change your message, then press send')}})}
+let TKEDIT=false;
+async function tkSend(text,confirm,redo,keepBubble){if(TKBUSY)return;if(!text&&confirm==null)return;TKBUSY=true;$('#tkSend').disabled=true;
+  if(!redo&&TKEDIT&&text){redo='edit';TKEDIT=false;const us=[...$$('#tkLog .tk-b.u')],u=us.pop();if(u){let n=u;while(n){const x=n.nextElementSibling;n.remove();n=x}}}
+  let gotDone=false;
   tkLog().querySelector('.tk-empty')?.remove();$$('#tkLog .tk-ok .btn').forEach(b=>b.disabled=true);
-  if(text)tkAdd(esc(text),'tk-b u');let think=tkAdd('<i></i><i></i><i></i>','tk-think');let lastAct=null,live=null,liveT='';
+  if(text&&!keepBubble)tkAdd(esc(text),'tk-b u');let think=tkAdd('<i></i><i></i><i></i>','tk-think');let lastAct=null,live=null,liveT='';
   const clear=()=>{if(think){think.remove();think=null}};
-  try{const r=await fetch('/api/agent/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session:TKS,text:text||'',project:CUR||null,confirm,deep:TKDEEP?true:null})});
+  try{const r=await fetch('/api/agent/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session:TKS,text:text||'',project:CUR||null,confirm,deep:TKDEEP?true:null,redo:redo||null})});
     if(!r.ok||!r.body)throw new Error('Ghost could not answer ('+r.status+')');
     const rd=r.body.getReader(),dec=new TextDecoder();let buf='';
     for(;;){const {value,done}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});let k;
       while((k=buf.indexOf('\n'))>=0){const line=buf.slice(0,k).trim();buf=buf.slice(k+1);if(!line)continue;let e;try{e=JSON.parse(line)}catch(x){continue}
         if(e.t==='route'){if(ROUTE[e.tier])tkAdd(esc(ROUTE[e.tier])+(e.model?' · '+esc(e.model):''),'tk-route')}
         else if(e.t==='searching'){tkAdd('🔎 Looking up '+esc(e.what)+' live…','tk-route')}
-        else if(e.t==='sources'){tkAdd(`<details class="tk-src"><summary>${e.items.length} live sources</summary>${e.items.map(x=>`<a href="${esc(x.url)}" target="_blank" rel="noopener">[${x.n}] ${esc(x.title)} <small>${esc(x.source)}</small></a>`).join('')}</details>`,'tk-srcw')}
+        else if(e.t==='sources'){tkAdd(`<details class="tk-src"><summary>${e.items.length} live sources</summary>${e.items.map(x=>`<a href="${/^https?:\/\//i.test(x.url||'')?esc(x.url):'#'}" target="_blank" rel="noopener noreferrer">[${x.n}] ${esc(x.title)} <small>${esc(x.source)}</small></a>`).join('')}</details>`,'tk-srcw')}
         else if(e.t==='deep'){tkAdd('🧠 Thinking deeply… (slower, smarter)','tk-route')}
         else if(e.t==='thinking_live'){}
         else if(e.t==='start'){clear();liveT='';live=tkAdd('','tk-b a live')}
@@ -910,9 +923,10 @@ async function tkSend(text,confirm){if(TKBUSY)return;if(!text&&confirm==null)ret
         else if(e.t==='note'){tkAdd(esc(e.text),'tk-route')}
         else if(e.t==='open'){open(e.project)}
         else if(e.t==='refresh'){if(e.project===CUR)kick()}
-        else if(e.t==='done'){clear()}}}
+        else if(e.t==='done'){clear();gotDone=true}}}
+    if(!gotDone)tkAdd('The connection was cut before Ghost finished. Press ↻ Regenerate to try again.','tk-route')
   }catch(e){clear();tkAdd(esc(e.message),'tk-b a')}
-  finally{clear();TKBUSY=false;$('#tkSend').disabled=false;status()}}
+  finally{clear();TKBUSY=false;$('#tkSend').disabled=false;tkRedoBar();status()}}
 $('#talkBtn').onclick=()=>{drawer('talk');fetch('/api/agent/warm',{method:'POST'}).catch(()=>{});if(!tkLog().children.length)tkHistory();setTimeout(()=>$('#tkIn').focus(),300)};
 $('#tkSend').onclick=()=>{const t=$('#tkIn').value.trim();if(!t)return;$('#tkIn').value='';$('#tkIn').style.height='';tkSend(t)};
 $('#tkIn').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();$('#tkSend').click()}};

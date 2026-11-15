@@ -1,4 +1,4 @@
-"""AI Film Studio Local - web app on http://localhost:7860 (only this computer)."""
+"""Ghost Studio - web app on http://localhost:7860 (only this computer)."""
 from __future__ import annotations
 
 import json
@@ -35,7 +35,36 @@ VERSION = (ROOT / "VERSION").read_text().strip() if (ROOT / "VERSION").exists() 
 BUILD = ""
 STORE = Store(ROOT / CFG["paths"]["projects"])
 RUNNER = Runner(CFG, STORE)
-app = FastAPI(title="AI Film Studio Local")
+app = FastAPI(title="Ghost Studio")
+
+# ---------------------------------------------------------------- local-only guard
+# Ghost listens only on this computer, but any website open in the browser could still try to send requests to
+# localhost (cross-site request forgery) or reach it through a renamed address (DNS rebinding). So:
+#   - the Host must be this computer's own name, and
+#   - anything that changes something (POST/PATCH/DELETE) must come from Ghost's own page.
+from fastapi import Request  # noqa: E402
+from fastapi.responses import JSONResponse  # noqa: E402
+
+_LOCAL_HOSTS = ("localhost", "127.0.0.1", "[::1]")
+
+
+def _is_local(url_or_host: str) -> bool:
+    h = url_or_host.split("://", 1)[-1].split("/", 1)[0]
+    name = h.rsplit(":", 1)[0] if not h.startswith("[") else h.split("]")[0] + "]"
+    return name in _LOCAL_HOSTS
+
+
+@app.middleware("http")
+async def local_only(request: Request, call_next):
+    host = request.headers.get("host", "")
+    if host and not _is_local(host):
+        return JSONResponse({"detail": "Ghost Studio only answers this computer."}, status_code=403)
+    if request.method not in ("GET", "HEAD", "OPTIONS"):
+        origin = request.headers.get("origin")
+        site = request.headers.get("sec-fetch-site")
+        if (origin is not None and (origin == "null" or not _is_local(origin))) or (origin is None and site not in (None, "same-origin", "none")):
+            return JSONResponse({"detail": "Blocked: this request did not come from Ghost Studio's own page."}, status_code=403)
+    return await call_next(request)
 
 
 def _background_boost():
@@ -880,6 +909,7 @@ class Talk(BaseModel):
     project: str | None = None
     confirm: bool | None = None
     deep: bool | None = None
+    redo: str | None = None  # "regenerate" | "edit"
 
 
 @app.post("/api/agent/chat")
@@ -890,7 +920,8 @@ def agent_chat(body: Talk):
 
     def work():
         try:
-            AGENT.turn(body.session, body.text[:4000], body.project, q.put, body.confirm, body.deep)
+            AGENT.turn(body.session, body.text[:4000], body.project, q.put, body.confirm, body.deep,
+                       body.redo if body.redo in ("regenerate", "edit") else None)
         finally:
             q.put(None)
     _th.Thread(target=work, daemon=True).start()
@@ -912,6 +943,44 @@ def agent_warm():
     if careful:
         _th.Thread(target=llm.warm, args=(careful,), daemon=True).start()
     return {"ok": True, "model": careful}
+
+
+@app.get("/api/health")
+def health():
+    """Check Ghost: a quick canary of every part (like the per-platform checks big services run), with timings."""
+    import time as _t
+    from . import addons
+    from .agent import router
+    out = []
+
+    def check(name, fn):
+        st = _t.time()
+        try:
+            ok, detail = fn()
+        except Exception as e:
+            ok, detail = False, str(e)[:160]
+        out.append({"name": name, "ok": ok, "detail": detail, "ms": int((_t.time() - st) * 1000)})
+
+    check("Video editor (ffmpeg)", lambda: (bool(shutil.which("ffmpeg")), shutil.which("ffmpeg") or "missing: run the installer again"))
+    check("Script AI app (Ollama)", lambda: (llm._ollama_up() or llm.cloud_on(), "running" if llm._ollama_up() else
+                                            "using your smarter brain" if llm.cloud_on() else "not running: open the Ollama app"))
+    fast, careful = router.pick_models(CFG)
+    check("Script AI models", lambda: (bool(careful), f"fast: {fast or '-'} · careful: {careful or '-'}" if careful else "none: install Script AI"))
+
+    def think():
+        d = llm.ask_json(fast or careful, 'Answer as JSON: {"ok": true, "word": "<the Hindi word for water>"}', temperature=0)
+        return bool(d.get("ok")), f"answered: {d.get('word', '?')}"
+    if careful:
+        check("Script AI answers", think)
+    check("Pictures", lambda: (RUNNER.eng.plan()["image"] != "photos", {"local": "on this computer" + (" (fast Apple engine)" if E._mflux_ok() else ""),
+                                                                       "service": "video service", "nvidia": "NVIDIA",
+                                                                       "photos": "no picture AI: install AI pictures"}[RUNNER.eng.plan()["image"]]))
+    check("Voice", lambda: (True, RUNNER.eng.plan()["voice"]))
+    check("Music", lambda: (addons.music_installed() or RUNNER.eng.fal.on, "installed" if addons.music_installed() else "video service" if RUNNER.eng.fal.on else "not installed"))
+    from . import live
+    check("Live lookups (internet)", lambda: (bool(live.news("Kerala", 1)), "news reachable"))
+    check("Free disk", lambda: (addons.free_disk_gb() > 15, f"{addons.free_disk_gb():.0f} GB free"))
+    return {"version": VERSION, "checks": out}
 
 
 @app.get("/api/agent/history")

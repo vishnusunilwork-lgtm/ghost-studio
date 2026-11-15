@@ -68,6 +68,22 @@ Tested: a real "today news in trivandrum" question answered from 8 live headline
 - **Fast mode uses the smallest current model** for prompts; Quality uses the larger one.
 - **Models stay in memory:** on computers with 32 GB or more, the script AI stays loaded while pictures are made. The picture model is pre-loaded at start on 16 GB+. The chat model loads when the Talk drawer opens.
 
+## Lessons applied from the Claude engineering report (v3.17)
+
+| Report finding | In Ghost |
+|---|---|
+| Stream cut mid-answer; overload errors | The chat retries once when the brain is busy. A cut-off answer is marked as cut, and the page says so if the connection drops, with ↻ to try again |
+| Edits and regenerate make a branch | ↻ Regenerate and ✎ Edit my message rewind the chat to just before your last message, so the old branch isn't kept in its memory |
+| Malicious tool output / prompt injection | Live results go inside an untrusted block that outside text can't close, and the model is told never to follow instructions inside them. Source links must be http(s) |
+| Environment controls beat prompts | A local-only guard: the Host must be this computer (no DNS rebinding), and every change must come from Ghost's own page (no cross-site requests from other websites) |
+| URL-encoded leaks via rendered output | The chat renders only bold, code and lists: no images or links from model text |
+| Human approval for irreversible actions | Already in place: create, delete, start again and change-all wait for Go ahead |
+| Bounded loops | At most 6 model rounds per turn |
+| Per-platform canaries | ⚙ → **Check Ghost** tests every part with timings: editor, script AI (a real answer), pictures, voice, music, internet, disk |
+| Prefix caching, stable prompt order | Already in place (v3.11) |
+
+The report's figures about Anthropic's own fleet (chip types, costs) don't apply to a single computer and weren't used.
+
 ## Talking pictures (v3.16, free mode)
 
 `talk.py`: the picture AI makes a mouth-open version of each speaking shot. The two pictures are compared and only the changed area (the mouth) is blended in with a soft edge, so nothing else flickers. If the edit changed too much, Ghost skips it. The voice's loudness, measured 24× a second, switches mouth closed/open (held at least 2 frames, so it looks like syllables). The editor then adds the camera move. It's a puppet-style effect; real action needs the video service.

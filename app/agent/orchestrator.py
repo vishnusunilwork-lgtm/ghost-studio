@@ -56,9 +56,19 @@ class Agent:
 
     # ------------------------------------------------------------ one turn
     def turn(self, sid: str, text: str, project_id: str | None, emit: Callable[[dict], None], confirm: bool | None = None,
-             deep: bool | None = None):
+             deep: bool | None = None, redo: str | None = None):
         t0, trace = time.time(), {"turn": uuid.uuid4().hex[:8], "sid": sid, "text": text[:300], "steps": []}
         s = context.load(sid)
+        if redo in ("regenerate", "edit"):
+            # the chat as a branch: go back to just before the last thing you said, then answer again
+            # (regenerate: same words, a fresh answer; edit: your new words replace them)
+            last = max((i for i, m in enumerate(s["messages"]) if m["role"] == "user"), default=None)
+            if last is not None:
+                if redo == "regenerate":
+                    text = s["messages"][last]["content"]
+                s["messages"] = s["messages"][:last]
+                s["pending"] = None
+            trace["redo"] = redo
         project = self.backend.project(project_id) if project_id else None
         text = (text or "").strip()
         try:
@@ -128,12 +138,24 @@ class Agent:
             if not thought:
                 emit({"t": "thinking_live"})
             thought.append(piece)
-        for piece in self.stream(r.model, msgs, think=deep, on_think=on_think) if deep else self.stream(r.model, msgs):
-            if first is None:
-                first = time.time() - st
-                emit({"t": "start"})
-            out.append(piece)
-            emit({"t": "delta", "text": piece})
+        for attempt in (1, 2):
+            try:
+                for piece in self.stream(r.model, msgs, think=deep, on_think=on_think) if deep else self.stream(r.model, msgs):
+                    if first is None:
+                        first = time.time() - st
+                        emit({"t": "start"})
+                    out.append(piece)
+                    emit({"t": "delta", "text": piece})
+                break
+            except Exception:
+                if out or attempt == 2:  # part of the answer already arrived, or the second try failed too
+                    if out:
+                        out.append("\n\n(The answer was cut off. Press ↻ to try again.)")
+                        emit({"t": "delta", "text": out[-1]})
+                        break
+                    raise
+                emit({"t": "note", "text": "The brain was busy, trying again…"})
+                time.sleep(1.5)
         text_out = re.sub(r"<think>.*?</think>", "", "".join(out), flags=re.S).strip() or "…"
         trace["steps"].append({"model": r.model, "chat": True, "deep": deep, "thought_chars": len("".join(thought)),
                                "first_ms": int((first or 0) * 1000), "ms": int((time.time() - st) * 1000)})
@@ -151,7 +173,14 @@ class Agent:
             st = time.time()
             emit({"t": "thinking", "step": step + 1})
             try:
-                msg = self.chat(model, msgs, schemas)
+                try:
+                    msg = self.chat(model, msgs, schemas)
+                except Exception as busy:  # busy or a dropped connection: wait a moment and try once more
+                    if isinstance(busy, (KeyError, ValueError, TypeError)):
+                        raise
+                    emit({"t": "note", "text": "The brain was busy, trying again…"})
+                    time.sleep(1.5)
+                    msg = self.chat(model, msgs, schemas)
             except Exception as e:  # e.g. not enough memory to load the bigger model: fall back, don't fail
                 fast, careful = router.pick_models(self.cfg)
                 other = fast if model != fast else careful
