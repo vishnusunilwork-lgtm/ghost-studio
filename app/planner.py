@@ -195,14 +195,7 @@ def plan(cfg: dict, *, idea: str = "", dialogue: str = "", reference: dict | Non
          cast: str = "auto", photo: bool = False) -> dict:
     lang = language or cfg.get("language", "Hindi")
     cast = cast_of((idea or "") + " " + (dialogue or ""), cast)
-    b = dict(cfg.get("brand") or {})
-    try:  # the brand kit (⚙) if you saved one; Ghost itself is general purpose and adds no brand
-        from .pipeline import load_brand
-        kit = load_brand()
-        if kit.get("name"):
-            b = {"name": kit["name"], "spoken": kit["name"], "about": b.get("about", "") if b.get("name") == kit["name"] else ""}
-    except Exception:
-        pass
+    b = dict(cfg.get("brand") or {})  # empty = general purpose: no brand is added
     # photo-motion ads need more, shorter shots to feel alive (a still held for 7 s looks frozen)
     max_s = 4.8 if photo else float(cfg["quality"]["clip_seconds"])
     src = (f"REFERENCE AD to recreate (same kind of people, place, framing, camera moves, action and micro-expressions, "

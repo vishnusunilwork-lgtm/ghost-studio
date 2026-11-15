@@ -16,7 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 KEEP = {".venv", "projects", "config.local.yaml", ".ghost", ".git"}
 # Files older versions shipped that are no longer used (removed on update; never your ads or settings)
-OBSOLETE = ["install.sh", "run.sh", "run.bat", "install.ps1"]
+OBSOLETE = ["install.sh", "run.sh", "run.bat", "install.ps1", "app/perf.py", "tests/test_perf.py"]
 _cache: dict = {"t": 0.0, "data": None}
 
 

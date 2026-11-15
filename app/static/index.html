@@ -243,7 +243,6 @@ details.log pre{font:11.5px/1.6 ui-monospace,Menlo,monospace;color:var(--mute);w
 .lyrics{margin-top:16px;padding:14px 16px;border-radius:18px;background:var(--glass-soft);border:1px solid var(--edge)}.lyrics summary{cursor:pointer;color:var(--mute)}
 .lyrics pre{white-space:pre-wrap;font:14px/1.7 var(--font);color:var(--ink);margin:10px 0 0}
 .gallery-wrap{margin-top:8px}.galbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}.galbar .btn{height:42px}
-.pf-sec{margin:18px 0}.pf-sec h4{margin:0 0 8px;font-weight:600}.pf-ang{display:flex;gap:10px;align-items:baseline;padding:8px 10px;border-radius:12px;background:var(--glass-soft);border:1px solid var(--edge);margin-bottom:6px}.pf-ang.top{border-color:var(--line2)}.pf-ang b{min-width:44px}.pf-sc{font-size:12px;opacity:.75}.pf-shot{display:grid;grid-template-columns:54px 1fr;gap:8px;font-size:13px;padding:4px 0;border-bottom:1px solid var(--line)}.ok{color:#5fd18b}.bad{color:#ff7a7a}.pf-out video,.pf-out img{width:100%;border-radius:14px;background:#000;display:block}
 .gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px}
 .tile{display:flex;flex-direction:column;gap:8px;padding:8px;border-radius:20px;background:var(--glass-soft);border:1px solid var(--edge);box-shadow:var(--hi);animation:enter .5s var(--ease) both;min-width:0}
 .tile .im{aspect-ratio:var(--ar,9/16);border-radius:14px;overflow:hidden;background:#111;position:relative}
@@ -390,7 +389,7 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
           </button>
         </div>
         <div class="opts">
-          <label class="opt" title="What to make"><select id="kind"><option value="video">Video ad</option><option value="images">Images only</option><option value="music">Music / song</option><option value="dub">Dub a video</option><option value="perf">Performance ad</option></select></label>
+          <label class="opt" title="What to make"><select id="kind"><option value="video">Video ad</option><option value="images">Images only</option><option value="music">Music / song</option><option value="dub">Dub a video</option></select></label>
           <label class="opt" id="styleOpt" title="Direction style"><select id="style"><option value="auto">Style: Auto</option><option value="interview2">Interview · 2 cameras</option><option value="cinematic">Cinematic film</option><option value="news">Newsroom explainer</option><option value="ugc">Phone UGC</option></select></label>
           <label class="opt hidden" id="lockOpt" title="Keep the same person and place in every image"><select id="lock"><option value="1">Same person & place</option><option value="0">Different each time</option></select></label>
           <label class="opt hidden" id="countOpt" title="How many images"><select id="count"><option value="1">1 image</option><option value="2">2 images</option><option value="4" selected>4 images</option><option value="6">6 images</option><option value="8">8 images</option></select></label>
@@ -410,15 +409,6 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
         </div>
       </div>
       <p class="note hidden" id="songTip" style="text-align:center;margin:8px 0 0">Tip: singing in Hindi and other Indian languages is the hardest part for free music AI. For the clearest words, paste your own lyrics (Song · my lyrics) and use Quality. Instrumental is always clean.</p>
-      <div id="perfBox" class="hidden" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px">
-        <input class="inp" id="pfUrl" placeholder="Landing page link (optional)" style="grid-column:1/-1">
-        <input class="inp" id="pfName" placeholder="Product name">
-        <input class="inp" id="pfOffer" placeholder="Offer or price, e.g. ₹199 · 50 cups">
-        <input class="inp" id="pfCta" placeholder="Call to action, e.g. Order now">
-        <select class="inp" id="pfPlat"><option value="both">Meta + Google</option><option value="meta">Meta (Facebook, Instagram)</option><option value="google">Google (YouTube, Display)</option></select>
-        <input class="inp" id="pfDisc" placeholder="Disclaimer (optional), e.g. T&amp;C apply" style="grid-column:1/-1">
-        <p class="note" style="grid-column:1/-1;margin:0">Add product photos with +. Your logo, colours and font: ⚙ → Brand kit. Ghost writes 4 ideas, makes the best 2 as 15-second videos and static ads in 4 sizes, checks every claim, frame and word, and gives you one folder to upload.</p>
-      </div>
       <p class="err" id="goErr"></p>
       <div class="sugs" id="sugs">
         <button class="sug" data-s="ref"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="5" width="13" height="14" rx="2"/><path d="m16 10 5-3v10l-5-3"/></svg>Copy a reference ad with new faces</button>
@@ -457,13 +447,6 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
       <div class="galbar"><button class="btn" id="mMore">Make another take</button><button class="btn" id="mEdit">✎ Edit lyrics &amp; style</button><button class="btn" id="mRerun">Start again</button></div>
       <div class="tracks" id="tracks"></div>
       <details class="lyrics hidden" id="lyrBox"><summary>Lyrics</summary><pre id="lyrics"></pre></details>
-    </div>
-    <div class="gallery-wrap hidden" id="perfWrap">
-      <div class="galbar"><a class="btn solid" id="pfZip" download>Download all (upload-ready)</a><span class="note" id="pfCheck" style="padding:0 8px"></span></div>
-      <div class="pf-sec"><h4>1 · Brief</h4><div id="pfBrief" class="note"></div></div>
-      <div class="pf-sec"><h4>2 · Ideas, scored out of 25</h4><div id="pfAngles"></div></div>
-      <div class="pf-sec"><h4>3 · Scripts (15 s)</h4><div id="pfScripts"></div></div>
-      <div class="pf-sec"><h4>6–7 · Your ads, checked</h4><div class="gallery" id="pfOut"></div></div>
     </div>
     <div class="gallery-wrap hidden" id="galWrap">
       <div class="galbar"><a class="btn solid" id="gZip" download><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 4v12M6 11l6 6 6-6M5 20h14"/></svg>Download all</a><button class="btn hidden" id="gUp">Make them in Quality</button><button class="btn hidden" id="gUndo">↶ Undo</button><button class="btn hidden" id="gRegrow" title="Make the full pictures again from their recipes">🧬 Regrow</button><button class="btn" id="gRerun">Start again</button></div>
@@ -504,18 +487,6 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
       <div id="brainOn" class="hidden"><p class="note" id="brInfo"></p><button class="btn" id="brRemove" style="width:100%">Remove key (back to free, on this computer)</button></div>
       <p class="note" style="margin-top:10px">Whole-web search (optional): a free <b>Brave Search API</b> key makes Ghost search the entire web, not only news, weather and Wikipedia.</p>
       <input type="password" id="brvKey" class="inp" placeholder="Brave Search API key (optional)" autocomplete="off" spellcheck="false"><button class="btn" id="brvSave" style="margin-top:6px;width:100%">Save search key</button>
-    </div>
-    <div class="sect"><h4>Brand kit <span class="tag">Performance ads</span></h4>
-      <p class="note">Saved once on this computer and added exactly, by script, to every Performance ad: never drawn by the AI.</p>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <input class="inp" id="bkName" placeholder="Brand name" style="grid-column:1/-1">
-        <label class="note" style="padding:0">Main colour<input type="color" id="bkColor" value="#7a1f1f" style="width:100%;height:36px;border:0;background:none"></label>
-        <label class="note" style="padding:0">Accent colour<input type="color" id="bkAccent" value="#ffd54a" style="width:100%;height:36px;border:0;background:none"></label>
-        <label class="btn" style="justify-content:center">Logo (PNG)<input type="file" id="bkLogo" accept="image/png,image/webp,image/jpeg" hidden></label>
-        <label class="btn" style="justify-content:center">Font (TTF/OTF)<input type="file" id="bkFont" accept=".ttf,.otf" hidden></label>
-      </div>
-      <p class="note" id="bkInfo"></p>
-      <button class="btn solid" id="bkSave" style="width:100%">Save brand kit</button>
     </div>
     <div class="sect"><h4>Storage <span class="tag">🧬 Ghost DNA</span></h4>
       <p class="note"><b>Shrink</b> keeps each picture's recipe (prompt + seed, a few hundred bytes) and a small preview instead of the big files, like DNA keeps the recipe for a body. Finished videos, songs and your uploads stay as they are. <b>🧬 Regrow</b> makes the full files again when you need them.</p>
@@ -654,9 +625,9 @@ function grow(){prompt_.style.height='auto';prompt_.style.height=Math.min(240,pr
 function ready(){const ok=prompt_.value.trim()||A.ref;$('#send').classList.toggle('ready',!!ok);$('#sugs').classList.toggle('dim',!!(prompt_.value.trim()||A.ref||A.pics.length))}
 prompt_.addEventListener('input',grow);
 prompt_.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();go()}});
-function kindUI(){const k=$('#kind').value,im=k==='images',mu=k==='music',vi=k==='video',du=k==='dub',pe=k==='perf';$('#perfBox').classList.toggle('hidden',!pe);$('#perfBox').style.display=pe?'grid':'none';
+function kindUI(){const k=$('#kind').value,im=k==='images',mu=k==='music',vi=k==='video',du=k==='dub';
   const show=(id,on)=>$('#'+id).classList.toggle('hidden',!on);
-  show('countOpt',im);show('castOpt',vi||im);show('vgenderOpt',vi||du||pe);show('vstyleOpt',vi||du||pe);show('styleOpt',!mu&&!du&&!pe);show('songTip',mu&&$('#lang').value!=='English'&&$('#mvocal').value!=='instrumental');show('lockOpt',im);show('lenOpt',vi);show('voiceOpt',vi);show('vmusicOpt',vi||pe);show('exact',vi);show('aspectOpt',!mu&&!du&&!pe);show('mstyleOpt',mu);show('mvocalOpt',mu);show('mlenOpt',mu);
+  show('countOpt',im);show('castOpt',vi||im);show('vgenderOpt',vi||du);show('vstyleOpt',vi||du);show('styleOpt',!mu&&!du);show('songTip',mu&&$('#lang').value!=='English'&&$('#mvocal').value!=='instrumental');show('lockOpt',im);show('lenOpt',vi);show('voiceOpt',vi);show('vmusicOpt',vi);show('exact',vi);show('aspectOpt',!mu&&!du);show('mstyleOpt',mu);show('mvocalOpt',mu);show('mlenOpt',mu);
   prompt_.placeholder=du?'Add the video with + (or drop it here), choose the language to dub into below. Optional: a note about the video…':mu?($('#mvocal').value==='mine'?'Paste your lyrics (you can add [Verse] and [Chorus] lines)…':'Describe the song: mood, story, occasion… e.g. a warm Diwali song about family'):im?'Describe the images, or drop a reference ad to copy its look…':(EXACT?'Paste the exact dialogue. Two people? Start lines with “Name: …”':'Describe the ad, or drop a reference video…')}
 let REVIEW=false;$('#review').onclick=()=>{REVIEW=!REVIEW;$('#review').classList.toggle('on',REVIEW)};
 $('#mvocal').onchange=kindUI;$('#vmusic').addEventListener('change',()=>{VM_TOUCHED=true});$('#lang').addEventListener('change',kindUI);
@@ -698,13 +669,13 @@ $$('.sug').forEach(b=>b.onclick=()=>{const s=b.dataset.s;
 $('#send').onclick=go;
 async function go(){const text=prompt_.value.trim();$('#goErr').textContent='';
   if($('#kind').value==='dub'&&!A.ref){$('#goErr').textContent='Add the video to dub: press + → Video to dub, or drop it on the box.';return}
-  if(!text&&!A.ref&&!($('#kind').value==='perf'&&$('#pfUrl').value.trim())){$('#goErr').textContent='Write an idea, paste your dialogue, or add a reference ad.';prompt_.focus();return}
+  if(!text&&!A.ref){$('#goErr').textContent='Write an idea, paste your dialogue, or add a reference ad.';prompt_.focus();return}
   const imgs=$('#kind').value==='images',mus=$('#kind').value==='music',dub=$('#kind').value==='dub',ao=ST&&ST.addons||{};
   const needAddon=(name,what)=>{$('#goErr').innerHTML=`${what} needs the free <b>${name}</b> add-on. <button class="linkbtn" id="goSet">Open ⚙ → Add-ons to install it</button>`;$('#goSet').onclick=()=>{kv();drawer('settings')}};
   if(mus&&!(ao.music&&ao.music.installed)&&!(ST.api&&ST.api.on)){needAddon('Music & songs','Music');return}
-  if(!mus&&['video','perf'].includes($('#kind').value)&&$('#vmusic').value&&!(ao.music&&ao.music.installed)&&!(ST.api&&ST.api.on)&&!A.music){needAddon('Music & songs','AI background music');return}
+  if(!mus&&$('#kind').value==='video'&&$('#vmusic').value&&!(ao.music&&ao.music.installed)&&!(ST.api&&ST.api.on)&&!A.music){needAddon('Music & songs','AI background music');return}
   if(imgs&&ST&&ST.makers&&ST.makers.image==='photos'&&!A.pics.length){$('#goErr').innerHTML='Images only needs AI pictures. <button class="linkbtn" id="goSet">Open ⚙ to install the free image AI</button> (or add your own photos with +).';$('#goSet').onclick=()=>{kv();drawer('settings')};return}
-  const fd=new FormData();fd.append('kind',$('#kind').value);fd.append('review',REVIEW?'1':'');fd.append('voice_gender',$('#vgender').value);fd.append('cast',$('#cast').value);fd.append('voice_style',$('#vstyle').value);fd.append('style',$('#style').value);fd.append('count',$('#count').value);fd.append('same_look',$('#lock').value);fd.append('music_style',$('#mstyle').value);fd.append('vocals',$('#mvocal').value);fd.append('music_seconds',$('#mlen').value);fd.append('ai_music',['video','perf'].includes($('#kind').value)?$('#vmusic').value:'');if($('#kind').value==='perf'){fd.append('url',$('#pfUrl').value.trim());fd.append('product',$('#pfName').value.trim());fd.append('offer',$('#pfOffer').value.trim());fd.append('cta',$('#pfCta').value.trim());fd.append('platform',$('#pfPlat').value);fd.append('disclaimer',$('#pfDisc').value.trim())}
+  const fd=new FormData();fd.append('kind',$('#kind').value);fd.append('review',REVIEW?'1':'');fd.append('voice_gender',$('#vgender').value);fd.append('cast',$('#cast').value);fd.append('voice_style',$('#vstyle').value);fd.append('style',$('#style').value);fd.append('count',$('#count').value);fd.append('same_look',$('#lock').value);fd.append('music_style',$('#mstyle').value);fd.append('vocals',$('#mvocal').value);fd.append('music_seconds',$('#mlen').value);fd.append('ai_music',$('#kind').value==='video'?$('#vmusic').value:'');
   fd.append(mus?($('#mvocal').value==='mine'?'dialogue':'idea'):imgs?'idea':(EXACT?'dialogue':'idea'),text);fd.append('seconds',$('#len').value);fd.append('aspect',$('#aspect').value);fd.append('voice_mode',$('#voice').value);fd.append('language',$('#lang').value);fd.append('quality',QUAL);
   if(A.ref)fd.append('reference',A.ref);if(A.music)fd.append('music',A.music);A.pics.forEach(f=>fd.append('refs',f));
   $('#send').classList.remove('ready');const r0=comp.getBoundingClientRect();F.impulse(r0.left+r0.width/2,r0.top+r0.height/2,9);F.set(.9);
@@ -721,7 +692,7 @@ async function status(){try{ST=await api('/api/status');const mk=ST.makers||{},t
   kindUI();$('#voice').querySelector('[value=oncamera]').textContent=talk?'People talk':'People talk (needs video service)';
   if(ST.language&&!$('#lang').dataset.set){$('#lang').value=ST.language;$('#lang').dataset.set=1}}
   catch(e){$('#sDot').className='dot';$('#sText').textContent='App not running'}}
-function kv(){if(!ST)return;bkLoad();const m=ST.models||{},mk=ST.makers||{},a=ST.api||{};
+function kv(){if(!ST)return;const m=ST.models||{},mk=ST.makers||{},a=ST.api||{};
   $('#kv').innerHTML=[['Pictures',MK.image[mk.image]||mk.image],['Video',MK.video[mk.video]||mk.video],['Narrator',MK.voice[mk.voice]||mk.voice],['Script AI',ST.llm?'On ('+m.llm+')':'Simple templates — install Ollama for real scripts'],['Computer',ST.gpu.name+(ST.gpu.vram_gb?` · ${ST.gpu.vram_gb} GB`:'')],['App version',ST.version||'dev']].map(([k,v])=>`<span>${esc(k)}</span><b>${esc(v)}</b>`).join('');
   addPoll();
   $('#apiOff').classList.toggle('hidden',!!a.on);$('#apiOn').classList.toggle('hidden',!a.on);
@@ -739,12 +710,6 @@ async function stShow(){try{const r=await api('/api/storage');$('#stList').inner
 $('#stShow').onclick=stShow;
 $('#stAll').onclick=async()=>{if(!confirm('Shrink every finished project not used for 14 days? Finished videos and songs stay; pictures and working files can be regrown later.'))return;try{const r=await api('/api/storage/shrink-all?days=14',{method:'POST'});toast(r.projects?`🧬 ${r.projects} project(s) shrunk, ${MB(r.freed)} freed`:'Nothing old enough to shrink');stShow()}catch(e){toast(e.message)}};
 async function regrow(){try{await api(`/api/projects/${CUR}/regrow`,{method:'POST'});toast('🧬 Regrowing the full files from their recipes');kick()}catch(e){toast(e.message)}}
-async function bkLoad(){try{const b=await api('/api/brand');$('#bkName').value=b.name||'';if(b.color)$('#bkColor').value=b.color;if(b.accent)$('#bkAccent').value=b.accent;
-  $('#bkInfo').innerHTML=(b.logo?'Logo saved ✓':'No logo yet')+' · '+(b.font?'Font saved ✓':'Font: Noto Sans (Indian scripts drawn correctly)')}catch(e){}}
-$('#bkSave').onclick=async()=>{const fd=new FormData();fd.append('name',$('#bkName').value.trim());fd.append('color',$('#bkColor').value);fd.append('accent',$('#bkAccent').value);
-  if($('#bkLogo').files[0])fd.append('logo',$('#bkLogo').files[0]);if($('#bkFont').files[0])fd.append('font',$('#bkFont').files[0]);
-  try{await api('/api/brand',{method:'POST',body:fd});toast('Brand kit saved');bkLoad()}catch(e){toast(e.message)}};
-['bkLogo','bkFont'].forEach(i=>$('#'+i).onchange=()=>{const f=$('#'+i).files[0];if(f)$('#bkInfo').textContent=f.name+' chosen — press Save'});
 async function saveApi(body){try{await api('/api/settings/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});$('#apiKey').value='';await status();kv();toast(body.remove?'Key removed — back to free photo motion':'Saved')}catch(e){toast(e.message)}}
 $('#apiSave').onclick=()=>{const k=$('#apiKey').value.trim();if(!k){toast('Paste the key first');return}saveApi({fal_key:k})};
 $('#apiLimitSave').onclick=()=>saveApi({monthly_limit_usd:+$('#apiLimit').value});
@@ -837,7 +802,6 @@ async function refresh(force){if(!CUR)return;let p;try{p=await api('/api/project
   if(fin&&(force||LASTFIN!==p.final)){LASTFIN=p.final;const u=fileUrl(p.id,p.final,Math.round(p.updated||0));scr.innerHTML=`<video src="${u}" controls playsinline autoplay muted loop></video>`;$('#pDl').href=u;$('#pDl').setAttribute('download',p.final.split(/[\\/]/).pop())}
   else if(!fin){LASTFIN='';const last=[...(p.clips||[])].reverse().find(c=>c.video);const src=last?fileUrl(p.id,last.video):p.image?fileUrl(p.id,p.image):'';const cur=scr.dataset.src||'';
     if(src&&src!==cur){scr.dataset.src=src;scr.innerHTML=last?`<video src="${src}" playsinline autoplay muted loop></video>`:`<img src="${src}" alt="">`}else if(!src&&!scr.querySelector('.veil')){scr.dataset.src='';scr.innerHTML='<div class="veil">Waiting for the first frame…</div>'}}
-  const pe=p.kind==='perf';$('#perfWrap').classList.toggle('hidden',!pe);if(pe){$('.shots-h').classList.add('hidden');$('#shots').classList.add('hidden');$('#galWrap').classList.add('hidden');$('.stage').classList.remove('hidden');perfView(p);$('#pRerun').classList.add('hidden');if(!busy){clearInterval(TIMER);TIMER=setInterval(refresh,8000)}return}
   const mus=p.kind==='music';$('#musWrap').classList.toggle('hidden',!mus);
   if(mus){$('.stage').classList.add('hidden');$('.shots-h').classList.add('hidden');$('#shots').classList.add('hidden');$('#galWrap').classList.add('hidden');
     $('#pSteps').innerHTML=['plan','music'].map(s=>`<li class="${p.steps[s]}"><i></i>${esc({plan:p.vocals==='instrumental'?'Planning the music':'Writing the song',music:'Composing and singing'}[s])}</li>`).join('');
@@ -856,18 +820,6 @@ async function refresh(force){if(!CUR)return;let p;try{p=await api('/api/project
   const sig=JSON.stringify((p.clips||[]).map(c=>[c.video,c.status,c.camera_move,c.shake,c.line,c.seconds]))+p.status;
   if(force||sig!==LAST){LAST=sig;shots(p)}
   if(!busy){clearInterval(TIMER);TIMER=setInterval(refresh,8000)}}
-const PFL={analyse:'1 · Brief: facts, audience, claims',plan:'2–3 · Ideas, scores and scripts',images:'4 · Key pictures',videos:'5 · Video + frame check',voice:'Voice and music',edit:'6–7 · Logo, text, sizes, final check'};
-function perfView(p){const f=p.perf||{},b=f.brief||{},pr=b.product||{};
-  $('#pSteps').innerHTML=['analyse','plan','images','videos','voice','edit'].map(s=>`<li class="${p.steps[s]}"><i></i>${esc(PFL[s])}</li>`).join('');
-  $('#pfBrief').innerHTML=b.product?`<b>${esc(pr.name||'')}</b> — ${esc(pr.what||'')}${pr.offer?' · Offer: <b>'+esc(pr.offer)+'</b>':''}<br>For: ${esc((b.audience||{}).who||'')}${(b.audience||{}).problem?' · Problem: '+esc(b.audience.problem):''}<br>`+
-    (b.claims||[]).map(c=>`<span class="${c.status==='approved'?'ok':'bad'}">${c.status==='approved'?'✓':'✗ blocked'}</span> ${esc(c.text)}${c.why?' <small>('+esc(c.why)+')</small>':''}`).join('<br>'):'Reading…';
-  $('#pfAngles').innerHTML=(f.angles||[]).map((a,i)=>`<div class="pf-ang ${i<2?'top':''}"><b>${a.total}/25</b><div>${i<2?'★ ':''}<b>${esc({problem_solution:'Problem → solution',product_demo:'Product demo',offer_first:'Offer first',lifestyle:'Lifestyle'}[a.kind]||a.kind)}</b>: ${esc(a.hook||'')}<div class="pf-sc">${Object.entries(a.scores||{}).map(([k,v])=>esc(k.replace(/_/g,' '))+' '+v).join(' · ')}</div></div></div>`).join('')||'<p class="note">Writing…</p>';
-  $('#pfScripts').innerHTML=(f.variants||[]).map(v=>`<p class="note" style="padding:0"><b>Ad ${v.n} · ${esc(v.angle)}</b> · product on screen ${Math.round((v.script.product_share||0)*100)}%</p>`+v.script.shots.map(s=>`<div class="pf-shot"><span>${s.start}–${s.end}s</span><span><b>${esc(s.beat)}</b>: ${esc(s.voiceover)}${s.on_screen?' · on screen: “'+esc(s.on_screen)+'”':''}</span></div>`).join('')+((v.review||[]).filter(r=>r.problems.length).map(r=>`<p class="note">Shot ${r.shot}: ${esc(r.problems.join(', '))} → ${esc(r.action)}</p>`).join(''))).join('');
-  const outs=f.outputs||[];$('#pfCheck').innerHTML=f.checked?`<span class="ok">✓ ${f.checked.passed} passed</span>${f.checked.failed?` · <span class="bad">${f.checked.failed} with problems</span>`:''}`:'';
-  $('#pfZip').classList.toggle('hidden',!outs.length);$('#pfZip').href='/api/projects/'+p.id+'/deliver.zip';
-  const sig=JSON.stringify(outs.map(o=>o.file));if($('#pfOut').dataset.sig!==sig){$('#pfOut').dataset.sig=sig;
-    $('#pfOut').innerHTML=outs.map(o=>{const u=fileUrl(p.id,o.file,Math.round(p.updated||0));return `<div class="tile pf-out">${o.type==='video'?`<video src="${u}" controls playsinline preload="metadata"></video>`:`<img src="${u}" alt="" data-z="${u}">`}<div class="cap">Ad ${o.variant} · ${o.type==='video'?'Video':'Static'} · ${esc(o.fmt)} ${o.problems.length?'<span class="bad">✗ '+esc(o.problems.join('; '))+'</span>':'<span class="ok">✓ checked</span>'}</div><a class="btn" href="${u}" download>Download</a></div>`}).join('');
-    $$('#pfOut [data-z]').forEach(im=>im.onclick=()=>{const z=document.createElement('div');z.className='zoom';z.innerHTML=`<img src="${im.dataset.z}" alt="">`;z.onclick=()=>z.remove();document.body.appendChild(z)})}}
 function tracks(p){const busy=p.status==='running'||p.status==='queued';const ts=p.tracks||[];
   $('#tracks').innerHTML=ts.map((t,i)=>{const u=fileUrl(p.id,t.file);const nm=`${(p.title||'song').replace(/[^\w\s-]/g,'')} - take ${i+1}.mp3`;
     return `<div class="track" style="animation-delay:${i*60}ms"><div class="tk-h"><span class="eq"><i></i><i></i><i></i><i></i></span><b>Take ${i+1}</b><small>${esc([t.bpm?t.bpm+' BPM':'',t.key||''].filter(Boolean).join(' · '))}</small></div>${t.change?`<div class="from">From take ${t.from}: ${esc(t.change)}${t.how==='new tune'?' (new tune)':''}</div>`:''}

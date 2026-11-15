@@ -100,20 +100,6 @@ and takes roughly 20 s per second of video even with the MLX port; and the face 
 has non-commercial model weights. Wav2Lip is non-commercial. It may be added later as an optional add-on for human
 presenters, after testing on a Mac.
 
-## Performance ad mode (v3.23)
-
-`perf.py` + `Runner._perf`. Make box → **Performance ad**. 1 Brief (landing page read once; every claim approved only if it
-is in your material — every number must match a whole number there and most words appear; banned words such as
-"guaranteed", "cure", "doctor recommended" block a claim) → 2 four angles scored 0–5 on five rules, best 2 kept → 3 a
-15-second script on the beat (0–2 hook, 2–5 problem, 5–11 product, 11–15 offer); on-screen text that is not approved copy
-is removed → 4 one still per shot (product photos as references) → 5 video from each still, one frame a second checked by
-the vision model plus a cut detector; only failed shots are re-made → 6 logo, text in the brand font/colours, disclaimer,
-end slate, 4 sizes (9:16, 1:1, 16:9, 1.91:1) and −14 LUFS loudness, all by script (Pillow + ffmpeg), never by the AI;
-Indian scripts use Noto fonts so letters join correctly → 7 final check by script: size, length, frame rate, file size,
-safe zones (Reels top 14 % / bottom 35 %, YouTube bottom 18 %), logo present, every word = approved copy, disclaimer.
-Output: 8 videos + 16 static ads + report.txt in one zip. Brand kit (⚙): logo, colours, font, saved once.
-Not built: Gemini Omni edit-in-place (its API is new and unverified); with Veo a failed shot is re-made instead.
-
 ## General purpose + scene logic (v3.23)
 
 - No default brand any more (it used to be ShareChat with a devotional description, which pulled scripts toward greetings

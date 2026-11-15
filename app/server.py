@@ -145,30 +145,23 @@ async def create(idea: str = Form(""), dialogue: str = Form(""), seconds: int = 
                  voice_mode: str = Form("oncamera"), language: str = Form(""), title: str = Form(""),
                  aspect: str = Form("9:16"), quality: str = Form("final"), kind: str = Form("video"), count: int = Form(4),
                  review: str = Form(""), same_look: str = Form("1"), style: str = Form("auto"), voice_gender: str = Form("female"), voice_style: str = Form("warm"), cast: str = Form("auto"), music_style: str = Form("bollywood"), vocals: str = Form("ai"), music_seconds: int = Form(60), ai_music: str = Form(""),
-                 url: str = Form(""), product: str = Form(""), offer: str = Form(""), cta: str = Form(""), platform: str = Form("both"),
-                 disclaimer: str = Form(""),
                  reference: UploadFile | None = File(None), music: UploadFile | None = File(None),
                  refs: list[UploadFile] | None = File(None)):
     if kind == "music" and not idea.strip() and not dialogue.strip():
         raise HTTPException(400, "Describe the song (mood, story, occasion), or paste your lyrics")
     if kind == "dub" and not reference:
         raise HTTPException(400, "Add the video to dub")
-    if kind == "perf" and url.strip() and not re.match(r"^https?://", url.strip()):
-        raise HTTPException(400, "The landing page link should start with https://")
-    if not idea.strip() and not dialogue.strip() and not reference and not (kind == "perf" and url.strip()):
+    if not idea.strip() and not dialogue.strip() and not reference:
         raise HTTPException(400, "Write an idea, paste a dialogue or add a reference video")
     p = STORE.new(idea=idea.strip(), dialogue=dialogue.strip(), seconds=max(8, min(180, seconds)),
                   voice_mode=voice_mode, language=language or CFG.get("language", "Hindi"), title=title.strip() or "New ad",
                   mode="reference" if reference else "idea",
                   aspect=aspect if aspect in ASPECTS else "9:16", quality=quality if quality in ("draft", "best") else "final",
-                  kind=kind if kind in ("images", "music", "dub", "perf") else "video", count=max(1, min(8, count)),
+                  kind=kind if kind in ("images", "music", "dub") else "video", count=max(1, min(8, count)),
                   music_style=music_style, vocals=vocals if vocals in ("ai", "mine", "instrumental") else "ai",
                   music_seconds=max(10, min(600, music_seconds)), ai_music=ai_music == "1", review=review == "1", same_look=same_look != "0", voice_gender="male" if voice_gender == "male" else "female",
                   voice_style=voice_style if voice_style in ("warm", "excited", "calm", "news", "devotional") else "warm",
-                  cast=cast if cast in ("auto", "people", "animals", "cartoon") else "auto", style=style if style in ("auto", "interview2", "cinematic", "news", "ugc") else "auto",
-                  **({"url": url.strip()[:500], "product": product.strip()[:120], "offer": offer.strip()[:160], "cta": cta.strip()[:60],
-                      "platform": platform if platform in ("both", "meta", "google") else "both", "disclaimer": disclaimer.strip()[:300]}
-                     if kind == "perf" else {}))
+                  cast=cast if cast in ("auto", "people", "animals", "cartoon") else "auto", style=style if style in ("auto", "interview2", "cinematic", "news", "ugc") else "auto")
     d = STORE.dir(p["id"])
     for up, key in ((reference, "reference"), (music, "music")):
         if up and up.filename:
@@ -745,78 +738,6 @@ def delete_project(pid: str):
         raise HTTPException(400, "Not a project folder")
     shutil.rmtree(d, ignore_errors=True)
     return {"ok": True}
-
-
-@app.get("/api/brand")
-def brand_get():
-    from .pipeline import load_brand
-    b = load_brand()
-    return {k: (bool(v) if k in ("logo", "font") else v) for k, v in b.items()}
-
-
-@app.post("/api/brand")
-async def brand_set(name: str = Form(""), color: str = Form(""), accent: str = Form(""),
-                    logo: UploadFile | None = File(None), font: UploadFile | None = File(None)):
-    """The brand kit lives only on this computer (.ghost/brand)."""
-    from . import addons
-    from .pipeline import load_brand
-    d = addons.GHOST / "brand"
-    d.mkdir(parents=True, exist_ok=True)
-    b = load_brand()
-    b["name"] = name.strip()[:80]
-    for k, v in (("color", color), ("accent", accent)):
-        if v and re.fullmatch(r"#[0-9a-fA-F]{6}", v.strip()):
-            b[k] = v.strip()
-    if logo and logo.filename:
-        ext = Path(logo.filename).suffix.lower()
-        if ext not in (".png", ".webp", ".jpg", ".jpeg"):
-            raise HTTPException(400, "The logo should be a PNG (with a transparent background if possible)")
-        from PIL import Image
-        dst = d / "logo.png"
-        Image.open(logo.file).convert("RGBA").save(dst)
-        b["logo"] = str(dst)
-    if font and font.filename:
-        ext = Path(font.filename).suffix.lower()
-        if ext not in (".ttf", ".otf"):
-            raise HTTPException(400, "The font should be a .ttf or .otf file")
-        dst = d / ("font" + ext)
-        with dst.open("wb") as f:
-            shutil.copyfileobj(font.file, f)
-        try:
-            from PIL import ImageFont
-            ImageFont.truetype(str(dst), 20)
-        except Exception:
-            dst.unlink(missing_ok=True)
-            raise HTTPException(400, "That font file could not be read")
-        b["font"] = str(dst)
-    (d / "brand.json").write_text(json.dumps(b, ensure_ascii=False, indent=1), encoding="utf-8")
-    return {"ok": True}
-
-
-@app.get("/api/projects/{pid}/deliver.zip")
-def deliver_zip(pid: str):
-    """Every upload-ready file of a Performance ad, plus a short report."""
-    import io
-    import zipfile
-    from fastapi.responses import Response
-    p = _get(pid)
-    pf = p.get("perf") or {}
-    b = io.BytesIO()
-    with zipfile.ZipFile(b, "w", zipfile.ZIP_STORED) as z:
-        for o in pf.get("outputs") or []:
-            if Path(o["file"]).exists():
-                z.write(o["file"], Path(o["file"]).name)
-        br = pf.get("brief") or {}
-        lines = [f"Ghost Studio · Performance ad · {p.get('title', '')}", "",
-                 "Claims used (approved = found in your material):"] + \
-                [f"  [{c['status']}] {c['text']}" + (f" ({c['why']})" if c.get("why") else "") for c in br.get("claims") or []] + \
-                ["", "Ideas (score /25):"] + [f"  {a['total']:>2}  {a['kind']}: {a.get('hook', '')}" for a in pf.get("angles") or []] + \
-                ["", "Final check:"] + [f"  {'OK  ' if not o['problems'] else 'FAIL'} {Path(o['file']).name}" + ("" if not o["problems"] else " — " + "; ".join(o["problems"]))
-                                        for o in pf.get("outputs") or []] + \
-                ["", "Label AI-made ads as AI-generated where the platform asks for it."]
-        z.writestr("report.txt", "\n".join(lines))
-    safe = "".join(ch for ch in (p.get("title") or "ads") if ch.isalnum() or ch in " -_").strip() or "ads"
-    return Response(b.getvalue(), media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{safe} - performance ads.zip"'})
 
 
 @app.get("/api/storage")
