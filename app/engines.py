@@ -100,7 +100,7 @@ def _device():
 def _pipe(key, loader):
     if key not in _LOADED:
         from .llm import _ram_gb
-        if _ram_gb() < 31:  # small memory: one big model at a time. 32 GB+: keep them all ready (no reloading)
+        if _ram_gb() < 60:  # one big picture model at a time (two at once made Macs swap: minutes per step). 64 GB+: keep all
             free()
         _LOADED[key] = loader()
     return _LOADED[key]

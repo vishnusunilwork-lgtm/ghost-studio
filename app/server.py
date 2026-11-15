@@ -193,9 +193,12 @@ def update_check(force: bool = False):
 
 
 @app.post("/api/update")
-def update_apply():
-    if RUNNER.busy:
+def update_apply(force: bool = False):
+    """force: pause what is being made and update anyway. The job shows as Paused after the restart: press Continue."""
+    if RUNNER.busy and not force:
         raise HTTPException(409, "An ad is being made right now. Update when it is finished.")
+    if RUNNER.current:
+        RUNNER.stop(RUNNER.current)
     try:
         sha = updater.apply()
     except Exception as e:
@@ -940,7 +943,7 @@ def agent_warm():
     """The Talk drawer was opened: load the chat model now, so the first answer starts in about a second."""
     from .agent import router
     fast, careful = router.pick_models(CFG)
-    if careful:
+    if careful and not RUNNER.busy:  # never compete with a picture being made for memory
         _th.Thread(target=llm.warm, args=(careful,), daemon=True).start()
     return {"ok": True, "model": careful}
 

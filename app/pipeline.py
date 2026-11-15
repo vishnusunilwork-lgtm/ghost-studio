@@ -274,7 +274,7 @@ class Runner:
         main = d / "frame_main.png"
         refs = [Path(r) for r in p.get("refs") or []]
         self.eng.image(p["plan"]["image_prompt"], main, gw * k, gh * k, seed=int(p.get("image_seed", 7)),
-                       ref_images=refs or None, steps=steps, fallback=refs[0] if refs else None, best=p.get("quality") != "draft")
+                       ref_images=refs or None, steps=steps, fallback=refs[0] if refs else None, best=False)
         p["image"] = str(main)
         p["engine_plan"] = self.eng.plan()
         style = p.get("style_used") or "auto"
@@ -286,7 +286,7 @@ class Runner:
                 f = d / f"frame_{key}.png"
                 self._say(p, "images", f"Camera {key}: {pp.get('look', '')[:50]}", 22 + n_)
                 prompt = pp.get("single_prompt") or f"{p['plan']['image_prompt']} Only this person in frame, medium close-up: {pp.get('look', '')}"
-                self.eng.image(prompt, f, gw * k, gh * k, seed=11 + n_, ref_images=[main, *refs][:3], steps=steps)
+                self.eng.image(prompt, f, gw * k, gh * k, seed=11 + n_, ref_images=[main, *refs][:2], steps=steps)
                 p["person_images"][key] = str(f)
                 self.store.save(p)
         if p["engine_plan"]["video"] == "photo_motion":
@@ -309,7 +309,7 @@ class Runner:
         c = p["clips"][i]
         f = self.store.dir(p["id"]) / f"shot{i + 1:02d}_{c['seed']}.png"
         prompt = c.get("image_prompt") or f"{p['plan']['image_prompt']} Moment: {c.get('line', '')}"
-        self.eng.image(prompt, f, w, h, seed=int(c["seed"]), ref_images=[main, *refs][:4], steps=steps,
+        self.eng.image(prompt, f, w, h, seed=int(c["seed"]), ref_images=[main, *refs][:2], steps=steps,
                        fallback=refs[i % len(refs)] if refs else None)
         c["image"] = str(f)
 
@@ -729,8 +729,10 @@ class Runner:
         from . import qc
         if draft or not qc.available() or self.eng.plan()["image"] == "photos":
             return f
+        from . import llm
         try:
             r1 = qc.check(f)
+            llm.unload()  # the checking model leaves memory before the next picture
             if r1["ok"]:
                 return f
             self._say(p, "images", f"Image {i + 1}: {r1.get('problem') or 'small defects'} — making a better take")

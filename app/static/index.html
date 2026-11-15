@@ -960,10 +960,10 @@ $('#upLater').onclick=()=>{try{sessionStorage.setItem('gs-later',UPD?.remote||''
 $('#upGo').onclick=async()=>{let cur=null;try{cur=(await api('/api/status')).current}catch(e){}
   if(cur){if(!confirm(`“${cur.title||'An ad'}” is being made (${cur.progress||0}%).\n\nPause it and update now? Everything made so far is kept: open it afterwards and press Continue.`))return;
     try{await api(`/api/projects/${cur.id}/stop`,{method:'POST'})}catch(e){}toast('Pausing… then updating');
-    for(let k=0;k<90;k++){await new Promise(r=>setTimeout(r,1000));try{if(!(await api('/api/status')).current)break}catch(e){}}}
+    for(let k=0;k<8;k++){await new Promise(r=>setTimeout(r,1000));try{if(!(await api('/api/status')).current)break}catch(e){}}}
   saveDraft();await saveAtt();const before=ST?.version;lsSet('gs-upd',{from:before,to:UPD?.remote});
   const c=document.createElement('div');c.className='cover';c.innerHTML='<div><canvas class="cmark"></canvas>Updating Ghost Studio…<small>About 10–30 seconds. Your ads, settings and what you were typing are kept.</small></div>';document.body.appendChild(c);try{ghostMark(c.querySelector('canvas'),84)}catch(e){}
-  try{await api('/api/update',{method:'POST'})}catch(e){c.remove();lsSet('gs-upd',null);toast(e.message);return}
+  try{await api('/api/update?force=1',{method:'POST'})}catch(e){c.remove();lsSet('gs-upd',null);toast(e.message);return}
   const t0=Date.now();const iv=setInterval(async()=>{try{const st=await api('/api/status');if(st.version!==before){clearInterval(iv);location.reload()}}catch(e){}if(Date.now()-t0>180000){clearInterval(iv);c.innerHTML='<div>Taking longer than usual.<small>Open Ghost Studio again from its icon. Your work is saved.</small></div>'}},1500)};
 
 /* draft: what you are typing and choosing is saved as you go, and comes back after an update or reload */

@@ -122,8 +122,8 @@ def _ram_gb() -> float:
 
 def unload(force: bool = False):
     """Frees the script AI's memory so pictures, video and music run without swapping.
-    On computers with 32 GB or more both fit, so the script AI stays loaded and answers instantly next time."""
-    if not force and _ram_gb() >= 31:
+    Only on 64 GB+ computers do both fit comfortably; below that, keeping it loaded slows pictures down badly."""
+    if not force and _ram_gb() >= 60:
         return
     if cloud_on():
         pass  # nothing local to keep warm for text
