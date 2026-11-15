@@ -20,6 +20,8 @@ import random
 import shutil
 import subprocess
 import time
+import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -230,20 +232,208 @@ class Fal:
             shutil.copyfileobj(r, f)
 
 
+# ---------------------------------------------------------------- optional: your own Google Cloud (Veo + Gemini image)
+class Google:
+    """Your company's Google Cloud project, the same models as the Google Cloud console:
+    Veo 3.1 (moving video with its own sound and lip-sync) and Gemini image ("Nano Banana") pictures.
+    Sign-in: an API key from the console's "Get API key" (kept only in config.local.yaml), or, with just the
+    project id, the Google Cloud CLI on this computer (`gcloud auth login`). Model names change often, so Ghost
+    tries the newest first and remembers the one that works."""
+    VIDEO = ["veo-3.1-lite-generate-001", "veo-3.1-fast-generate-001", "veo-3.1-generate-001"]
+    IMAGE = ["gemini-nano-banana-2.1", "gemini-3.1-flash-image", "gemini-3-pro-image", "gemini-2.5-flash-image"]
+    ASPECTS = {"1:1": 1, "4:5": 0.8, "3:4": 0.75, "2:3": 0.667, "9:16": 0.5625, "5:4": 1.25, "4:3": 1.333, "3:2": 1.5, "16:9": 1.778, "21:9": 2.333}
+
+    def __init__(self, cfg: dict):
+        a = cfg.get("api") or {}
+        self.key = (a.get("google_key") or "").strip()
+        self.project = (a.get("google_project") or "").strip()
+        self.location = (a.get("google_location") or "us-central1").strip()
+        self.video_models = [a["google_video_model"]] if a.get("google_video_model") else list(self.VIDEO)
+        self.image_models = [a["google_image_model"]] if a.get("google_image_model") else list(self.IMAGE)
+        self.resolution = a.get("google_resolution") or "720p"
+        self.price = float(a.get("google_price_per_second") or 0.05)  # Veo 3.1 Lite, 720p with sound
+        self.image_price = float(a.get("google_price_per_image") or 0.04)
+        self.limit = float(a.get("monthly_limit_usd") or 20)
+        self.works: dict[str, tuple[str, str]] = {}  # kind -> (model, url prefix) that answered last time
+        self._tok = ("", 0.0)
+
+    @property
+    def on(self) -> bool:
+        return bool(self.key or (self.project and shutil.which("gcloud")))
+
+    @property
+    def model(self) -> str:
+        return (self.works.get("video") or (self.video_models[0],))[0]
+
+    def _headers(self) -> dict:
+        if self.key:
+            return {"x-goog-api-key": self.key}
+        tok, t = self._tok
+        if not tok or time.time() - t > 1800:
+            r = subprocess.run(["gcloud", "auth", "print-access-token"], capture_output=True, text=True, timeout=30)
+            if r.returncode != 0 or not r.stdout.strip():
+                raise RuntimeError("Google Cloud sign-in needed: run `gcloud auth login` once, or paste an API key under ⚙.")
+            self._tok = tok, t = r.stdout.strip(), time.time()
+        h = {"Authorization": "Bearer " + tok}
+        if self.project:
+            h["x-goog-user-project"] = self.project
+        return h
+
+    def _post(self, url: str, body: dict, timeout: int = 180) -> dict:
+        req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST",
+                                     headers={**self._headers(), "Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            msg = e.read().decode(errors="ignore")
+            try:
+                msg = json.loads(msg).get("error", {}).get("message", msg)
+            except Exception:
+                pass
+            raise GoogleError(e.code, msg[:400]) from None
+
+    def _prefixes(self, model: str, locs: list[str]) -> list[str]:
+        out = []
+        if self.project:
+            for loc in locs:
+                host = "aiplatform.googleapis.com" if loc == "global" else f"{loc}-aiplatform.googleapis.com"
+                out.append(f"https://{host}/v1/projects/{self.project}/locations/{loc}/publishers/google/models/{model}")
+        if self.key:  # express-mode keys work without a project in the address
+            out.append(f"https://aiplatform.googleapis.com/v1/publishers/google/models/{model}")
+        return out
+
+    def _call(self, kind: str, models: list[str], locs: list[str], method: str, body: dict, timeout: int = 180):
+        """Try the remembered model first, then the others; returns (answer, url prefix)."""
+        tries = []
+        if kind in self.works:
+            tries.append(self.works[kind])
+        tries += [(m, p) for m in models for p in self._prefixes(m, locs) if (m, p) != self.works.get(kind)]
+        last = None
+        for m, pre in tries:
+            try:
+                r = self._post(f"{pre}:{method}", body, timeout)
+                self.works[kind] = (m, pre)
+                return r, pre
+            except GoogleError as e:
+                last = e
+                if e.code in (401, 403) and "billing" not in e.msg.lower() and "not found" not in e.msg.lower():
+                    if "PERMISSION_DENIED" in e.msg or e.code == 401:
+                        raise RuntimeError("Google Cloud said no access (" + e.msg[:200] + "). Check the key / project, "
+                                           "and that the Vertex AI API is enabled for it.") from None
+                if e.code == 429:
+                    raise RuntimeError("Google Cloud is busy or your quota is used up (429). Try again in a minute.") from None
+                if e.code not in (400, 403, 404):
+                    raise RuntimeError(f"Google Cloud error {e.code}: {e.msg[:200]}") from None
+        raise RuntimeError(f"Google Cloud: no {kind} model answered ({last.code}: {last.msg[:200]})" if last else "Google Cloud: not set up")
+
+    def check_budget(self, usd: float):
+        m = Spend.month()
+        if m["usd"] + usd > self.limit:
+            raise RuntimeError(f"Monthly cloud limit reached (${m['usd']:.2f} of ${self.limit:.0f}). "
+                               "Raise it under the gear, or switch to photo motion.")
+
+    @staticmethod
+    def _b64(img: Path, long_side: int = 1280) -> str:
+        return Fal.data_uri(img, long_side).split(",", 1)[1]
+
+    def image(self, prompt: str, out: Path, width: int, height: int, seed: int = 0, refs: list[Path] | None = None) -> Path:
+        from PIL import Image, ImageOps
+        self.check_budget(self.image_price)
+        ratio = width / max(1, height)
+        aspect = min(self.ASPECTS, key=lambda k: abs(self.ASPECTS[k] - ratio))
+        parts = [{"inlineData": {"mimeType": "image/jpeg", "data": self._b64(r, 1024)}} for r in (refs or [])[:3]]
+        parts.append({"text": prompt + " Photorealistic photograph, no text, no watermark."})
+        body = {"contents": [{"role": "user", "parts": parts}],
+                "generationConfig": {"responseModalities": ["IMAGE"], "imageConfig": {"aspectRatio": aspect}, "seed": int(seed) % 2**31}}
+        r, _ = self._call("image", self.image_models, ["global", self.location], "generateContent", body)
+        for c in r.get("candidates") or []:
+            for p in (c.get("content") or {}).get("parts") or []:
+                data = (p.get("inlineData") or p.get("inline_data") or {}).get("data")
+                if data:
+                    raw = out.with_name(out.stem + "_g.png")
+                    raw.write_bytes(base64.b64decode(data))
+                    im = Image.open(raw).convert("RGB")
+                    ImageOps.fit(im, (width, height), Image.LANCZOS).save(out)
+                    raw.unlink(missing_ok=True)
+                    Spend.add(self.image_price)
+                    return out
+        why = ((r.get("candidates") or [{}])[0].get("finishReason") or (r.get("promptFeedback") or {}).get("blockReason") or "no picture")
+        raise RuntimeError(f"Google made no picture ({why}). Try different words.")
+
+    def video(self, image: Path, prompt: str, seconds: float, out: Path, seed: int = 0, aspect: str = "9:16") -> Path:
+        dur = 4 if seconds <= 4 else 6 if seconds <= 6 else 8
+        cost = dur * self.price
+        self.check_budget(cost)
+        body = {"instances": [{"prompt": prompt, "image": {"bytesBase64Encoded": self._b64(image), "mimeType": "image/jpeg"}}],
+                "parameters": {"aspectRatio": "16:9" if aspect == "16:9" else "9:16", "durationSeconds": dur, "generateAudio": True,
+                               "resolution": self.resolution, "sampleCount": 1, "personGeneration": "allow_all",
+                               "seed": int(seed) % 2**32, "negativePrompt": "text, subtitles, watermark, logo, distorted face, extra fingers"}}
+        try:
+            op, pre = self._call("video", self.video_models, [self.location], "predictLongRunning", body)
+        except RuntimeError as e:
+            if "personGeneration" not in str(e) and "allow_all" not in str(e):
+                raise
+            body["parameters"]["personGeneration"] = "allow_adult"
+            op, pre = self._call("video", self.video_models, [self.location], "predictLongRunning", body)
+        t0 = time.time()
+        while time.time() - t0 < 900:
+            time.sleep(4 if time.time() - t0 < 60 else 8)
+            st = self._post(f"{pre}:fetchPredictOperation", {"operationName": op["name"]}, 120)
+            if not st.get("done"):
+                continue
+            if st.get("error"):
+                raise RuntimeError("Google video: " + str(st["error"].get("message", st["error"]))[:300])
+            res = st.get("response") or {}
+            vids = res.get("videos") or [s.get("video", s) for s in res.get("generatedSamples") or []]
+            if not vids:
+                n = res.get("raiMediaFilteredCount")
+                why = "; ".join(res.get("raiMediaFilteredReasons") or []) if n else "no video returned"
+                raise RuntimeError("Google's safety check stopped this shot (" + why[:200] + "). Change the words or the picture.")
+            v = vids[0]
+            if v.get("bytesBase64Encoded"):
+                out.write_bytes(base64.b64decode(v["bytesBase64Encoded"]))
+            elif v.get("uri") or v.get("gcsUri"):
+                u = v.get("uri") or v.get("gcsUri")
+                if u.startswith("gs://"):
+                    b, _, name = u[5:].partition("/")
+                    u = f"https://storage.googleapis.com/storage/v1/b/{b}/o/{urllib.parse.quote(name, safe='')}?alt=media"
+                req = urllib.request.Request(u, headers=self._headers())
+                with urllib.request.urlopen(req, timeout=300) as r, open(out, "wb") as f:
+                    shutil.copyfileobj(r, f)
+            else:
+                raise RuntimeError("Google video: unexpected answer")
+            Spend.add(cost)
+            return out
+        raise RuntimeError("Google video took more than 15 minutes")
+
+
+class GoogleError(Exception):
+    def __init__(self, code: int, msg: str):
+        super().__init__(f"{code}: {msg}")
+        self.code, self.msg = code, msg
+
+
 # ---------------------------------------------------------------- the engine
 class Engines:
     def __init__(self, cfg: dict, force_mock: bool = False):
         self.cfg = cfg
         self.mock = force_mock
         self.fal = Fal(cfg)
+        self.goog = Google(cfg)
+
+    @property
+    def cloud(self) -> bool:
+        """A cloud service (your Google Cloud, or fal.ai) makes pictures and real video."""
+        return (self.goog.on or self.fal.on) and not self.mock
 
     # which maker is used for each step (shown in the app)
     def plan(self) -> dict:
         cuda = not self.mock and has_cuda()
         local_img = not self.mock and image_ai_installed() and (cuda or gpu_info().get("mps"))
         return {
-            "image": "service" if (self.fal.on and not self.mock) else "nvidia" if cuda else "local" if local_img else "photos",
-            "video": "service" if self.fal.on and not self.mock else "photo_motion",
+            "image": "service" if self.cloud else "nvidia" if cuda else "local" if local_img else "photos",
+            "video": "service" if self.cloud else "photo_motion",
             "voice": "natural" if (not self.mock and _voices_ready()) else "mac" if shutil.which("say") else "windows" if platform.system() == "Windows" else "tone",
         }
 
@@ -262,7 +452,7 @@ class Engines:
         from . import knowledge
         prompt = knowledge.apply(prompt)  # Indian words spelled out ("desi dog" = Indian pariah dog) + what you taught Ghost
         how = self.plan()["image"]
-        if best and not ref_images and not self.mock and not self.fal.on and _realism_ready() and (_mflux_ok() or has_cuda()):
+        if best and not ref_images and not self.cloud and _realism_ready() and (_mflux_ok() or has_cuda()):
             try:
                 return self._zimage(prompt, out, width, height, seed)
             except Exception as e:
@@ -272,9 +462,12 @@ class Engines:
             try:
                 return self._local_image(prompt, out, width, height, seed, ref_images, steps, mac=how == "local")
             except Exception as e:
-                if not self.fal.on:
+                if not self.cloud:
                     raise RuntimeError("Image AI failed on this computer (" + str(e)[:200] + "). "
                                        "Try Draft mode, or add your own photos.")
+        if self.goog.on and not self.mock and how in ("service", "nvidia", "local"):
+            refs = [r for r in (ref_images or []) if r and Path(r).exists()][:3]
+            return self.goog.image(prompt, out, width, height, seed, refs)
         if how == "service" or (how in ("nvidia", "local") and self.fal.on):
             sc = min(1.0, 1440 / max(width, height))
             width, height = int(width * sc) // 16 * 16, int(height * sc) // 16 * 16
@@ -438,6 +631,8 @@ class Engines:
     def video(self, image: Path, prompt: str, seconds: float, out: Path, seed: int = 0,
               width: int | None = None, height: int | None = None, steps: int | None = None, aspect: str = "9:16") -> Path:
         how = self.plan()["video"]
+        if how == "service" and self.goog.on:
+            return self.goog.video(image, prompt, seconds, out, seed, aspect)
         if how == "service":
             dur = 4 if seconds <= 4 else 6 if seconds <= 6 else 8
             cost = dur * self.fal.price

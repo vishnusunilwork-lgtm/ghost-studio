@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -123,6 +124,9 @@ def status():
             "makers": RUNNER.eng.plan(), "addons": _addon_summary(), "current": _current(),
             "api": {"on": f.on, "key_end": f.key[-4:] if f.on else "", "limit": f.limit, "spent": m["usd"],
                     "price": f.price, "model": f.video_model},
+            "google": {"on": RUNNER.eng.goog.on, "project": RUNNER.eng.goog.project, "key": bool(RUNNER.eng.goog.key),
+                       "key_end": RUNNER.eng.goog.key[-4:] if RUNNER.eng.goog.key else "", "model": RUNNER.eng.goog.model,
+                       "price": RUNNER.eng.goog.price, "limit": RUNNER.eng.goog.limit, "spent": m["usd"]},
             "brain": {"on": llm.cloud_on(), "model": llm.CLOUD["model"], "provider": (CFG.get("brain") or {}).get("provider", "")},
             "web_search": bool((CFG.get("search") or {}).get("brave_key")),
             "moves": MOVES, "steps": STEPS, "labels": LABEL, "language": CFG.get("language", "Hindi"),
@@ -334,6 +338,10 @@ def set_search(body: Search):
 
 class ApiSettings(BaseModel):
     fal_key: str | None = None
+    google_key: str | None = None
+    google_project: str | None = None
+    google_location: str | None = None
+    remove_google: bool = False
     monthly_limit_usd: float | None = None
     remove: bool = False
 
@@ -350,6 +358,22 @@ def set_api(body: ApiSettings):
         if len(k) < 20 or " " in k:
             raise HTTPException(400, "That does not look like a key. Copy it again from fal.ai → Keys.")
         a["fal_key"] = k
+    if body.remove_google:
+        for k in ("google_key", "google_project", "google_location"):
+            a.pop(k, None)
+    else:
+        if body.google_key:
+            k = body.google_key.strip()
+            if len(k) < 20 or " " in k:
+                raise HTTPException(400, "That does not look like a Google Cloud API key. Copy it again from the console → Get API key.")
+            a["google_key"] = k
+        if body.google_project is not None:
+            pr = body.google_project.strip()
+            if pr and not re.fullmatch(r"[a-z][a-z0-9-]{4,61}[a-z0-9]", pr):
+                raise HTTPException(400, "A project id looks like my-project-123 (small letters, numbers, dashes).")
+            a["google_project"] = pr
+        if body.google_location:
+            a["google_location"] = body.google_location.strip()
     if body.monthly_limit_usd is not None:
         a["monthly_limit_usd"] = max(1.0, min(5000.0, float(body.monthly_limit_usd)))
     LOCAL.write_text(yaml.safe_dump(loc, allow_unicode=True), encoding="utf-8")
@@ -360,8 +384,29 @@ def set_api(body: ApiSettings):
     CFG.setdefault("api", {}).update(a)
     if body.remove:
         CFG["api"].pop("fal_key", None)
+    if body.remove_google:
+        for k in ("google_key", "google_project", "google_location"):
+            CFG["api"].pop(k, None)
     RUNNER.eng.fal = E.Fal(CFG)
+    RUNNER.eng.goog = E.Google(CFG)
     return {"ok": True}
+
+
+@app.post("/api/google/test")
+def google_test():
+    """One small picture through your Google Cloud (about $0.04) to prove the connection works."""
+    import tempfile
+    import time as _t
+    g = RUNNER.eng.goog
+    if not g.on:
+        raise HTTPException(400, "Add a Google Cloud API key or project first.")
+    st = _t.time()
+    out = Path(tempfile.mkdtemp()) / "test.png"
+    try:
+        g.image("A steaming glass of masala chai on a wooden table by a window, morning light", out, 512, 512, seed=1)
+    except Exception as e:
+        raise HTTPException(400, str(e)[:400])
+    return {"ok": True, "seconds": round(_t.time() - st, 1), "model": g.works.get("image", ("?",))[0]}
 
 
 class ClipEdit(BaseModel):
@@ -978,6 +1023,8 @@ def health():
     check("Pictures", lambda: (RUNNER.eng.plan()["image"] != "photos", {"local": "on this computer" + (" (fast Apple engine)" if E._mflux_ok() else ""),
                                                                        "service": "video service", "nvidia": "NVIDIA",
                                                                        "photos": "no picture AI: install AI pictures"}[RUNNER.eng.plan()["image"]]))
+    g = RUNNER.eng.goog
+    check("Google Cloud (Veo + Gemini image)", lambda: (True, (f"on · project {g.project or '(key only)'} · {g.model}") if g.on else "off (optional)"))
     check("Voice", lambda: (True, RUNNER.eng.plan()["voice"]))
     check("Music", lambda: (addons.music_installed() or RUNNER.eng.fal.on, "installed" if addons.music_installed() else "video service" if RUNNER.eng.fal.on else "not installed"))
     from . import live

@@ -100,6 +100,22 @@ and takes roughly 20 s per second of video even with the MLX port; and the face 
 has non-commercial model weights. Wav2Lip is non-commercial. It may be added later as an optional add-on for human
 presenters, after testing on a Mac.
 
+## Your own Google Cloud (v3.20)
+
+Why a free local Ghost can't match Veo in seconds: Veo, Gemini image, Seedance and the models behind Higgsfield are
+very large models running on data-centre chips (TPU / H100-class) many times faster than a laptop graphics chip,
+spread over many chips per request. A single Veo clip still takes from about 11 seconds to several minutes on
+Google's own servers. On a Mac, Ghost can only make pictures and animate them (photo motion).
+
+`engines.Google` connects Ghost to a company's own Google Cloud project, so the same models as the Google Cloud
+console make the ad: **Veo 3.1** (`predictLongRunning` → `fetchPredictOperation`, image-to-video so every shot keeps
+the same character, native sound and lip-sync) and **Gemini image** (`generateContent` with `responseModalities: IMAGE`,
+the main look passed as a reference). Sign-in is an API key or the Google Cloud CLI token. Model names change often
+(Imagen was shut down in August 2026, Veo preview names in October 2026), so Ghost tries a list newest-first and
+remembers the one that answered. All shots and pictures are made at the same time, so an ad takes about as long as its
+slowest clip. Spending is counted per month and stops at the limit. Pictures, video and sound come from Google;
+the script AI stays as configured.
+
 ## Media engines: the same ideas as Gemini, ElevenLabs and Suno, with free models
 
 The big services publish what they do, not their code or weights. Ghost uses the same published ideas with

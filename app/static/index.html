@@ -488,6 +488,16 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
       <p class="note" style="margin-top:10px">Whole-web search (optional): a free <b>Brave Search API</b> key makes Ghost search the entire web, not only news, weather and Wikipedia.</p>
       <input type="password" id="brvKey" class="inp" placeholder="Brave Search API key (optional)" autocomplete="off" spellcheck="false"><button class="btn" id="brvSave" style="margin-top:6px;width:100%">Save search key</button>
     </div>
+    <div class="sect"><h4>Google Cloud <span class="tag">best quality</span></h4>
+      <div id="gOff"><p class="note">Use your company's Google Cloud project for the <b>same models as the Google Cloud console</b>: <b>Veo 3.1</b> real moving video with its own sound and lip-sync, and <b>Gemini image</b> pictures. Every shot is made at the same time, so an ad takes about as long as one clip (usually 1–2 minutes). Google bills the project (Veo 3.1 Lite 720p with sound ≈ $0.05 a second); Ghost stops at your monthly limit.</p>
+        <input type="text" id="gProject" class="inp" placeholder="Project id, e.g. my-ads-project" autocomplete="off" spellcheck="false">
+        <input type="password" id="gKey" class="inp" style="margin-top:6px" placeholder="API key (console → Get API key)" autocomplete="off" spellcheck="false">
+        <button class="btn solid" id="gSave" style="margin-top:8px;width:100%">Save and test (makes one small picture, ≈ $0.04)</button>
+        <p class="note">No key? Leave it empty and sign in once with the Google Cloud CLI (<code>gcloud auth login</code>). The key stays only on this computer.</p></div>
+      <div id="gOn" class="hidden"><p class="note" id="gInfo"></p>
+        <button class="btn" id="gTest" style="width:100%">Test again</button>
+        <button class="btn" id="gRemove" style="margin-top:8px;width:100%">Disconnect Google Cloud (back to free)</button></div>
+    </div>
     <div class="sect"><h4>Video service <span class="tag">optional</span></h4>
       <div id="apiOff"><p class="note">Free mode makes <b>photo-motion</b> ads: pictures + your camera moves + narrator. Add a <b>fal.ai</b> key to make <b>real moving video where people speak</b> (Veo 3.1). You pay fal.ai per video; this app stops at your monthly limit.</p>
         <input type="password" id="apiKey" class="inp" placeholder="Paste your fal.ai key" autocomplete="off" spellcheck="false">
@@ -667,7 +677,7 @@ async function go(){const text=prompt_.value.trim();$('#goErr').textContent='';
   catch(e){$('#goErr').textContent=e.message;F.set(.18);ready()}}
 
 /* ---------- status / settings / history ---------- */
-const MK={image:{nvidia:'AI images (NVIDIA)',local:'AI images (this Mac)',service:'AI images (video service)',photos:'Your photos / colour cards'},video:{service:'Real video + speech (video service)',photo_motion:'Photo motion: pictures + camera moves'},voice:{natural:'Natural voices (add-on)',mac:'Mac voice (free, offline)',windows:'Windows voice (free, offline)',tone:'Test tone'}};
+const MK={image:{nvidia:'AI images (NVIDIA)',local:'AI images (this Mac)',service:'AI images (cloud: Google or fal)',photos:'Your photos / colour cards'},video:{service:'Real video + speech (cloud: Veo 3.1)',photo_motion:'Photo motion: pictures + camera moves'},voice:{natural:'Natural voices (add-on)',mac:'Mac voice (free, offline)',windows:'Windows voice (free, offline)',tone:'Test tone'}};
 let VM_TOUCHED=false;
 async function status(){try{ST=await api('/api/status');const mk=ST.makers||{},talk=mk.video!=='photo_motion';
   if(!VM_TOUCHED&&ST.addons&&ST.addons.music&&ST.addons.music.installed)$('#vmusic').value='1';  // music on by default when it can be made
@@ -680,7 +690,14 @@ function kv(){if(!ST)return;const m=ST.models||{},mk=ST.makers||{},a=ST.api||{};
   $('#kv').innerHTML=[['Pictures',MK.image[mk.image]||mk.image],['Video',MK.video[mk.video]||mk.video],['Narrator',MK.voice[mk.voice]||mk.voice],['Script AI',ST.llm?'On ('+m.llm+')':'Simple templates — install Ollama for real scripts'],['Computer',ST.gpu.name+(ST.gpu.vram_gb?` · ${ST.gpu.vram_gb} GB`:'')],['App version',ST.version||'dev']].map(([k,v])=>`<span>${esc(k)}</span><b>${esc(v)}</b>`).join('');
   addPoll();
   $('#apiOff').classList.toggle('hidden',!!a.on);$('#apiOn').classList.toggle('hidden',!a.on);
-  if(a.on){$('#apiInfo').textContent=`Connected (key …${a.key_end}) · this month: $${(a.spent||0).toFixed(2)} of $${a.limit} · about $${(a.price*30).toFixed(2)} per 30-second ad`;$('#apiLimit').value=a.limit}}
+  if(a.on){$('#apiInfo').textContent=`Connected (key …${a.key_end}) · this month: $${(a.spent||0).toFixed(2)} of $${a.limit} · about $${(a.price*30).toFixed(2)} per 30-second ad`;$('#apiLimit').value=a.limit}
+  const g=ST.google||{};$('#gOff').classList.toggle('hidden',!!g.on);$('#gOn').classList.toggle('hidden',!g.on);
+  if(g.on){$('#gInfo').textContent=`Connected · project ${g.project||'(key only)'}${g.key?' · key …'+g.key_end:' · CLI sign-in'} · ${g.model} · this month: $${(g.spent||0).toFixed(2)} of $${g.limit} · about $${(g.price*20).toFixed(2)} per 20-second ad`}}
+async function gTest(){toast('Testing Google Cloud…');try{const r=await api('/api/google/test',{method:'POST'});toast(`Google Cloud works: a picture in ${r.seconds} s (${r.model})`)}catch(e){toast(e.message)}}
+$('#gSave').onclick=async()=>{const k=$('#gKey').value.trim(),p=$('#gProject').value.trim();if(!k&&!p){toast('Add the project id and/or the API key');return}
+  try{await api('/api/settings/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({google_key:k||null,google_project:p})});$('#gKey').value='';await status();kv();await gTest()}catch(e){toast(e.message)}};
+$('#gTest').onclick=gTest;
+$('#gRemove').onclick=()=>{if(confirm('Disconnect Google Cloud from Ghost on this computer?'))api('/api/settings/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({remove_google:true})}).then(()=>status()).then(kv).then(()=>toast('Disconnected — back to free'))};
 async function saveApi(body){try{await api('/api/settings/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});$('#apiKey').value='';await status();kv();toast(body.remove?'Key removed — back to free photo motion':'Saved')}catch(e){toast(e.message)}}
 $('#apiSave').onclick=()=>{const k=$('#apiKey').value.trim();if(!k){toast('Paste the key first');return}saveApi({fal_key:k})};
 $('#apiLimitSave').onclick=()=>saveApi({monthly_limit_usd:+$('#apiLimit').value});
