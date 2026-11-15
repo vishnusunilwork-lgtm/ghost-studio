@@ -342,6 +342,9 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
 .tk-in:focus-within{border-color:var(--edge-hi)}
 .tk-in textarea{flex:1;background:none;border:0;outline:0;resize:none;max-height:140px;font:14.5px/1.5 var(--font);color:var(--ink);padding:6px 0}
 #tkSend{flex:none;width:34px;height:34px;border-radius:50%;background:var(--ink);color:#0a0a0b;display:grid;place-items:center}#tkSend:disabled{opacity:.3}
+.tk-deep{flex:none;width:30px;height:30px;border-radius:50%;opacity:.45;filter:grayscale(1);font-size:15px;margin-bottom:2px}.tk-deep.on{opacity:1;filter:none;background:var(--glass-soft)}
+.tk-srcw{align-self:stretch}.tk-src{font-size:12.5px;color:var(--mute);padding:6px 10px;border-radius:12px;border:1px solid var(--edge);background:var(--glass-soft)}
+.tk-src summary{cursor:pointer}.tk-src a{display:block;color:var(--ink);text-decoration:none;padding:4px 0;border-top:1px solid var(--line)}.tk-src a small{color:var(--mute)}
 .tk-hint{margin:8px 4px 0;font-size:11.5px;color:var(--faint)}
 @media(prefers-reduced-motion:reduce){.tk-act i,.tk-think i{animation:none}}
 </style>
@@ -472,6 +475,17 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
     <div class="sect" id="addBox"><h4>Add-ons <span class="tag">free · runs on this computer</span></h4>
       <p class="note" id="addSys">Install once. Ghost then uses them by itself.</p>
       <div class="addons" id="addList"></div></div>
+    <div class="sect" id="brainBox"><h4>Smarter brain <span class="tag">optional</span></h4>
+      <p class="note">Free by default: Talk to Ghost, scripts and prompts run on this computer, and today's news, weather and facts are looked up live for free.
+        For ChatGPT/Gemini-level answers, add <b>your own</b> key from one of these services. Then your chats and prompts are sent to that service; pictures, music and voices stay on this computer.</p>
+      <div id="brainOff"><select id="brProv" class="inp"><option value="gemini">Google Gemini</option><option value="openai">OpenAI (ChatGPT)</option><option value="openrouter">OpenRouter (many models)</option><option value="groq">Groq (very fast)</option></select>
+        <input type="password" id="brKey" class="inp" placeholder="Paste your API key" autocomplete="off" spellcheck="false" style="margin-top:6px">
+        <button class="btn" id="brSave" style="margin-top:6px;width:100%">Connect</button></div>
+      <div id="brainPick" class="hidden"><select id="brModel" class="inp"></select><button class="btn solid" id="brUse" style="margin-top:6px;width:100%">Use this model</button></div>
+      <div id="brainOn" class="hidden"><p class="note" id="brInfo"></p><button class="btn" id="brRemove" style="width:100%">Remove key (back to free, on this computer)</button></div>
+      <p class="note" style="margin-top:10px">Whole-web search (optional): a free <b>Brave Search API</b> key makes Ghost search the entire web, not only news, weather and Wikipedia.</p>
+      <input type="password" id="brvKey" class="inp" placeholder="Brave Search API key (optional)" autocomplete="off" spellcheck="false"><button class="btn" id="brvSave" style="margin-top:6px;width:100%">Save search key</button>
+    </div>
     <div class="sect"><h4>Video service <span class="tag">optional</span></h4>
       <div id="apiOff"><p class="note">Free mode makes <b>photo-motion</b> ads: pictures + your camera moves + narrator. Add a <b>fal.ai</b> key to make <b>real moving video where people speak</b> (Veo 3.1). You pay fal.ai per video; this app stops at your monthly limit.</p>
         <input type="password" id="apiKey" class="inp" placeholder="Paste your fal.ai key" autocomplete="off" spellcheck="false">
@@ -489,7 +503,7 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
 <aside class="drawer right" id="talk" aria-label="Talk to Ghost">
   <div class="dhead"><h3>Talk to Ghost</h3><button class="icon" id="tkNew" title="New chat" aria-label="New chat"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button><button class="icon" data-close aria-label="Close">✕</button></div>
   <div class="tk-log" id="tkLog" aria-live="polite"></div>
-  <div class="tk-foot"><div class="tk-in"><textarea id="tkIn" rows="1" placeholder="Ask anything, or tell Ghost what to make…"></textarea><button id="tkSend" aria-label="Send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button></div>
+  <div class="tk-foot"><div class="tk-in"><button id="tkDeep" class="tk-deep" title="Deep thinking: slower, smarter answers for hard questions (auto for plans, strategy, analysis)" aria-pressed="false">🧠</button><textarea id="tkIn" rows="1" placeholder="Ask anything, or tell Ghost what to make…"></textarea><button id="tkSend" aria-label="Send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button></div>
   <p class="tk-hint">Runs on this computer. Every action Ghost takes is shown here, and big ones wait for your OK.</p></div>
 </aside>
 <aside class="drawer right" id="clipSheet" aria-label="Edit shot">
@@ -561,7 +575,18 @@ $('#scrim').onclick=()=>drawer(null);$$('[data-close]').forEach(b=>b.onclick=()=
 addEventListener('keydown',e=>{if(e.key==='Escape'){drawer(null);closeMenu()}if(e.key==='/'&&document.activeElement.tagName!=='TEXTAREA'&&!$('#home').classList.contains('hidden')){e.preventDefault();$('#prompt').focus()}});
 $('#homeBtn').onclick=goHome;$('#newBtn').onclick=()=>{drawer(null);goHome()};
 $('#histBtn').onclick=async()=>{await list();drawer('hist')};
-$('#setBtn').onclick=$('#statusBtn').onclick=()=>{kv();loadMem();drawer('settings')};
+$('#setBtn').onclick=$('#statusBtn').onclick=()=>{kv();loadMem();brainUI();drawer('settings')};
+function brainUI(){const b=(ST&&ST.brain)||{};$('#brainOff').classList.toggle('hidden',!!b.on);$('#brainOn').classList.toggle('hidden',!b.on);$('#brainPick').classList.add('hidden');
+  if(b.on)$('#brInfo').innerHTML=`Connected: <b>${esc(b.model)}</b> (${esc(b.provider||'')}). Talk to Ghost, scripts and prompts use it. Key kept only on this computer.`;
+  $('#brvKey').placeholder=ST&&ST.web_search?'Brave key saved ✓ (paste a new one to change, empty to remove)':'Brave Search API key (optional)'}
+const BR_PREF=[/gemini-[\d.]+-flash(?!-lite)/,/gpt-[\d.]+-mini/,/gpt-[\d.]+/,/claude/,/llama.*70b/,/qwen/];
+$('#brSave').onclick=async()=>{try{const r=await api('/api/settings/brain',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:$('#brProv').value,key:$('#brKey').value,model:''})});
+  $('#brKey').value='';const ms=r.models.filter(m=>!/embed|tts|image|audio|whisper|dall|moderation|vision-only/i.test(m));
+  const best=BR_PREF.map(re=>ms.find(m=>re.test(m))).find(Boolean)||ms[0]||'';
+  $('#brModel').innerHTML=ms.map(m=>`<option ${m===best?'selected':''}>${esc(m)}</option>`).join('');$('#brainPick').classList.remove('hidden');toast('Key accepted. Pick a model (the suggested one is fast and smart).')}catch(e){toast(e.message)}};
+$('#brUse').onclick=async()=>{try{await api('/api/settings/brain',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:$('#brProv').value,model:$('#brModel').value})});await status();brainUI();toast('Smarter brain on')}catch(e){toast(e.message)}};
+$('#brRemove').onclick=async()=>{await api('/api/settings/brain',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({remove:true})});await status();brainUI();toast('Back to the free brain on this computer')};
+$('#brvSave').onclick=async()=>{try{await api('/api/settings/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({brave_key:$('#brvKey').value})});$('#brvKey').value='';await status();brainUI();toast('Search key saved')}catch(e){toast(e.message)}};
 /* ---------- what Ghost has learned ---------- */
 function memRender(m){const it=[...(m.means||[]).map(x=>({k:'means',t:x.when,h:`When I write <b>${esc(x.when)}</b> I mean ${esc(x.means)}`})),...(m.always||[]).map(x=>({k:'always',t:x.text,h:`Always: <b>${esc(x.text)}</b>`}))];
   $('#memList').innerHTML=it.map(x=>`<div class="mi"><span>${x.h}</span><button data-k="${x.k}" data-t="${esc(x.t)}" title="Forget this" aria-label="Forget this">✕</button></div>`).join('')||'<p class="note" style="padding:0">Nothing taught yet.</p>';
@@ -842,7 +867,7 @@ $('#gUndo').onclick=$('#pUndo').onclick=async()=>{try{await undoIt('all');toast(
 /* ---------- Talk to Ghost: streamed agent events ---------- */
 let TKS=(()=>{try{return localStorage.getItem('gs-talk')||''}catch(e){return''}})();
 if(!TKS){TKS='c'+Math.random().toString(36).slice(2,10);try{localStorage.setItem('gs-talk',TKS)}catch(e){}}
-let TKBUSY=false;
+let TKBUSY=false,TKDEEP=false;
 const tkLog=()=>$('#tkLog');
 function tkAdd(html,cls){const d=document.createElement('div');d.className=cls;d.innerHTML=html;tkLog().appendChild(d);tkLog().scrollTop=1e9;return d}
 function tkEmpty(){if(tkLog().children.length)return;const ex=['Write 3 catchy Onam ad lines in Malayalam','Make 3 pictures of a desi dog','Make the hair in picture 2 shorter','Same as my last project, but for Diwali','Song take 1: more upbeat, male voice','Remember: our shop means a small kirana store in Kochi'];
@@ -862,12 +887,16 @@ async function tkSend(text,confirm){if(TKBUSY)return;if(!text&&confirm==null)ret
   tkLog().querySelector('.tk-empty')?.remove();$$('#tkLog .tk-ok .btn').forEach(b=>b.disabled=true);
   if(text)tkAdd(esc(text),'tk-b u');let think=tkAdd('<i></i><i></i><i></i>','tk-think');let lastAct=null,live=null,liveT='';
   const clear=()=>{if(think){think.remove();think=null}};
-  try{const r=await fetch('/api/agent/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session:TKS,text:text||'',project:CUR||null,confirm})});
+  try{const r=await fetch('/api/agent/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session:TKS,text:text||'',project:CUR||null,confirm,deep:TKDEEP?true:null})});
     if(!r.ok||!r.body)throw new Error('Ghost could not answer ('+r.status+')');
     const rd=r.body.getReader(),dec=new TextDecoder();let buf='';
     for(;;){const {value,done}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});let k;
       while((k=buf.indexOf('\n'))>=0){const line=buf.slice(0,k).trim();buf=buf.slice(k+1);if(!line)continue;let e;try{e=JSON.parse(line)}catch(x){continue}
         if(e.t==='route'){if(ROUTE[e.tier])tkAdd(esc(ROUTE[e.tier])+(e.model?' · '+esc(e.model):''),'tk-route')}
+        else if(e.t==='searching'){tkAdd('🔎 Looking up '+esc(e.what)+' live…','tk-route')}
+        else if(e.t==='sources'){tkAdd(`<details class="tk-src"><summary>${e.items.length} live sources</summary>${e.items.map(x=>`<a href="${esc(x.url)}" target="_blank" rel="noopener">[${x.n}] ${esc(x.title)} <small>${esc(x.source)}</small></a>`).join('')}</details>`,'tk-srcw')}
+        else if(e.t==='deep'){tkAdd('🧠 Thinking deeply… (slower, smarter)','tk-route')}
+        else if(e.t==='thinking_live'){}
         else if(e.t==='start'){clear();liveT='';live=tkAdd('','tk-b a live')}
         else if(e.t==='delta'){if(!live){clear();live=tkAdd('','tk-b a live')}liveT+=e.text;live.textContent=liveT;tkLog().scrollTop=1e9}
         else if(e.t==='end'){if(live){live.classList.remove('live');live.innerHTML=md(e.text)}live=null}
@@ -887,6 +916,7 @@ $('#talkBtn').onclick=()=>{drawer('talk');fetch('/api/agent/warm',{method:'POST'
 $('#tkSend').onclick=()=>{const t=$('#tkIn').value.trim();if(!t)return;$('#tkIn').value='';$('#tkIn').style.height='';tkSend(t)};
 $('#tkIn').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();$('#tkSend').click()}};
 $('#tkIn').oninput=e=>{const t=e.target;t.style.height='auto';t.style.height=Math.min(140,t.scrollHeight)+'px'};
+$('#tkDeep').onclick=()=>{TKDEEP=!TKDEEP;$('#tkDeep').classList.toggle('on',TKDEEP);$('#tkDeep').setAttribute('aria-pressed',TKDEEP);toast(TKDEEP?'Deep thinking on: slower, smarter answers':'Deep thinking: automatic')};
 $('#tkNew').onclick=async()=>{try{await api('/api/agent/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session:TKS})})}catch(e){}tkLog().innerHTML='';tkEmpty()};
 
 function kick(){clearInterval(TIMER);TIMER=setInterval(refresh,2000);refresh(true)}

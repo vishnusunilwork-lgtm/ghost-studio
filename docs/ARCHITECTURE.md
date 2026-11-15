@@ -50,6 +50,18 @@ ChatGPT. Its code is private, and none of it is used here.
 
 A memory is saved only when the person says remember / always / means, even if the model tries to save one.
 
+## Live, memory, deep thinking and the optional smarter brain (v3.14)
+
+| Ability | How |
+|---|---|
+| Live facts | `live.py` runs before the model when a question needs fresh facts (today, news, weather, prices, "who is <Name>"…). Sources: Google News RSS (India edition), Open-Meteo for weather (India-first place lookup), Wikipedia; with an optional Brave Search key, the whole web. Lookups run in parallel in about a second. Results go into the prompt as numbered sources; the answer cites [1], [2]; the sources are shown under the question |
+| Knows the date | The current date and time are in every chat prompt (models don't know today's date) |
+| Memory across chats | BM25 search over your earlier conversations (`.ghost/chats/`) adds the 3 most relevant past exchanges; no extra model call. Plus "What Ghost has learned" |
+| Deep thinking | Qwen 3.x reasoning mode, switched on for plans, strategy, analysis or long questions, or always with the 🧠 button. Slower, smarter |
+| Smarter brain (optional) | Your own key for any OpenAI-compatible service (Google Gemini, OpenAI, OpenRouter, Groq). Talk to Ghost, scripts and prompts then use it, with the same tools, permission gate and streaming. Tool calls are translated between the two formats (`llm._to_openai`). Pictures, music and voices stay local. Off by default |
+
+Tested: a real "today news in trivandrum" question answered from 8 live headlines with citations; the cloud adapter checked against a stand-in OpenAI-compatible server (model list, JSON mode, tool call → result → answer, streaming).
+
 ## Speed work (v3.13)
 
 - **Short answers from the script AI:** it returns only the subject, the place and one short action per shot. Ghost assembles the full prompt (framing + subject + action + place + quality). That is about 5× fewer words to generate, measured 205 s → 30–40 s on the CPU test machine, and the person looks identical in every shot.

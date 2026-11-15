@@ -45,7 +45,9 @@ Answer any question on any topic: ideas, writing, scripts, captions, translation
 - Be clear and useful. Short questions get short answers; use short paragraphs or bullet points for longer ones.
 - You can make things inside Ghost Studio too: pictures, video ads, songs, dubbing, edits. If the person seems to want that,
   say in one line what you would make and that they can ask you directly (e.g. "make 3 pictures of …").
-- If you don't know something or it may have changed recently, say so honestly. Never invent facts."""
+- When LIVE RESULTS are given, use them for anything current and cite them like [1]. Without them, say your knowledge may be out of date
+  for news, prices or recent events. Never invent facts, names, numbers or quotes.
+- Be creative when asked to create (ideas, taglines, stories, scripts): give fresh, specific, surprising options, not generic ones."""
 
 
 # ---------------------------------------------------------------- conversation store
@@ -178,10 +180,38 @@ def build(s: dict, project: dict | None, projects: list[dict], text: str) -> lis
     return [{"role": "system", "content": SYSTEM}, *msgs]
 
 
-def build_chat(s: dict, project: dict | None) -> list[dict]:
+def recall(text: str, sid: str, k: int = 3) -> list[str]:
+    """Memory across chats: the most relevant things said in your EARLIER conversations (BM25 search, no model)."""
+    docs = []
+    try:
+        files = sorted(CHATS.glob("*.json"), key=lambda f: f.stat().st_mtime, reverse=True)[:200]
+    except Exception:
+        return []
+    for f in files:
+        if f.stem == sid:
+            continue
+        try:
+            msgs = json.loads(f.read_text(encoding="utf-8")).get("messages", [])
+        except Exception:
+            continue
+        for a, b in zip(msgs, msgs[1:]):
+            if a.get("role") == "user" and b.get("role") == "assistant" and b.get("content"):
+                docs.append({"idea": a["content"][:300], "title": "", "kind": "", "text": b["content"][:500]})
+    hits = search(docs, text, k=k)
+    return [f"They asked: {h['idea'][:160]} → you answered: {h['text'][:300]}" for h in hits]
+
+
+def build_chat(s: dict, project: dict | None, live_ctx: str = "") -> list[dict]:
     """Normal conversation: no tools, the chat so far, plus what is open (so 'this ad' still makes sense)."""
     mem = knowledge.learned()
-    extra = []
+    import time as _t
+    extra = [f"Right now it is {_t.strftime('%A %d %B %Y, %H:%M')} (the person's local time)."]
+    if live_ctx:
+        extra.append(live_ctx)
+    last = next((m["content"] for m in reversed(s["messages"]) if m["role"] == "user"), "")
+    old = recall(last, s.get("id", ""))
+    if old:
+        extra.append("FROM YOUR EARLIER CHATS WITH THIS PERSON (use only if relevant):\n" + "\n".join(old))
     if project:
         extra.append("For reference, the person has this open in Ghost Studio:\n" + describe(project))
     if mem["means"] or mem["always"]:

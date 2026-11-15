@@ -55,7 +55,8 @@ class Agent:
         self.stream = stream_fn or llm.chat_stream
 
     # ------------------------------------------------------------ one turn
-    def turn(self, sid: str, text: str, project_id: str | None, emit: Callable[[dict], None], confirm: bool | None = None):
+    def turn(self, sid: str, text: str, project_id: str | None, emit: Callable[[dict], None], confirm: bool | None = None,
+             deep: bool | None = None):
         t0, trace = time.time(), {"turn": uuid.uuid4().hex[:8], "sid": sid, "text": text[:300], "steps": []}
         s = context.load(sid)
         project = self.backend.project(project_id) if project_id else None
@@ -78,7 +79,7 @@ class Agent:
                 done = self._run_calls(s, r.calls, project_id, emit, trace)
                 self._say(s, emit, done or "Done.")
             elif r.tier == 3:
-                self._chat(s, r, project, emit, trace)
+                self._chat(s, r, project, emit, trace, deep)
             elif r.tier == -1:
                 self._say(s, emit, "I can do short commands like “retake 2”, “undo”, “pause” or “remember X means Y”. "
                                    "For anything else, install the free Script add-on (⚙ → Add-ons) and I’ll understand normal sentences.")
@@ -95,19 +96,49 @@ class Agent:
             emit({"t": "done", "ms": trace["ms"]})
 
     # ------------------------------------------------------------ conversation (like ChatGPT): streamed, no tools
-    def _chat(self, s, r, project, emit, trace):
-        st, first, out = time.time(), None, []
-        msgs = context.build_chat(s, project)
-        for piece in self.stream(r.model, msgs):
+    DEEP = re.compile(r"\b(think|deeply|step by step|plan|strategy|strategi\w*|analy[sz]\w*|compare|pros and cons|why|reason|"
+                      r"campaign|business|calculate|solve|prove|evaluate|best way|in detail|detailed)\b", re.I)
+
+    def _chat(self, s, r, project, emit, trace, deep: bool | None = None):
+        from .. import live
+        text = s["messages"][-1]["content"]
+        ctx, items = "", []
+        if live.needs_live(text):
+            emit({"t": "searching", "what": live.topic(text) or "today's news"})
+            st = time.time()
+            try:
+                items = live.lookup(text)
+            except Exception as e:
+                trace["live_error"] = str(e)[:120]
+            trace["live"] = {"n": len(items), "ms": int((time.time() - st) * 1000)}
+            if items:
+                emit({"t": "sources", "items": [{"n": i + 1, "title": it["title"], "source": it.get("source", ""), "url": it.get("url", "")}
+                                                 for i, it in enumerate(items)]})
+                ctx = live.as_context(items)
+            else:
+                ctx = "LIVE LOOKUP: nothing was found just now (or no internet). Say so, and don't guess current facts."
+        if deep is None:
+            deep = bool(self.DEEP.search(text)) or len(text.split()) > 40
+        st, first, out, thought = time.time(), None, [], []
+        if deep:
+            emit({"t": "deep"})
+        msgs = context.build_chat(s, project, ctx)
+
+        def on_think(piece):
+            if not thought:
+                emit({"t": "thinking_live"})
+            thought.append(piece)
+        for piece in self.stream(r.model, msgs, think=deep, on_think=on_think) if deep else self.stream(r.model, msgs):
             if first is None:
                 first = time.time() - st
                 emit({"t": "start"})
             out.append(piece)
             emit({"t": "delta", "text": piece})
-        text = re.sub(r"<think>.*?</think>", "", "".join(out), flags=re.S).strip() or "…"
-        trace["steps"].append({"model": r.model, "chat": True, "first_ms": int((first or 0) * 1000), "ms": int((time.time() - st) * 1000)})
-        s["messages"].append({"role": "assistant", "content": text})
-        emit({"t": "end", "text": text})
+        text_out = re.sub(r"<think>.*?</think>", "", "".join(out), flags=re.S).strip() or "…"
+        trace["steps"].append({"model": r.model, "chat": True, "deep": deep, "thought_chars": len("".join(thought)),
+                               "first_ms": int((first or 0) * 1000), "ms": int((time.time() - st) * 1000)})
+        s["messages"].append({"role": "assistant", "content": text_out})
+        emit({"t": "end", "text": text_out})
 
     # ------------------------------------------------------------ model loop
     def _loop(self, s, r, project_id, emit, trace):

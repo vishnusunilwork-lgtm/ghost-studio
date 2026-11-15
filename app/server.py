@@ -94,6 +94,8 @@ def status():
             "makers": RUNNER.eng.plan(), "addons": _addon_summary(), "current": _current(),
             "api": {"on": f.on, "key_end": f.key[-4:] if f.on else "", "limit": f.limit, "spent": m["usd"],
                     "price": f.price, "model": f.video_model},
+            "brain": {"on": llm.cloud_on(), "model": llm.CLOUD["model"], "provider": (CFG.get("brain") or {}).get("provider", "")},
+            "web_search": bool((CFG.get("search") or {}).get("brave_key")),
             "moves": MOVES, "steps": STEPS, "labels": LABEL, "language": CFG.get("language", "Hindi"),
             "brand": CFG["brand"]["name"], "aspects": list(ASPECTS),
             "version": VERSION + (" (" + BUILD + ")" if BUILD else "")}
@@ -216,6 +218,85 @@ def set_hf(body: HfToken):
     _load_hf()
     from . import addons
     return {"ok": True, "access": addons.voices_access()}
+
+
+PROVIDERS = {"openai": "https://api.openai.com/v1", "gemini": "https://generativelanguage.googleapis.com/v1beta/openai",
+             "openrouter": "https://openrouter.ai/api/v1", "groq": "https://api.groq.com/openai/v1"}
+
+
+def _load_brain():
+    from . import live
+    b = CFG.get("brain") or {}
+    llm.CLOUD.update(base=b.get("base", ""), key=b.get("key", ""), model=b.get("model", ""))
+    live.BRAVE["key"] = (CFG.get("search") or {}).get("brave_key", "")
+
+
+_load_brain()
+
+
+def _save_local(loc):
+    LOCAL.write_text(yaml.safe_dump(loc, allow_unicode=True), encoding="utf-8")
+    try:
+        LOCAL.chmod(0o600)
+    except Exception:
+        pass
+
+
+class Brain(BaseModel):
+    provider: str = "openai"
+    base: str = ""
+    key: str | None = None
+    model: str = ""
+    remove: bool = False
+
+
+@app.post("/api/settings/brain")
+def set_brain(body: Brain):
+    """Optional smarter brain: your own key for an OpenAI-compatible service. Kept only in config.local.yaml."""
+    loc = _local()
+    if body.remove:
+        loc.pop("brain", None)
+        CFG.pop("brain", None)
+    else:
+        b = loc.setdefault("brain", {})
+        base = (body.base or PROVIDERS.get(body.provider, "")).strip().rstrip("/")
+        if not base.startswith("https://"):
+            raise HTTPException(400, "Choose a service, or paste its https:// address.")
+        b["base"], b["provider"] = base, body.provider
+        if body.key is not None and body.key.strip():
+            if len(body.key.strip()) < 16 or " " in body.key.strip():
+                raise HTTPException(400, "That does not look like an API key.")
+            b["key"] = body.key.strip()
+        if body.model.strip():
+            b["model"] = body.model.strip()
+        CFG["brain"] = dict(b)
+    _save_local(loc)
+    _load_brain()
+    models = []
+    if llm.CLOUD["base"] and llm.CLOUD["key"]:
+        try:
+            models = llm.cloud_models()
+        except Exception as e:
+            raise HTTPException(400, "The service did not accept the key: " + str(e)[:160])
+    return {"ok": True, "on": llm.cloud_on(), "model": llm.CLOUD["model"], "models": models[:300]}
+
+
+class Search(BaseModel):
+    brave_key: str = ""
+
+
+@app.post("/api/settings/search")
+def set_search(body: Search):
+    loc = _local()
+    k = body.brave_key.strip()
+    if k:
+        loc.setdefault("search", {})["brave_key"] = k
+    else:
+        loc.pop("search", None)
+    CFG["search"] = {"brave_key": k}
+    _save_local(loc)
+    _load_brain()
+    return {"ok": True}
 
 
 class ApiSettings(BaseModel):
@@ -797,6 +878,7 @@ class Talk(BaseModel):
     text: str = ""
     project: str | None = None
     confirm: bool | None = None
+    deep: bool | None = None
 
 
 @app.post("/api/agent/chat")
@@ -807,7 +889,7 @@ def agent_chat(body: Talk):
 
     def work():
         try:
-            AGENT.turn(body.session, body.text[:2000], body.project, q.put, body.confirm)
+            AGENT.turn(body.session, body.text[:4000], body.project, q.put, body.confirm, body.deep)
         finally:
             q.put(None)
     _th.Thread(target=work, daemon=True).start()
