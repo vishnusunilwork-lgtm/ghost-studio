@@ -100,6 +100,23 @@ and takes roughly 20 s per second of video even with the MLX port; and the face 
 has non-commercial model weights. Wav2Lip is non-commercial. It may be added later as an optional add-on for human
 presenters, after testing on a Mac.
 
+## Brain chain: free keys, automatic switching (v3.25)
+
+The same idea as FreeLLMAPI / OmniRoute, built into Ghost (no extra server, no Node): ⚙ → Smarter brain holds a list of
+OpenAI-compatible services (Groq, NVIDIA NIM, Google Gemini, OpenRouter, Chutes, OpenAI, or any /v1 address) with your
+keys, in the order they are tried (`llm.CHAIN`).
+
+- **Switching:** every request goes to the first ready brain. A 429 with a daily-limit message rests that brain until
+  midnight UTC; a per-minute 429 rests it for its Retry-After; a rejected key or a removed model rests it for 6 h; a
+  request too big for one model (or tools it can't use) just goes to the next brain without resting it.
+- **Context:** Ghost sends the whole conversation every time, so the next brain already has it. If an answer stops
+  half-way, the next brain gets what was said so far and "continue exactly from where it stopped" (the handoff note).
+- **Last resort:** the free brain on this computer (Ollama, Qwen).
+- **Private:** one switch keeps everything on this computer, whatever keys are saved.
+- **Visible:** each brain shows ready / resting (why, back in…), answers today and speed.
+- Free services may keep or learn from prompts; the app says so next to the keys.
+- Not used: GitHub Models (retired 30 July 2026).
+
 ## General purpose + scene logic (v3.23)
 
 - No default brand any more (it used to be ShareChat with a devotional description, which pulled scripts toward greetings

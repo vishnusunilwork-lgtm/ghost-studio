@@ -128,7 +128,8 @@ def status():
             "google": {"on": RUNNER.eng.goog.on, "project": RUNNER.eng.goog.project, "key": bool(RUNNER.eng.goog.key),
                        "key_end": RUNNER.eng.goog.key[-4:] if RUNNER.eng.goog.key else "", "model": RUNNER.eng.goog.model,
                        "price": RUNNER.eng.goog.price, "limit": RUNNER.eng.goog.limit, "spent": m["usd"]},
-            "brain": {"on": llm.cloud_on(), "model": llm.CLOUD["model"], "provider": (CFG.get("brain") or {}).get("provider", "")},
+            "brain": {"on": llm.cloud_on(), "model": (llm.ready() or [{}])[0].get("model", ""), "n": len(llm.CHAIN),
+                      "private": llm.PRIVATE["on"], "name": (llm.ready() or [{}])[0].get("name", "")},
             "web_search": bool((CFG.get("search") or {}).get("brave_key")),
             "moves": MOVES, "steps": STEPS, "labels": LABEL, "language": CFG.get("language", "Hindi"),
             "brand": CFG["brand"]["name"], "aspects": list(ASPECTS),
@@ -258,14 +259,36 @@ def set_hf(body: HfToken):
     return {"ok": True, "access": addons.voices_access()}
 
 
-PROVIDERS = {"openai": "https://api.openai.com/v1", "gemini": "https://generativelanguage.googleapis.com/v1beta/openai",
-             "openrouter": "https://openrouter.ai/api/v1", "groq": "https://api.groq.com/openai/v1"}
+# Free (and paid) OpenAI-compatible brains. Free limits change often: Ghost reads each one's real answer (429 = limit)
+# and moves on, so a wrong number here never breaks anything. "prefer" = the models tried first if the key can use them.
+PROVIDERS = {
+    "groq": {"name": "Groq", "base": "https://api.groq.com/openai/v1", "free": "free: about 1,000 requests a day per model, very fast",
+             "prefer": ["openai/gpt-oss-120b", "qwen/qwen3.8-27b", "llama-3.3-70b", "llama"], "keys": "https://console.groq.com/keys"},
+    "nvidia": {"name": "NVIDIA NIM", "base": "https://integrate.api.nvidia.com/v1", "free": "free with an NVIDIA developer account: about 10,000 requests a day per model",
+               "prefer": ["nvidia/nemotron-3-super-120b-a12b", "openai/gpt-oss-120b", "qwen/qwen3", "meta/llama-3.3-70b"],
+               "keys": "https://build.nvidia.com"},
+    "gemini": {"name": "Google Gemini", "base": "https://generativelanguage.googleapis.com/v1beta/openai",
+               "free": "free tier in AI Studio (Google may use free-tier prompts to improve its products)",
+               "prefer": ["gemini-2.5-flash", "gemini-3-flash", "gemini-flash"], "keys": "https://aistudio.google.com/apikey"},
+    "openrouter": {"name": "OpenRouter", "base": "https://openrouter.ai/api/v1", "free": "free models: 50 requests a day (1,000 after a one-time $10)",
+                   "prefer": ["openrouter/free"], "keys": "https://openrouter.ai/keys"},
+    "chutes": {"name": "Chutes", "base": "https://llm.chutes.ai/v1", "free": "check its current free plan", "prefer": ["qwen", "deepseek", "llama"],
+               "keys": "https://chutes.ai"},
+    "openai": {"name": "OpenAI", "base": "https://api.openai.com/v1", "free": "paid", "prefer": ["gpt-5-mini", "gpt-4.1-mini", "gpt-4o-mini"],
+               "keys": "https://platform.openai.com/api-keys"},
+}
 
 
 def _load_brain():
     from . import live
-    b = CFG.get("brain") or {}
-    llm.CLOUD.update(base=b.get("base", ""), key=b.get("key", ""), model=b.get("model", ""))
+    loc = CFG
+    chain = list(loc.get("brains") or [])
+    old = loc.get("brain") or {}
+    if old.get("key") and not any(e.get("key") == old["key"] for e in chain):  # the single key from before 3.25
+        chain.insert(0, {"id": "b0", "provider": old.get("provider", "custom"), "name": PROVIDERS.get(old.get("provider", ""), {}).get("name", "My brain"),
+                         "base": old.get("base", ""), "key": old["key"], "model": old.get("model", "")})
+    llm.CHAIN[:] = chain
+    llm.PRIVATE["on"] = bool(loc.get("brain_private"))
     live.BRAVE["key"] = (CFG.get("search") or {}).get("brave_key", "")
 
 
@@ -280,43 +303,116 @@ def _save_local(loc):
         pass
 
 
-class Brain(BaseModel):
-    provider: str = "openai"
+def _save_chain():
+    loc = _local()
+    loc["brains"] = [dict(e) for e in llm.CHAIN]
+    loc.pop("brain", None)
+    loc["brain_private"] = llm.PRIVATE["on"]
+    _save_local(loc)
+    CFG["brains"], CFG["brain_private"] = loc["brains"], loc["brain_private"]
+    CFG.pop("brain", None)
+
+
+def _brains_view():
+    now = time.time()
+    out = []
+    for e in llm.CHAIN:
+        st = llm._st(e)
+        out.append({"id": e["id"], "name": e.get("name"), "provider": e.get("provider"), "model": e.get("model"),
+                    "key_end": (e.get("key") or "")[-4:], "today": st["n"], "ms": st["ms"],
+                    "ready": st["cool_until"] <= now, "why": st["why"] if st["cool_until"] > now else "",
+                    "back_in": max(0, int(st["cool_until"] - now))})
+    return {"private": llm.PRIVATE["on"], "chain": out, "last": llm.CLOUD.get("name") or "",
+            "providers": {k: {kk: v[kk] for kk in ("name", "free", "keys")} for k, v in PROVIDERS.items()}}
+
+
+class BrainAdd(BaseModel):
+    provider: str = "groq"
     base: str = ""
-    key: str | None = None
+    key: str = ""
+    model: str = ""
+
+
+@app.get("/api/settings/brains")
+def brains():
+    return _brains_view()
+
+
+@app.post("/api/settings/brains/add")
+def brain_add(body: BrainAdd):
+    """Add a brain to the chain. The key is checked against the service and kept only in config.local.yaml."""
+    pv = PROVIDERS.get(body.provider, {})
+    base = (body.base or pv.get("base", "")).strip().rstrip("/")
+    if not base.startswith("https://"):
+        raise HTTPException(400, "Choose a service, or paste its https:// address.")
+    key = body.key.strip()
+    if len(key) < 16 or " " in key:
+        raise HTTPException(400, "That does not look like an API key.")
+    e = {"id": "b" + str(int(time.time() * 1000) % 10**9), "provider": body.provider, "name": pv.get("name") or base.split("/")[2],
+         "base": base, "key": key, "model": body.model.strip()}
+    try:
+        models = llm.cloud_models(e)
+    except Exception as err:
+        raise HTTPException(400, "The service did not accept the key: " + str(err)[:160])
+    if not e["model"] or (models and e["model"] not in models):
+        pick = next((m for p in pv.get("prefer", []) for m in models if m == p), None) or \
+            next((m for p in pv.get("prefer", []) for m in models if p in m), None) or \
+            next((m for m in models if re.search(r"instruct|chat|gpt|qwen|llama|gemini|nemotron", m, re.I) and not re.search(r"embed|whisper|tts|guard|vision|image", m, re.I)), None) or \
+            (models[0] if models else "")
+        e["model"] = pick
+    if not e["model"]:
+        raise HTTPException(400, "The key works, but this service listed no chat models.")
+    llm.CHAIN.append(e)
+    _save_chain()
+    return {**_brains_view(), "models": models[:300], "added": e["id"]}
+
+
+class BrainEdit(BaseModel):
+    id: str
+    move: int = 0
     model: str = ""
     remove: bool = False
 
 
-@app.post("/api/settings/brain")
-def set_brain(body: Brain):
-    """Optional smarter brain: your own key for an OpenAI-compatible service. Kept only in config.local.yaml."""
-    loc = _local()
+@app.post("/api/settings/brains/edit")
+def brain_edit(body: BrainEdit):
+    i = next((n for n, e in enumerate(llm.CHAIN) if e["id"] == body.id), None)
+    if i is None:
+        raise HTTPException(404, "Not found")
     if body.remove:
-        loc.pop("brain", None)
-        CFG.pop("brain", None)
+        llm.CHAIN.pop(i)
     else:
-        b = loc.setdefault("brain", {})
-        base = (body.base or PROVIDERS.get(body.provider, "")).strip().rstrip("/")
-        if not base.startswith("https://"):
-            raise HTTPException(400, "Choose a service, or paste its https:// address.")
-        b["base"], b["provider"] = base, body.provider
-        if body.key is not None and body.key.strip():
-            if len(body.key.strip()) < 16 or " " in body.key.strip():
-                raise HTTPException(400, "That does not look like an API key.")
-            b["key"] = body.key.strip()
         if body.model.strip():
-            b["model"] = body.model.strip()
-        CFG["brain"] = dict(b)
-    _save_local(loc)
-    _load_brain()
-    models = []
-    if llm.CLOUD["base"] and llm.CLOUD["key"]:
-        try:
-            models = llm.cloud_models()
-        except Exception as e:
-            raise HTTPException(400, "The service did not accept the key: " + str(e)[:160])
-    return {"ok": True, "on": llm.cloud_on(), "model": llm.CLOUD["model"], "models": models[:300]}
+            llm.CHAIN[i]["model"] = body.model.strip()
+            llm.STATE.pop(body.id, None)
+        if body.move:
+            j = max(0, min(len(llm.CHAIN) - 1, i + body.move))
+            llm.CHAIN.insert(j, llm.CHAIN.pop(i))
+    _save_chain()
+    return _brains_view()
+
+
+@app.get("/api/settings/brains/{bid}/models")
+def brain_models(bid: str):
+    e = next((x for x in llm.CHAIN if x["id"] == bid), None)
+    if not e:
+        raise HTTPException(404, "Not found")
+    try:
+        return {"models": llm.cloud_models(e)[:400], "model": e["model"]}
+    except Exception as err:
+        raise HTTPException(400, str(err)[:200])
+
+
+class Private(BaseModel):
+    on: bool
+
+
+@app.post("/api/settings/brains/private")
+def brain_private(body: Private):
+    """Keep everything on this computer: no cloud brain is used at all, whatever keys are saved."""
+    llm.PRIVATE["on"] = body.on
+    _save_chain()
+    return _brains_view()
 
 
 class Search(BaseModel):

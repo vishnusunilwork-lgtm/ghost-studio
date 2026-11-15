@@ -7,18 +7,53 @@ import re
 import urllib.request
 
 OLLAMA = "http://127.0.0.1:11434"
-# Optional "Smarter brain": any OpenAI-compatible service (OpenAI, Google Gemini, OpenRouter, Groq…) with YOUR key.
-# Off unless a key is added in ⚙. When on, Talk to Ghost, scripts and prompts use it; pictures/music stay local.
-CLOUD = {"base": "", "key": "", "model": ""}
+# Optional "Smarter brain": a CHAIN of OpenAI-compatible services (Groq, NVIDIA, OpenRouter, Gemini… free tiers, or paid)
+# with YOUR keys. Ghost uses the first one that is ready; when one hits its limit or fails, it switches to the next at
+# once, and when none is ready it uses the free brain on this computer (Ollama). Every request carries the whole
+# conversation, so a switch keeps the context; an answer cut off mid-way is finished by the next brain from where it
+# stopped. PRIVATE = keep everything on this computer (no cloud at all). Keys live only in config.local.yaml.
+import time as _time
+import urllib.error
+
+CHAIN: list[dict] = []           # [{id, provider, name, base, key, model}] in the order they are tried
+STATE: dict[str, dict] = {}      # id -> {cool_until, why, day, n, ms}
+PRIVATE = {"on": False}
+CLOUD = {"base": "", "key": "", "model": ""}  # the brain that answered last (shown in the app)
+
+
+class CloudDown(Exception):
+    pass
+
+
+def _st(e: dict) -> dict:
+    s = STATE.setdefault(e["id"], {"cool_until": 0.0, "why": "", "day": "", "n": 0, "ms": 0})
+    today = _time.strftime("%Y-%m-%d", _time.gmtime())
+    if s["day"] != today:
+        s.update(day=today, n=0)
+    return s
+
+
+def ready() -> list[dict]:
+    if PRIVATE["on"]:
+        return []
+    now = _time.time()
+    return [e for e in CHAIN if e.get("key") and e.get("model") and e.get("base") and _st(e)["cool_until"] <= now]
 
 
 def cloud_on() -> bool:
-    return bool(CLOUD["base"] and CLOUD["key"] and CLOUD["model"])
+    return bool(ready())
 
 
-def _cloud_req(path: str, body: dict | None = None, timeout: int = 120, stream: bool = False):
-    req = urllib.request.Request(CLOUD["base"].rstrip("/") + path, data=json.dumps(body).encode() if body is not None else None,
-                                 headers={"Authorization": "Bearer " + CLOUD["key"], "Content-Type": "application/json"},
+def _midnight_utc() -> float:
+    t = _time.gmtime()
+    return _time.time() + (24 * 3600 - (t.tm_hour * 3600 + t.tm_min * 60 + t.tm_sec)) + 60
+
+
+def _req(e: dict, path: str, body: dict | None = None, timeout: int = 120, stream: bool = False):
+    req = urllib.request.Request(e["base"].rstrip("/") + path, data=json.dumps(body).encode() if body is not None else None,
+                                 headers={"Authorization": "Bearer " + e["key"], "Content-Type": "application/json",
+                                          **({"HTTP-Referer": "https://github.com/vishnusunilwork-lgtm/ghost-studio", "X-Title": "Ghost Studio"}
+                                             if "openrouter" in e["base"] else {})},
                                  method="POST" if body is not None else "GET")
     r = urllib.request.urlopen(req, timeout=timeout)
     if stream:
@@ -27,8 +62,69 @@ def _cloud_req(path: str, body: dict | None = None, timeout: int = 120, stream: 
         return json.loads(r.read().decode())
 
 
-def cloud_models() -> list[str]:
-    d = _cloud_req("/models", timeout=20)
+def _cloud_req(path: str, body: dict | None = None, timeout: int = 120, stream: bool = False):
+    """Kept for older callers: the first ready brain."""
+    r = ready()
+    if not r:
+        raise CloudDown("no cloud brain ready")
+    return _req(r[0], path, body, timeout, stream)
+
+
+def _why(e: dict, err: Exception) -> str:
+    """Decide what an error means for this brain; returns 'skip' (only this request) or sets a cool-down."""
+    s = _st(e)
+    now = _time.time()
+    if isinstance(err, urllib.error.HTTPError):
+        try:
+            txt = err.read().decode("utf-8", "ignore")[:600].lower()
+        except Exception:
+            txt = ""
+        code = err.code
+        if code == 429:
+            if re.search(r"per day|daily|rpd|tpd|quota|exhaust|free-models-per-day", txt):
+                s.update(cool_until=_midnight_utc(), why="daily free limit reached (back after midnight UTC)")
+            else:
+                try:
+                    wait = float(err.headers.get("retry-after") or 60)
+                except Exception:
+                    wait = 60
+                s.update(cool_until=now + max(5, min(3600, wait)), why=f"busy / per-minute limit (waiting {int(max(5, min(3600, wait)))} s)")
+            return "cool"
+        if code == 413 or (code == 400 and re.search(r"too large|context|maximum.*tokens|token limit|tools?|function", txt)):
+            return "skip"  # this request doesn't fit this model: the next brain takes it, this one stays ready
+        if code in (401, 403):
+            s.update(cool_until=now + 6 * 3600, why="key not accepted (check it under ⚙)")
+            return "cool"
+        if code == 402:
+            s.update(cool_until=_midnight_utc(), why="out of credits")
+            return "cool"
+        if code == 404:
+            s.update(cool_until=now + 6 * 3600, why="model not available any more (pick another under ⚙)")
+            return "cool"
+        s.update(cool_until=now + 30, why=f"error {code}")
+        return "cool"
+    s.update(cool_until=now + 30, why="no answer (network)")
+    return "cool"
+
+
+def _run(fn, label: str = ""):
+    """Try each ready brain in order; the first answer wins."""
+    tried = []
+    for e in ready():
+        t0 = _time.time()
+        try:
+            out = fn(e)
+            s = _st(e)
+            s.update(n=s["n"] + 1, ms=int((_time.time() - t0) * 1000), why="")
+            CLOUD.update(base=e["base"], key="", model=e["model"], name=e.get("name", ""))
+            return out
+        except Exception as err:
+            tried.append(f"{e.get('name')}: {_why(e, err)}")
+    raise CloudDown("; ".join(tried) or "no cloud brain ready")
+
+
+def cloud_models(e: dict) -> list[str]:
+    d = _req(e, "/models", timeout=20)
     return sorted(m.get("id", "").removeprefix("models/") for m in d.get("data", []) if m.get("id"))
 
 
@@ -56,12 +152,20 @@ def _to_openai(messages: list[dict]) -> list[dict]:
 
 
 def _cloud_chat(messages, tools=None, temperature=0.3, json_mode=False) -> dict:
-    body = {"model": CLOUD["model"], "messages": _to_openai(messages), "temperature": temperature}
-    if tools:
-        body["tools"] = tools
-    if json_mode:
-        body["response_format"] = {"type": "json_object"}
-    msg = _cloud_req("/chat/completions", body, timeout=300)["choices"][0]["message"]
+    def one(e):
+        body = {"model": e["model"], "messages": _to_openai(messages), "temperature": temperature}
+        if tools:
+            body["tools"] = tools
+        if json_mode:
+            body["response_format"] = {"type": "json_object"}
+        try:
+            return _req(e, "/chat/completions", body, timeout=300)["choices"][0]["message"]
+        except urllib.error.HTTPError as h:
+            if json_mode and h.code == 400:  # some models don't take JSON mode: ask once more without it
+                body.pop("response_format", None)
+                return _req(e, "/chat/completions", body, timeout=300)["choices"][0]["message"]
+            raise
+    msg = _run(one)
     calls = []
     for c in msg.get("tool_calls") or []:
         a = c.get("function", {}).get("arguments") or "{}"
@@ -71,6 +175,15 @@ def _cloud_chat(messages, tools=None, temperature=0.3, json_mode=False) -> dict:
             a = {}
         calls.append({"function": {"name": c.get("function", {}).get("name"), "arguments": a}})
     return {"role": "assistant", "content": msg.get("content") or "", "tool_calls": calls}
+
+
+def _local_best(small: bool = False) -> str:
+    have = [m for m in installed() if not any(v in m for v in ("vl", "llava", "vision", "embed"))]
+    if not have:
+        raise CloudDown("No cloud brain is ready and the free brain on this computer (Ollama) isn't running.")
+    best = min(family_rank(m) for m in have)
+    fam = sorted([m for m in have if family_rank(m) == best], key=size_of)
+    return fam[0] if small else fam[-1]
 
 
 def _post(path: str, body: dict, timeout: int = 900) -> dict:
@@ -125,8 +238,6 @@ def unload(force: bool = False):
     Only on 64 GB+ computers do both fit comfortably; below that, keeping it loaded slows pictures down badly."""
     if not force and _ram_gb() >= 60:
         return
-    if cloud_on():
-        pass  # nothing local to keep warm for text
     try:
         with urllib.request.urlopen(OLLAMA + "/api/ps", timeout=3) as r:
             running = [m["name"] for m in json.loads(r.read()).get("models", [])]
@@ -178,8 +289,13 @@ def pick(model: str, vision: bool = False) -> str:
 def ask_json(model: str, prompt: str, images: list[bytes] | None = None, temperature: float = 0.6) -> dict:
     """One call, JSON answer. images = raw PNG/JPEG bytes (vision model only)."""
     if not images and cloud_on():
-        m = _cloud_chat([{"role": "user", "content": prompt}], temperature=temperature, json_mode=True)
-        return _json_from(m.get("content", ""))
+        try:
+            m = _cloud_chat([{"role": "user", "content": prompt}], temperature=temperature, json_mode=True)
+            return _json_from(m.get("content", ""))
+        except CloudDown:
+            model = _local_best(small=True)  # every cloud brain is at its limit: the free brain on this computer
+    if model.startswith("cloud:"):
+        model = _local_best(small=True)
     model = pick(model, vision=bool(images))
     msg = {"role": "user", "content": prompt}
     if images:
@@ -202,14 +318,18 @@ def size_of(name: str) -> float:
 
 def text_models() -> list[str]:
     local = [m for m in installed() if not any(v in m for v in ("vl", "llava", "vision", "embed"))]
-    return (["cloud:" + CLOUD["model"]] if cloud_on() else []) + local
+    r = ready()
+    return (["cloud:" + r[0]["model"]] if r else []) + local
 
 
 def chat(model: str, messages: list[dict], tools: list[dict] | None = None, temperature: float = 0.2,
          timeout: int = 300) -> dict:
     """One model step with native tool calling (Ollama /api/chat 'tools'). Returns the assistant message."""
     if model.startswith("cloud:"):
-        return _cloud_chat(messages, tools, temperature)
+        try:
+            return _cloud_chat(messages, tools, temperature)
+        except CloudDown:
+            model = _local_best()
     body = {"model": model, "messages": messages, "stream": False, "keep_alive": "30m",
             "options": {"temperature": temperature, "num_ctx": 8192}}
     if tools:
@@ -233,22 +353,49 @@ def chat_stream(model: str, messages: list[dict], temperature: float = 0.5, time
     """Yields the answer piece by piece as the model writes it (first words in about a second).
     think=True: Qwen 3.x reasons first (better on hard questions, slower); on_think(piece) gets that reasoning."""
     if model.startswith("cloud:"):
-        body = {"model": CLOUD["model"], "messages": _to_openai(messages), "temperature": temperature, "stream": True}
-        with _cloud_req("/chat/completions", body, timeout=timeout, stream=True) as r:
-            for raw in r:
-                line = raw.decode("utf-8", "ignore").strip()
-                if not line.startswith("data:"):
-                    continue
-                data = line[5:].strip()
-                if data == "[DONE]":
-                    return
-                try:
-                    piece = (json.loads(data)["choices"][0].get("delta") or {}).get("content") or ""
-                except Exception:
-                    continue
-                if piece:
-                    yield piece
-        return
+        got = []
+        for e in ready():
+            msgs = _to_openai(messages)
+            if got:  # the handoff: the next brain sees what was already said and carries on from there
+                msgs += [{"role": "assistant", "content": "".join(got)},
+                         {"role": "user", "content": "(Your answer above was cut off. Continue exactly from where it stopped. "
+                                                     "Do not repeat anything, do not apologise, do not mention the interruption.)"}]
+            body = {"model": e["model"], "messages": msgs, "temperature": temperature, "stream": True}
+            t0 = _time.time()
+            finished = False
+            try:
+                with _req(e, "/chat/completions", body, timeout=timeout, stream=True) as r:
+                    for raw in r:
+                        line = raw.decode("utf-8", "ignore").strip()
+                        if not line.startswith("data:"):
+                            continue
+                        data = line[5:].strip()
+                        if data == "[DONE]":
+                            finished = True
+                            break
+                        try:
+                            ch = json.loads(data)["choices"][0]
+                        except Exception:
+                            continue
+                        piece = (ch.get("delta") or {}).get("content") or ""
+                        if ch.get("finish_reason"):
+                            finished = True
+                        if piece:
+                            got.append(piece)
+                            yield piece
+                if not finished:
+                    raise ConnectionError("the answer stopped half-way")
+                s = _st(e)
+                s.update(n=s["n"] + 1, ms=int((_time.time() - t0) * 1000), why="")
+                CLOUD.update(base=e["base"], model=e["model"], name=e.get("name", ""))
+                return
+            except Exception as err:
+                _why(e, err)
+                continue
+        model = _local_best()  # no cloud brain left today: finish on this computer
+        if got:
+            messages = messages + [{"role": "assistant", "content": "".join(got)},
+                                   {"role": "user", "content": "(Your answer above was cut off. Continue exactly from where it stopped, without repeating.)"}]
     body = {"model": model, "messages": messages, "stream": True, "keep_alive": "30m",
             "options": {"temperature": temperature, "num_ctx": 8192}}
     if thinks(model):

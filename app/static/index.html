@@ -231,6 +231,7 @@ details.log pre{font:11.5px/1.6 ui-monospace,Menlo,monospace;color:var(--mute);w
 .addon{padding:14px;border-radius:18px;background:var(--glass-soft);border:1px solid var(--edge);box-shadow:var(--hi);display:flex;flex-direction:column;gap:2px}
 .addon.is-on{border-color:rgba(134,227,176,.28)}.addon .ad-h{display:flex;align-items:center;gap:8px;justify-content:space-between}.addon .ad-h b{font-size:14.5px}
 .addon .note{padding:2px 0;margin:0}.addon .meta{color:var(--faint);font-size:12px}.addon .why{color:#e6c66e}.addon .btn{margin-top:8px;height:38px}.addon .prog{margin-top:8px}
+#brList .ok{color:var(--ok)}#brList .bad{color:#ff8a8a}
 .tag.ok{color:var(--ok);border-color:rgba(134,227,176,.35)}
 .music-wrap{margin-top:8px;max-width:760px}.tracks{display:flex;flex-direction:column;gap:12px}
 .track{padding:14px 16px;border-radius:20px;background:var(--glass);-webkit-backdrop-filter:var(--frost);backdrop-filter:var(--frost);border:1px solid var(--edge);box-shadow:var(--hi);display:flex;flex-direction:column;gap:10px;animation:enter .5s var(--ease) both}
@@ -477,14 +478,18 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
     <div class="sect" id="addBox"><h4>Add-ons <span class="tag">free · runs on this computer</span></h4>
       <p class="note" id="addSys">Install once. Ghost then uses them by itself.</p>
       <div class="addons" id="addList"></div></div>
-    <div class="sect" id="brainBox"><h4>Smarter brain <span class="tag">optional</span></h4>
-      <p class="note">Free by default: Talk to Ghost, scripts and prompts run on this computer, and today's news, weather and facts are looked up live for free.
-        For ChatGPT/Gemini-level answers, add <b>your own</b> key from one of these services. Then your chats and prompts are sent to that service; pictures, music and voices stay on this computer.</p>
-      <div id="brainOff"><select id="brProv" class="inp"><option value="gemini">Google Gemini</option><option value="openai">OpenAI (ChatGPT)</option><option value="openrouter">OpenRouter (many models)</option><option value="groq">Groq (very fast)</option></select>
-        <input type="password" id="brKey" class="inp" placeholder="Paste your API key" autocomplete="off" spellcheck="false" style="margin-top:6px">
-        <button class="btn" id="brSave" style="margin-top:6px;width:100%">Connect</button></div>
-      <div id="brainPick" class="hidden"><select id="brModel" class="inp"></select><button class="btn solid" id="brUse" style="margin-top:6px;width:100%">Use this model</button></div>
-      <div id="brainOn" class="hidden"><p class="note" id="brInfo"></p><button class="btn" id="brRemove" style="width:100%">Remove key (back to free, on this computer)</button></div>
+    <div class="sect" id="brainBox"><h4>Smarter brain <span class="tag">free keys, auto-switch</span></h4>
+      <p class="note">Free by default: Talk to Ghost, scripts and prompts run on this computer. Add free keys from these services and Ghost uses the first one that is ready; when one reaches its free limit it switches to the next straight away (the conversation carries over), and finally back to this computer. Pictures, video, music and voices always stay on this computer.</p>
+      <label class="row2" style="align-items:center;gap:8px;margin:4px 0 8px"><input type="checkbox" id="brPriv"><span class="note" style="padding:0"><b>Keep everything on this computer</b> (private: no cloud brain, for confidential work)</span></label>
+      <div id="brList" class="mem"></div>
+      <div style="display:grid;grid-template-columns:1fr;gap:6px;margin-top:8px">
+        <select id="brProv" class="inp"></select>
+        <p class="note" id="brFree" style="margin:0"></p>
+        <input class="inp hidden" id="brBase" placeholder="https://… /v1 address (OpenAI-compatible)">
+        <input type="password" id="brKey" class="inp" placeholder="Paste the API key" autocomplete="off" spellcheck="false">
+        <button class="btn solid" id="brAdd">Add to the chain</button>
+        <p class="note" style="margin:0">Free services may keep or learn from what you send: don't use them for unreleased campaigns or client material (switch on <b>Keep everything on this computer</b>).</p>
+      </div>
       <p class="note" style="margin-top:10px">Whole-web search (optional): a free <b>Brave Search API</b> key makes Ghost search the entire web, not only news, weather and Wikipedia.</p>
       <input type="password" id="brvKey" class="inp" placeholder="Brave Search API key (optional)" autocomplete="off" spellcheck="false"><button class="btn" id="brvSave" style="margin-top:6px;width:100%">Save search key</button>
     </div>
@@ -596,16 +601,21 @@ addEventListener('keydown',e=>{if(e.key==='Escape'){drawer(null);closeMenu()}if(
 $('#homeBtn').onclick=goHome;$('#newBtn').onclick=()=>{drawer(null);goHome()};
 $('#histBtn').onclick=async()=>{await list();drawer('hist')};
 $('#setBtn').onclick=$('#statusBtn').onclick=()=>{kv();loadMem();brainUI();drawer('settings')};
-function brainUI(){const b=(ST&&ST.brain)||{};$('#brainOff').classList.toggle('hidden',!!b.on);$('#brainOn').classList.toggle('hidden',!b.on);$('#brainPick').classList.add('hidden');
-  if(b.on)$('#brInfo').innerHTML=`Connected: <b>${esc(b.model)}</b> (${esc(b.provider||'')}). Talk to Ghost, scripts and prompts use it. Key kept only on this computer.`;
-  $('#brvKey').placeholder=ST&&ST.web_search?'Brave key saved ✓ (paste a new one to change, empty to remove)':'Brave Search API key (optional)'}
-const BR_PREF=[/gemini-[\d.]+-flash(?!-lite)/,/gpt-[\d.]+-mini/,/gpt-[\d.]+/,/claude/,/llama.*70b/,/qwen/];
-$('#brSave').onclick=async()=>{try{const r=await api('/api/settings/brain',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:$('#brProv').value,key:$('#brKey').value,model:''})});
-  $('#brKey').value='';const ms=r.models.filter(m=>!/embed|tts|image|audio|whisper|dall|moderation|vision-only/i.test(m));
-  const best=BR_PREF.map(re=>ms.find(m=>re.test(m))).find(Boolean)||ms[0]||'';
-  $('#brModel').innerHTML=ms.map(m=>`<option ${m===best?'selected':''}>${esc(m)}</option>`).join('');$('#brainPick').classList.remove('hidden');toast('Key accepted. Pick a model (the suggested one is fast and smart).')}catch(e){toast(e.message)}};
-$('#brUse').onclick=async()=>{try{await api('/api/settings/brain',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:$('#brProv').value,model:$('#brModel').value})});await status();brainUI();toast('Smarter brain on')}catch(e){toast(e.message)}};
-$('#brRemove').onclick=async()=>{await api('/api/settings/brain',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({remove:true})});await status();brainUI();toast('Back to the free brain on this computer')};
+let BR=null;
+async function brainUI(){$('#brvKey').placeholder=ST&&ST.web_search?'Brave key saved ✓ (paste a new one to change, empty to remove)':'Brave Search API key (optional)';
+  try{BR=await api('/api/settings/brains')}catch(e){return}
+  if(!$('#brProv').options.length){$('#brProv').innerHTML=Object.entries(BR.providers).map(([k,v])=>`<option value="${k}">${esc(v.name)}</option>`).join('')+'<option value="custom">Other (OpenAI-compatible address)</option>';brProvUI()}
+  $('#brPriv').checked=!!BR.private;
+  $('#brList').innerHTML=BR.chain.length?BR.chain.map((e,i)=>`<div class="row2" style="align-items:center;gap:6px;padding:4px 0"><b style="min-width:18px">${i+1}</b><span style="flex:1;min-width:0"><b>${esc(e.name)}</b> · <span class="note" style="padding:0">${esc(e.model)} · key …${esc(e.key_end)} · ${e.today} today${e.ms?' · '+(e.ms/1000).toFixed(1)+' s':''}</span><br>${BR.private?'<span class="note" style="padding:0">off (private)</span>':e.ready?'<span class="ok">ready</span>':`<span class="bad">${esc(e.why)}${e.back_in?' · back in '+(e.back_in>3600?Math.round(e.back_in/3600)+' h':Math.ceil(e.back_in/60)+' min'):''}</span>`}</span>
+    <button class="btn ic" data-bmv="${e.id}" data-d="-1" title="Try earlier" ${i?'':'disabled'}>↑</button><button class="btn ic" data-bmdl="${e.id}" title="Change model">⚙</button><button class="btn ic" data-brm="${e.id}" title="Remove">✕</button></div>`).join('')+`<p class="note">Then: the free brain on this computer.${BR.last?' Last answer from: <b>'+esc(BR.last)+'</b>':''}</p>`:'<p class="note">No keys yet: everything runs on this computer.</p>';
+  $$('#brList [data-bmv]').forEach(b=>b.onclick=()=>brEdit({id:b.dataset.bmv,move:+b.dataset.d}));
+  $$('#brList [data-brm]').forEach(b=>b.onclick=()=>{if(confirm('Remove this key from Ghost?'))brEdit({id:b.dataset.brm,remove:true})});
+  $$('#brList [data-bmdl]').forEach(b=>b.onclick=async()=>{try{const r=await api(`/api/settings/brains/${b.dataset.bmdl}/models`);const m=prompt('Model to use (from this service):\n'+r.models.filter(x=>!/embed|tts|whisper|image|guard/i.test(x)).slice(0,40).join('\n'),r.model);if(m&&m.trim())brEdit({id:b.dataset.bmdl,model:m.trim()})}catch(e){toast(e.message)}})}
+async function brEdit(body){try{await api('/api/settings/brains/edit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});await status();brainUI()}catch(e){toast(e.message)}}
+function brProvUI(){const k=$('#brProv').value,p=(BR&&BR.providers[k])||{};$('#brBase').classList.toggle('hidden',k!=='custom');$('#brFree').innerHTML=p.name?`${esc(p.free)} · <a href="${esc(p.keys)}" target="_blank" rel="noopener">get a key</a>`:'Any OpenAI-compatible service: paste its /v1 address.'}
+$('#brProv').onchange=brProvUI;
+$('#brAdd').onclick=async()=>{const b=$('#brAdd');b.disabled=true;try{const r=await api('/api/settings/brains/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:$('#brProv').value,base:$('#brBase').value.trim(),key:$('#brKey').value.trim()})});$('#brKey').value='';const e=r.chain.find(x=>x.id===r.added);toast(`Added ${e.name} · ${e.model}`);await status();brainUI()}catch(e){toast(e.message)}finally{b.disabled=false}};
+$('#brPriv').onchange=async()=>{await api('/api/settings/brains/private',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({on:$('#brPriv').checked})});await status();brainUI();toast($('#brPriv').checked?'Private: everything stays on this computer':'Cloud brains on')};
 $('#sHealth').onclick=async()=>{const o=$('#healthOut');o.innerHTML='<p class="note" style="padding:0">Checking…</p>';
   try{const r=await api('/api/health');o.innerHTML=r.checks.map(c=>`<div class="mi"><span>${c.ok?'✓':'!'} <b>${esc(c.name)}</b>: ${esc(c.detail)} <small style="color:var(--mute)">${c.ms} ms</small></span></div>`).join('')}catch(e){o.innerHTML=esc(e.message)}};
 $('#brvSave').onclick=async()=>{try{await api('/api/settings/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({brave_key:$('#brvKey').value})});$('#brvKey').value='';await status();brainUI();toast('Search key saved')}catch(e){toast(e.message)}};
