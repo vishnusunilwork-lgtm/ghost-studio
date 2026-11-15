@@ -414,7 +414,9 @@ class Runner:
         q = self.cfg["quality"]
         (gw, gh), _, draft = sizes(p)
         looks = {pp.get("key"): pp.get("look", "") for pp in (p.get("plan") or {}).get("people") or []}
-        made: dict[str, str | None] = {}
+        best = p.get("quality") != "draft"
+        kinds = ("open", "blink") + (("half", "round") if best else ())
+        made: dict[str, dict] = {}
         for n, c in enumerate(speak):
             self._say(p, "voice", f"Making the mouths move with the voices ({n + 1} of {len(speak)})", 86 + int(4 * n / len(speak)))
             closed = c.get("image") or (p.get("person_images") or {}).get(c.get("speaker")) or p.get("image")
@@ -422,25 +424,34 @@ class Runner:
                 continue
             if c.get("video") and Path(c["video"]).name.startswith("talk") and Path(c["video"]).exists():
                 continue  # already talking
-            ready = d / f"{Path(closed).stem}_talk.png"
-            if closed not in made and ready.exists():
-                made[closed] = str(ready)
             if closed not in made:
                 who = (looks.get(c.get("speaker")) or "the character").split(",")[0][:80]
-                try:
-                    made[closed] = str(talk.mouth_frame(self.eng, Path(closed), d / f"{Path(closed).stem}_talk.png", who) or "") or None
-                except E.Cancelled:
-                    raise
-                except Exception as e:
-                    p["log"].append(time.strftime("%H:%M:%S ") + "Talking mouth skipped: " + str(e)[:120])
-                    made[closed] = None
-            if not made[closed]:
+                got = {}
+                for kind in kinds:  # mouth shapes + a blink, each an edit of the same picture (cached on disk)
+                    f = d / f"{Path(closed).stem}_talk{'' if kind == 'open' else '_' + kind}.png"
+                    if f.exists():
+                        got[kind] = str(f)
+                        continue
+                    if kind != "open" and "open" not in got:
+                        break  # no usable mouth: don't spend time on the rest
+                    try:
+                        r = talk.variant(self.eng, Path(closed), f, kind, who)
+                        if r:
+                            got[kind] = str(r)
+                    except E.Cancelled:
+                        raise
+                    except Exception as e:
+                        p["log"].append(time.strftime("%H:%M:%S ") + f"Talking {kind} skipped: " + str(e)[:120])
+                made[closed] = got
+            got = made[closed]
+            if not got.get("open"):
                 continue
             i = p["clips"].index(c)
             out = d / f"talk{i + 1:02d}_{c['seed']}.mp4"
             try:
-                talk.talk_clip(Path(closed), Path(made[closed]), Path(c["narration_file"]), float(c["seconds"]), out,
-                               int(q["fps"]), gw, gh)
+                talk.talk_clip(Path(closed), Path(got["open"]), Path(c["narration_file"]), float(c["seconds"]), out,
+                               int(q["fps"]), gw, gh, half=got.get("half"), round_=got.get("round"), blink=got.get("blink"),
+                               seed=int(c.get("seed") or 0))
                 p["clips"][i]["video"] = str(out)
             except Exception as e:
                 p["log"].append(time.strftime("%H:%M:%S ") + "Talking shot skipped: " + str(e)[:120])

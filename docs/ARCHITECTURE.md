@@ -84,9 +84,21 @@ Tested: a real "today news in trivandrum" question answered from 8 live headline
 
 The report's figures about Anthropic's own fleet (chip types, costs) don't apply to a single computer and weren't used.
 
-## Talking pictures (v3.16, free mode)
+## Talking pictures (v3.19, free mode)
 
-`talk.py`: the picture AI makes a mouth-open version of each speaking shot. The two pictures are compared and only the changed area (the mouth) is blended in with a soft edge, so nothing else flickers. If the edit changed too much, Ghost skips it. The voice's loudness, measured 24× a second, switches mouth closed/open (held at least 2 frames, so it looks like syllables). The editor then adds the camera move. It's a puppet-style effect; real action needs the video service.
+`talk.py`: the picture AI edits each speaking shot into mouth shapes: **open** ("aa") always, and in Quality also
+**half** (lips parted) and **round** ("oo"), plus an **eyes-closed** picture for blinks. Each edit is compared with the
+original and only the changed area (mouth or eyelids) is blended in with a soft edge, so nothing else flickers; an
+edit that changed too much is skipped. The voice is measured 24× a second: loudness picks closed / half / open, and
+how dark the sound is (o/u vowels have less high-frequency energy) picks round lips. Each shape is held at least 2
+frames and every change passes through a half-way frame. Blinks come every 2–4.5 s. Frames are streamed straight into
+ffmpeg; the editor then adds the camera move. It works for animals and people.
+
+Why not a neural lip-sync model (the BRAHMA / VAANI idea)? The open ones (LatentSync, MuseTalk) detect and redraw
+*human* faces only, so they can't help a talking cat or cow; LatentSync 1.6 needs about 18 GB of graphics memory
+and takes roughly 20 s per second of video even with the MLX port; and the face detector some of them use (InsightFace)
+has non-commercial model weights. Wav2Lip is non-commercial. It may be added later as an optional add-on for human
+presenters, after testing on a Mac.
 
 ## Media engines: the same ideas as Gemini, ElevenLabs and Suno, with free models
 
