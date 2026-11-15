@@ -126,7 +126,7 @@ def status():
             "makers": RUNNER.eng.plan(), "addons": _addon_summary(), "current": _current(),
             "api": {"on": f.on, "key_end": f.key[-4:] if f.on else "", "limit": f.limit, "spent": m["usd"],
                     "price": f.price, "model": f.video_model},
-            "google": {"on": RUNNER.eng.goog.on, "project": RUNNER.eng.goog.project, "key": bool(RUNNER.eng.goog.key),
+            "google": {"on": RUNNER.eng.goog.on, "problem": RUNNER.eng.goog.broken, "project": RUNNER.eng.goog.project, "key": bool(RUNNER.eng.goog.key),
                        "key_end": RUNNER.eng.goog.key[-4:] if RUNNER.eng.goog.key else "", "model": RUNNER.eng.goog.model,
                        "price": RUNNER.eng.goog.price, "limit": RUNNER.eng.goog.limit, "spent": m["usd"]},
             "brain": {"on": llm.cloud_on(), "model": (llm.ready() or [{}])[0].get("model", ""), "n": len(llm.CHAIN),
@@ -494,7 +494,7 @@ def set_api(body: ApiSettings):
         for k in ("google_key", "google_project", "google_location"):
             CFG["api"].pop(k, None)
     RUNNER.eng.fal = E.Fal(CFG)
-    RUNNER.eng.goog = E.Google(CFG)
+    RUNNER.eng.goog = E.Google(CFG)  # a new key or project starts with a clean slate
     return {"ok": True}
 
 
@@ -504,6 +504,7 @@ def google_test():
     import tempfile
     import time as _t
     g = RUNNER.eng.goog
+    g.broken = ""  # testing again clears an earlier problem
     if not g.on:
         raise HTTPException(400, "Add a Google Cloud API key or project first.")
     st = _t.time()

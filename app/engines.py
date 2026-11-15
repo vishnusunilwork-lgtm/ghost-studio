@@ -17,6 +17,7 @@ import io
 import json
 import platform
 import random
+import re
 import shutil
 import subprocess
 import time
@@ -274,10 +275,34 @@ class Google:
         self.limit = float(a.get("monthly_limit_usd") or 20)
         self.works: dict[str, tuple[str, str]] = {}  # kind -> (model, url prefix) that answered last time
         self._tok = ("", 0.0)
+        self.broken = ""  # set when the key/project isn't set up: Ghost then uses this computer until you fix it and test again
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.key or (self.project and shutil.which("gcloud")))
 
     @property
     def on(self) -> bool:
-        return bool(self.key or (self.project and shutil.which("gcloud")))
+        return self.configured and not self.broken
+
+    def setup_problem(self, e) -> str:
+        """Plain words for 'this key/project isn't ready', or '' if it's another kind of error."""
+        msg = e.msg if isinstance(e, GoogleError) else str(e)
+        low = msg.lower()
+        num = (re.search(r"project (\d{6,})", msg) or [None, ""])[1]
+        if "has not been used in project" in low or "service_disabled" in low or "is disabled" in low:
+            link = f"https://console.cloud.google.com/apis/library/aiplatform.googleapis.com?project={num}" if num else \
+                "https://console.cloud.google.com/apis/library/aiplatform.googleapis.com"
+            return (f"Google Cloud isn't ready: the key belongs to project {num or '(unknown)'}, where the Vertex AI API "
+                    f"(“Agent Platform API”) is turned off. Turn it on here (a project admin may need to): {link} — or make the key "
+                    f"inside {self.project or 'your project'}. Until then Ghost makes pictures and video on this computer.")
+        if "api key not valid" in low or "api_key_invalid" in low or (isinstance(e, GoogleError) and e.code == 401):
+            return "Google Cloud didn't accept the key (it may be deleted or mistyped). Paste it again under ⚙ → Google Cloud."
+        if "billing" in low:
+            return "Google Cloud: billing isn't turned on for this project, so it can't make pictures or video yet."
+        if "permission_denied" in low or "permission denied" in low:
+            return "Google Cloud: this key may not use Vertex AI in this project (permission denied). Ask a project admin."
+        return ""
 
     @property
     def model(self) -> str:
@@ -335,6 +360,10 @@ class Google:
                 return r, pre
             except GoogleError as e:
                 last = e
+                why = self.setup_problem(e)
+                if why:  # the same for every model: stop trying, fall back to this computer, say how to fix it
+                    self.broken = why
+                    raise GoogleSetup(why) from None
                 if e.code in (401, 403) and "billing" not in e.msg.lower() and "not found" not in e.msg.lower():
                     if "PERMISSION_DENIED" in e.msg or e.code == 401:
                         raise RuntimeError("Google Cloud said no access (" + e.msg[:200] + "). Check the key / project, "
@@ -426,6 +455,10 @@ class Google:
         raise RuntimeError("Google video took more than 15 minutes")
 
 
+class GoogleSetup(RuntimeError):
+    """The key or project isn't set up for Vertex AI (not a one-off failure)."""
+
+
 class GoogleError(Exception):
     def __init__(self, code: int, msg: str):
         super().__init__(f"{code}: {msg}")
@@ -485,7 +518,10 @@ class Engines:
                                        "Try Draft mode, or add your own photos.")
         if self.goog.on and not self.mock and how in ("service", "nvidia", "local"):
             refs = [r for r in (ref_images or []) if r and Path(r).exists()][:3]
-            return self.goog.image(prompt, out, width, height, seed, refs)
+            try:
+                return self.goog.image(prompt, out, width, height, seed, refs)
+            except GoogleSetup:
+                return self.image(prompt, out, width, height, seed, ref_images, steps, fallback, best)  # this computer instead
         if how == "service" or (how in ("nvidia", "local") and self.fal.on):
             sc = min(1.0, 1440 / max(width, height))
             width, height = int(width * sc) // 16 * 16, int(height * sc) // 16 * 16
@@ -650,7 +686,10 @@ class Engines:
               width: int | None = None, height: int | None = None, steps: int | None = None, aspect: str = "9:16") -> Path:
         how = self.plan()["video"]
         if how == "service" and self.goog.on:
-            return self.goog.video(image, prompt, seconds, out, seed, aspect)
+            try:
+                return self.goog.video(image, prompt, seconds, out, seed, aspect)
+            except GoogleSetup:
+                return self.video(image, prompt, seconds, out, seed, width, height, steps, aspect)
         if how == "service":
             dur = 4 if seconds <= 4 else 6 if seconds <= 6 else 8
             cost = dur * self.fal.price

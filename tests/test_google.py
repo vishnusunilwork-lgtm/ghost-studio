@@ -83,6 +83,14 @@ def test_google():
         assert "limit" in str(e)
     eng = E.Engines({"api": {"google_key": "k" * 39}, "quality": {}})
     assert eng.cloud and eng.plan()["video"] == "service" and eng.plan()["image"] == "service"
+    # a key from a project where Vertex AI is off: Ghost explains the fix and makes pictures on this computer instead
+    g2 = E.Google({"api": {"google_key": "k" * 39, "google_project": "my-proj-1"}})
+    err = E.GoogleError(403, "Agent Platform API has not been used in project 78328758841 before or it is disabled. Enable it by visiting x")
+    why = g2.setup_problem(err)
+    assert "78328758841" in why and "aiplatform.googleapis.com?project=78328758841" in why
+    eng2 = E.Engines({"api": {"google_key": "k" * 39}, "quality": {}})
+    eng2.goog.broken = why
+    assert not eng2.goog.on and eng2.plan()["video"] != "service"
     srv.shutdown()
 
 

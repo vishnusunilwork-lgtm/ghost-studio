@@ -510,6 +510,8 @@ class Runner:
                        ref_images=refs or None, steps=steps, fallback=refs[0] if refs else None, best=False)
         p["image"] = str(main)
         p["engine_plan"] = self.eng.plan()
+        if self.eng.goog.broken and self.eng.goog.broken not in "".join(p["log"][-20:]):
+            p["log"].append(time.strftime("%H:%M:%S ") + self.eng.goog.broken)
         style = p.get("style_used") or "auto"
         # One picture per person ("camera A", "camera B"), all in the same place as the main frame
         people = {pp.get("key"): pp for pp in (p["plan"].get("people") or []) if pp.get("key")}

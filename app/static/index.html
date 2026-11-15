@@ -714,8 +714,9 @@ function kv(){if(!ST)return;const m=ST.models||{},mk=ST.makers||{},a=ST.api||{};
   addPoll();
   $('#apiOff').classList.toggle('hidden',!!a.on);$('#apiOn').classList.toggle('hidden',!a.on);
   if(a.on){$('#apiInfo').textContent=`Connected (key …${a.key_end}) · this month: $${(a.spent||0).toFixed(2)} of $${a.limit} · about $${(a.price*30).toFixed(2)} per 30-second ad`;$('#apiLimit').value=a.limit}
-  const g=ST.google||{};$('#gOff').classList.toggle('hidden',!!g.on);$('#gOn').classList.toggle('hidden',!g.on);
-  if(g.on){$('#gInfo').textContent=`Connected · project ${g.project||'(key only)'}${g.key?' · key …'+g.key_end:' · CLI sign-in'} · ${g.model} · this month: $${(g.spent||0).toFixed(2)} of $${g.limit} · about $${(g.price*20).toFixed(2)} per 20-second ad`}}
+  const g=ST.google||{};const gset=g.on||!!g.problem;$('#gOff').classList.toggle('hidden',gset);$('#gOn').classList.toggle('hidden',!gset);
+  if(g.problem){$('#gInfo').innerHTML='<b style="color:#ff8a8a">Not ready.</b> '+esc(g.problem).replace(/(https:\/\/[^\s—]+)/,'<a href="$1" target="_blank" rel="noopener">open the switch</a>')+' Then press Test again.'}
+  else if(g.on){$('#gInfo').textContent=`Connected · project ${g.project||'(key only)'}${g.key?' · key …'+g.key_end:' · CLI sign-in'} · ${g.model} · this month: $${(g.spent||0).toFixed(2)} of $${g.limit} · about $${(g.price*20).toFixed(2)} per 20-second ad`}}
 async function gTest(){toast('Testing Google Cloud…');try{const r=await api('/api/google/test',{method:'POST'});toast(`Google Cloud works: a picture in ${r.seconds} s (${r.model})`)}catch(e){toast(e.message)}}
 $('#gSave').onclick=async()=>{const k=$('#gKey').value.trim(),p=$('#gProject').value.trim();if(!k&&!p){toast('Add the project id and/or the API key');return}
   try{await api('/api/settings/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({google_key:k||null,google_project:p})});$('#gKey').value='';await status();kv();await gTest()}catch(e){toast(e.message)}};
