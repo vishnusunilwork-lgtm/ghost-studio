@@ -91,7 +91,7 @@ def status():
     f = RUNNER.eng.fal
     m = E.Spend.month()
     return {"engine": RUNNER.eng.name, "gpu": E.gpu_info(), "llm": llm.available(), "models": CFG["models"],
-            "makers": RUNNER.eng.plan(), "addons": _addon_summary(), "current": _current(), "image_ai": E.image_ai_installed() and _model_cached() and INSTALL["state"] != "running", "image_ai_pkgs": E.image_ai_installed(), "image_ai_install": INSTALL["state"],
+            "makers": RUNNER.eng.plan(), "addons": _addon_summary(), "current": _current(),
             "api": {"on": f.on, "key_end": f.key[-4:] if f.on else "", "limit": f.limit, "spent": m["usd"],
                     "price": f.price, "model": f.video_model},
             "moves": MOVES, "steps": STEPS, "labels": LABEL, "language": CFG.get("language", "Hindi"),
@@ -108,20 +108,23 @@ def projects():
 async def create(idea: str = Form(""), dialogue: str = Form(""), seconds: int = Form(30),
                  voice_mode: str = Form("oncamera"), language: str = Form(""), title: str = Form(""),
                  aspect: str = Form("9:16"), quality: str = Form("final"), kind: str = Form("video"), count: int = Form(4),
-                 review: str = Form(""), same_look: str = Form("1"), style: str = Form("auto"), ai_motion: str = Form(""), music_style: str = Form("bollywood"), vocals: str = Form("ai"), music_seconds: int = Form(60), ai_music: str = Form(""),
+                 review: str = Form(""), same_look: str = Form("1"), style: str = Form("auto"), voice_gender: str = Form("female"), voice_style: str = Form("warm"), music_style: str = Form("bollywood"), vocals: str = Form("ai"), music_seconds: int = Form(60), ai_music: str = Form(""),
                  reference: UploadFile | None = File(None), music: UploadFile | None = File(None),
                  refs: list[UploadFile] | None = File(None)):
     if kind == "music" and not idea.strip() and not dialogue.strip():
         raise HTTPException(400, "Describe the song (mood, story, occasion), or paste your lyrics")
+    if kind == "dub" and not reference:
+        raise HTTPException(400, "Add the video to dub")
     if not idea.strip() and not dialogue.strip() and not reference:
         raise HTTPException(400, "Write an idea, paste a dialogue or add a reference video")
     p = STORE.new(idea=idea.strip(), dialogue=dialogue.strip(), seconds=max(8, min(180, seconds)),
                   voice_mode=voice_mode, language=language or CFG.get("language", "Hindi"), title=title.strip() or "New ad",
                   mode="reference" if reference else "idea",
                   aspect=aspect if aspect in ASPECTS else "9:16", quality=quality if quality in ("draft", "best") else "final",
-                  kind=kind if kind in ("images", "music") else "video", count=max(1, min(8, count)),
+                  kind=kind if kind in ("images", "music", "dub") else "video", count=max(1, min(8, count)),
                   music_style=music_style, vocals=vocals if vocals in ("ai", "mine", "instrumental") else "ai",
-                  music_seconds=max(10, min(600, music_seconds)), ai_music=ai_music == "1", review=review == "1", same_look=same_look != "0", ai_motion=ai_motion == "1", style=style if style in ("auto", "interview2", "cinematic", "news", "ugc") else "auto")
+                  music_seconds=max(10, min(600, music_seconds)), ai_music=ai_music == "1", review=review == "1", same_look=same_look != "0", voice_gender="male" if voice_gender == "male" else "female",
+                  voice_style=voice_style if voice_style in ("warm", "excited", "calm", "news", "devotional") else "warm", style=style if style in ("auto", "interview2", "cinematic", "news", "ugc") else "auto")
     d = STORE.dir(p["id"])
     for up, key in ((reference, "reference"), (music, "music")):
         if up and up.filename:
@@ -181,6 +184,40 @@ def stop_app():
     return {"ok": True}
 
 
+class HfToken(BaseModel):
+    token: str = ""
+
+
+def _load_hf():
+    from . import addons
+    addons.HF_TOKEN["v"] = str((CFG.get("hf") or {}).get("token") or "")
+
+
+_load_hf()
+
+
+@app.post("/api/settings/hf")
+def set_hf(body: HfToken):
+    """Free Hugging Face read token for models whose makers ask people to accept terms (kept only in config.local.yaml)."""
+    t = body.token.strip()
+    if t and (not t.startswith("hf_") or len(t) < 20 or " " in t):
+        raise HTTPException(400, "That does not look like a Hugging Face token (it starts with hf_).")
+    loc = _local()
+    if t:
+        loc.setdefault("hf", {})["token"] = t
+    else:
+        loc.pop("hf", None)
+    LOCAL.write_text(yaml.safe_dump(loc, allow_unicode=True), encoding="utf-8")
+    try:
+        LOCAL.chmod(0o600)
+    except Exception:
+        pass
+    CFG["hf"] = {"token": t}
+    _load_hf()
+    from . import addons
+    return {"ok": True, "access": addons.voices_access()}
+
+
 class ApiSettings(BaseModel):
     fal_key: str | None = None
     monthly_limit_usd: float | None = None
@@ -211,100 +248,6 @@ def set_api(body: ApiSettings):
         CFG["api"].pop("fal_key", None)
     RUNNER.eng.fal = E.Fal(CFG)
     return {"ok": True}
-
-
-class ImageAIBody(BaseModel):
-    go: bool = True
-
-
-INSTALL = {"state": "idle", "pct": 0, "step": "", "detail": "", "started": 0, "log": ""}
-PKGS = [("torch", 55), ("transformers", 15), ("diffusers>=0.43.0", 10), ("accelerate", 6), ("sentencepiece", 4),
-        ("safetensors", 4), ("huggingface_hub", 6)]
-
-
-def _image_model() -> str:
-    import platform
-    return CFG["models"]["image_mac" if platform.system() == "Darwin" else "image"]
-
-
-@app.post("/api/settings/image-ai")
-def install_image_ai(body: ImageAIBody):
-    """One-time: installs the free image AI and downloads its model, with real progress."""
-    import importlib
-    import importlib.util
-    import subprocess
-    import sys
-    import threading
-    import time as _t
-    if INSTALL["state"] == "running":
-        return INSTALL
-
-    def work():
-        INSTALL.update(state="running", pct=1, step="Starting", detail="", started=_t.time(), log="")
-        try:
-            total = sum(w for _, w in PKGS)
-            done = 0
-            for i, (pkg, w) in enumerate(PKGS, 1):
-                name = pkg.split(">")[0]
-                INSTALL.update(step=f"Installing {name}", detail=f"Part {i} of {len(PKGS)}")
-                if importlib.util.find_spec(name.replace("-", "_")) is not None:
-                    done += w
-                    INSTALL["pct"] = round(30 * done / total, 1)
-                    continue
-                r = subprocess.run([sys.executable, "-m", "pip", "install", "-q", pkg], capture_output=True, text=True)
-                if r.returncode != 0:
-                    raise RuntimeError(f"Could not install {name}: " + r.stderr[-400:])
-                done += w
-                INSTALL["pct"] = round(30 * done / total, 1)
-            importlib.invalidate_caches()
-            from huggingface_hub import HfApi, constants, snapshot_download
-            mid = _image_model()
-            INSTALL.update(step="Downloading the picture model", detail="Checking size…")
-            info = HfApi().model_info(mid, files_metadata=True)
-            size = sum((f.size or 0) for f in info.siblings) or 1
-            folder = Path(constants.HF_HUB_CACHE) / ("models--" + mid.replace("/", "--"))
-            err: list = []
-            th = threading.Thread(target=lambda: _dl(snapshot_download, mid, err), daemon=True)
-            th.start()
-            t0, last = _t.time(), 0
-            while th.is_alive():
-                got = sum(f.stat().st_size for f in folder.rglob("*") if f.is_file()) if folder.exists() else 0
-                rate = got / max(1, _t.time() - t0)
-                left = (size - got) / rate if rate > 1e5 else None
-                INSTALL.update(pct=round(30 + 70 * min(1, got / size), 1),
-                               detail=f"{got / 1e9:.1f} of {size / 1e9:.1f} GB" + (f" · about {int(left // 60) + 1} min left" if left else ""))
-                last = got
-                _t.sleep(1.5)
-            if err:
-                raise RuntimeError(err[0])
-            INSTALL.update(state="done", pct=100, step="Ready", detail="Free AI pictures are on. New ads use them automatically.")
-        except Exception as e:
-            INSTALL.update(state="error", step="Something went wrong", detail=str(e)[:400])
-
-    threading.Thread(target=work, daemon=True).start()
-    _t.sleep(0.2)
-    return INSTALL
-
-
-def _model_cached() -> bool:
-    """True when the picture model's files are on this computer."""
-    import os
-    base = Path(os.environ.get("HF_HUB_CACHE") or os.environ.get("HUGGINGFACE_HUB_CACHE")
-                or Path(os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface")) / "hub")
-    snap = base / ("models--" + _image_model().replace("/", "--")) / "snapshots"
-    return snap.exists() and any(f.suffix == ".safetensors" for f in snap.rglob("*"))
-
-
-def _dl(fn, mid, err):
-    try:
-        fn(mid)
-    except Exception as e:  # e.g. no internet
-        err.append(str(e)[:300])
-
-
-@app.get("/api/settings/image-ai")
-def image_ai_state():
-    return {**INSTALL, "installed": E.image_ai_installed()}
 
 
 class ClipEdit(BaseModel):
@@ -489,6 +432,43 @@ def more_music(pid: str):
     return {"ok": True}
 
 
+class Part(BaseModel):
+    start: float
+    end: float
+    instruction: str = ""
+    lyrics: str = ""
+
+
+@app.post("/api/projects/{pid}/music/{n}/replace")
+def replace_part(pid: str, n: int, body: Part):
+    """Re-make only start..end seconds of a take (ACE-Step repaint); the rest stays exactly as it was."""
+    p = _get(pid)
+    tr = next((t for t in p.get("tracks") or [] if int(t.get("n", 0)) == n), None)
+    if not tr:
+        raise HTTPException(404, "No such take")
+    from . import addons
+    if not addons.music_installed():
+        raise HTTPException(400, "Replacing a part needs the Music & songs add-on (⚙ → Add-ons).")
+    length = float(tr.get("seconds") or 600)
+    start, end = max(0.0, body.start), min(length, body.end)
+    if end - start < 2:
+        raise HTTPException(400, f"Choose at least 2 seconds inside the take (it is about {length:.0f} s long)")
+    RUNNER.submit(pid, "replace_part", n=n, start=start, end=end, instruction=body.instruction[:300], lyrics=body.lyrics[:3000])
+    return {"ok": True}
+
+
+@app.post("/api/projects/{pid}/music/{n}/stems")
+def stems(pid: str, n: int):
+    from . import addons
+    p = _get(pid)
+    if not any(int(t.get("n", 0)) == n for t in p.get("tracks") or []):
+        raise HTTPException(404, "No such take")
+    if not addons.stems_installed():
+        raise HTTPException(400, "Install the Song stems add-on first (⚙ → Add-ons).")
+    RUNNER.submit(pid, "stems", n=n)
+    return {"ok": True}
+
+
 @app.get("/api/addons")
 def addons_list():
     from . import addons
@@ -556,6 +536,10 @@ def edit_plan(pid: str, body: dict):
             for k in ("line", "video_prompt", "image_prompt"):
                 if isinstance(e.get(k), str):
                     p["clips"][i][k] = e[k].strip()
+    for i, e in enumerate(body.get("dub") or []):
+        segs = (p.get("dub") or {}).get("segments") or []
+        if i < len(segs) and isinstance(e, dict) and isinstance(e.get("dub"), str) and e["dub"].strip():
+            segs[i]["dub"] = e["dub"].strip()
     if isinstance(body.get("image_prompt"), str) and p.get("plan"):
         p["plan"]["image_prompt"] = body["image_prompt"].strip()
     STORE.save(p)
@@ -705,6 +689,14 @@ class GhostBackend:
         self._call(change, project_id, Change(target="song", i=take, instruction=instruction,
                                               strength={"little": 0.7, "medium": 0.5, "lot": 0.3}.get(amount, 0.5)))
         return {"text": f"Changing take {take}: {instruction} (it will be a new take)", "refresh": project_id}
+
+    def replace_song_part(self, project_id, take, start, end, instruction=""):
+        self._call(replace_part, project_id, take, Part(start=start, end=end, instruction=instruction))
+        return {"text": f"Re-making {start:.0f}–{end:.0f} s of take {take} (it will be a new take)", "refresh": project_id}
+
+    def split_song_stems(self, project_id, take):
+        self._call(stems, project_id, take)
+        return {"text": f"Splitting take {take} into vocals, drums, bass and the rest", "refresh": project_id}
 
     def more_song_takes(self, project_id):
         self._call(more_music, project_id)

@@ -383,7 +383,7 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
           </button>
         </div>
         <div class="opts">
-          <label class="opt" title="What to make"><select id="kind"><option value="video">Video ad</option><option value="images">Images only</option><option value="music">Music / song</option></select></label>
+          <label class="opt" title="What to make"><select id="kind"><option value="video">Video ad</option><option value="images">Images only</option><option value="music">Music / song</option><option value="dub">Dub a video</option></select></label>
           <label class="opt" id="styleOpt" title="Direction style"><select id="style"><option value="auto">Style: Auto</option><option value="interview2">Interview · 2 cameras</option><option value="cinematic">Cinematic film</option><option value="news">Newsroom explainer</option><option value="ugc">Phone UGC</option></select></label>
           <label class="opt hidden" id="lockOpt" title="Keep the same person and place in every image"><select id="lock"><option value="1">Same person & place</option><option value="0">Different each time</option></select></label>
           <label class="opt hidden" id="countOpt" title="How many images"><select id="count"><option value="1">1 image</option><option value="2">2 images</option><option value="4" selected>4 images</option><option value="6">6 images</option><option value="8">8 images</option></select></label>
@@ -392,7 +392,8 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
           <label class="opt hidden" id="mlenOpt" title="Song length"><select id="mlen"><option value="30">30 s</option><option value="60" selected>1 min</option><option value="90">1.5 min</option><option value="120">2 min</option><option value="180">3 min</option></select></label>
           <label class="opt" id="lenOpt" title="Length"><select id="len"><option value="15">15 s</option><option value="30" selected>30 s</option><option value="45">45 s</option><option value="60">60 s</option><option value="90">90 s</option><option value="120">2 min</option></select></label>
           <label class="opt" id="aspectOpt" title="Shape"><select id="aspect"><option value="9:16">9:16 Reels</option><option value="4:5">4:5 Feed</option><option value="1:1">1:1 Square</option><option value="16:9">16:9 YouTube</option></select></label>
-          <label class="opt hidden" id="motionOpt" title="How shots move"><select id="motion"><option value="">Photo motion · fast</option><option value="1">AI motion · very slow</option></select></label>
+          <label class="opt hidden" id="vgenderOpt" title="Narrator voice"><select id="vgender"><option value="female">Female voice</option><option value="male">Male voice</option></select></label>
+          <label class="opt hidden" id="vstyleOpt" title="How the voice sounds"><select id="vstyle"><option value="warm">Warm</option><option value="excited">Excited</option><option value="calm">Calm</option><option value="news">Announcer</option><option value="devotional">Devotional</option></select></label>
           <label class="opt" id="vmusicOpt" title="Background music"><select id="vmusic"><option value="">No AI music</option><option value="1">AI background music</option></select></label>
           <label class="opt" id="voiceOpt" title="Voice"><select id="voice"><option value="oncamera">People talk</option><option value="narrator">Narrator</option><option value="both">Both</option></select></label>
           <label class="opt" title="Language"><select id="lang"><option>Hindi</option><option>English</option><option>Marathi</option><option>Tamil</option><option>Telugu</option><option>Bengali</option><option>Gujarati</option><option>Kannada</option><option>Malayalam</option><option>Punjabi</option></select></label>
@@ -575,12 +576,12 @@ function grow(){prompt_.style.height='auto';prompt_.style.height=Math.min(240,pr
 function ready(){const ok=prompt_.value.trim()||A.ref;$('#send').classList.toggle('ready',!!ok);$('#sugs').classList.toggle('dim',!!(prompt_.value.trim()||A.ref||A.pics.length))}
 prompt_.addEventListener('input',grow);
 prompt_.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();go()}});
-function kindUI(){const k=$('#kind').value,im=k==='images',mu=k==='music',vi=k==='video';
+function kindUI(){const k=$('#kind').value,im=k==='images',mu=k==='music',vi=k==='video',du=k==='dub';
   const show=(id,on)=>$('#'+id).classList.toggle('hidden',!on);
-  show('countOpt',im);show('motionOpt',vi&&!!(ST&&ST.addons&&ST.addons.motion&&ST.addons.motion.installed));show('styleOpt',!mu);show('songTip',mu&&$('#lang').value!=='English'&&$('#mvocal').value!=='instrumental');show('lockOpt',im);show('lenOpt',vi);show('voiceOpt',vi);show('vmusicOpt',vi);show('exact',vi);show('aspectOpt',!mu);show('mstyleOpt',mu);show('mvocalOpt',mu);show('mlenOpt',mu);
-  prompt_.placeholder=mu?($('#mvocal').value==='mine'?'Paste your lyrics (you can add [Verse] and [Chorus] lines)…':'Describe the song: mood, story, occasion… e.g. a warm Diwali song about family'):im?'Describe the images, or drop a reference ad to copy its look…':(EXACT?'Paste the exact dialogue. Two people? Start lines with “Name: …”':'Describe the ad, or drop a reference video…')}
+  show('countOpt',im);show('vgenderOpt',vi||du);show('vstyleOpt',vi||du);show('styleOpt',!mu&&!du);show('songTip',mu&&$('#lang').value!=='English'&&$('#mvocal').value!=='instrumental');show('lockOpt',im);show('lenOpt',vi);show('voiceOpt',vi);show('vmusicOpt',vi);show('exact',vi);show('aspectOpt',!mu&&!du);show('mstyleOpt',mu);show('mvocalOpt',mu);show('mlenOpt',mu);
+  prompt_.placeholder=du?'Add the video with + (or drop it here), choose the language to dub into below. Optional: a note about the video…':mu?($('#mvocal').value==='mine'?'Paste your lyrics (you can add [Verse] and [Chorus] lines)…':'Describe the song: mood, story, occasion… e.g. a warm Diwali song about family'):im?'Describe the images, or drop a reference ad to copy its look…':(EXACT?'Paste the exact dialogue. Two people? Start lines with “Name: …”':'Describe the ad, or drop a reference video…')}
 let REVIEW=false;$('#review').onclick=()=>{REVIEW=!REVIEW;$('#review').classList.toggle('on',REVIEW)};
-$('#mvocal').onchange=kindUI;$('#motion').onchange=()=>{if($('#motion').value)toast('AI motion takes about 15–45 min per shot on a Mac. Photo motion takes seconds.')};$('#lang').addEventListener('change',kindUI);
+$('#mvocal').onchange=kindUI;$('#lang').addEventListener('change',kindUI);
 $('#kind').onchange=kindUI;
 $('#exact').onclick=()=>{EXACT=!EXACT;$('#exact').classList.toggle('on',EXACT);prompt_.placeholder=EXACT?'Paste the exact dialogue. Two people? Start lines with “Name: …”':'Describe the ad, or drop a reference video…';prompt_.focus()};
 
@@ -597,16 +598,16 @@ const IC={vid:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" strok
   img:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></svg>',
   mus:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg>'};
 $('#plus').onclick=e=>{e.stopPropagation();if(MENU){closeMenu();return}$('#plus').classList.add('open');
-  menu($('#plus'),[{t:'Reference ad',s:'A video to copy, with new faces',icon:IC.vid},{t:'Character or product photos',s:'Up to 6 — keeps faces and products the same',icon:IC.img},{t:'Background music',s:'Ducks under the voice automatically',icon:IC.mus}],i=>[$('#fRef'),$('#fPics'),$('#fMusic')][i].click())};
+  menu($('#plus'),[{t:$('#kind').value==='dub'?'Video to dub':'Reference ad',s:$('#kind').value==='dub'?'Ghost re-voices it in another language':'A video to copy, with new faces',icon:IC.vid},{t:'Character or product photos',s:'Up to 6 — keeps faces and products the same',icon:IC.img},{t:$('#kind').value==='music'?'Your song or humming':'Background music',s:$('#kind').value==='music'?'Ghost makes a cover: same tune, new style':'Ducks under the voice automatically',icon:IC.mus}],i=>[$('#fRef'),$('#fPics'),$('#fMusic')][i].click())};
 const QN={draft:'Fast',final:'Quality',best:'Quality'};
 $('#modeBtn').onclick=e=>{e.stopPropagation();menu($('#modeBtn'),[{t:'Fast',s:'Quick preview at half size · upgrade any time',on:QUAL==='draft'},{t:'Quality',s:'Full size · uses the most realistic model you have installed',on:QUAL!=='draft'}],i=>{QUAL=i?'final':'draft';$('#modeTxt').textContent=QN[QUAL]})};
 $('#fRef').onchange=e=>{if(e.target.files[0])A.ref=e.target.files[0];e.target.value='';chips()};
 $('#fPics').onchange=e=>{A.pics=[...A.pics,...e.target.files].filter(f=>f.type.startsWith('image/')).slice(0,6);e.target.value='';chips()};
 $('#fMusic').onchange=e=>{if(e.target.files[0])A.music=e.target.files[0];e.target.value='';chips()};
 function chips(){const out=[];
-  if(A.ref)out.push(`<div class="att"><span class="ph">${IC.vid}</span><span><b>${esc(A.ref.name)}</b><small>Reference ad</small></span><button class="x" data-rm="ref" aria-label="Remove">✕</button></div>`);
+  if(A.ref)out.push(`<div class="att"><span class="ph">${IC.vid}</span><span><b>${esc(A.ref.name)}</b><small>${$('#kind').value==='dub'?'Video to dub':'Reference ad'}</small></span><button class="x" data-rm="ref" aria-label="Remove">✕</button></div>`);
   A.pics.forEach((f,i)=>out.push(`<div class="att"><img src="${URL.createObjectURL(f)}" alt=""><span><b>${esc(f.name)}</b><small>Character / product</small></span><button class="x" data-rm="pic${i}" aria-label="Remove">✕</button></div>`));
-  if(A.music)out.push(`<div class="att"><span class="ph">${IC.mus}</span><span><b>${esc(A.music.name)}</b><small>Music</small></span><button class="x" data-rm="music" aria-label="Remove">✕</button></div>`);
+  if(A.music)out.push(`<div class="att"><span class="ph">${IC.mus}</span><span><b>${esc(A.music.name)}</b><small>${$('#kind').value==='music'?'Cover this tune':'Music'}</small></span><button class="x" data-rm="music" aria-label="Remove">✕</button></div>`);
   $('#attach').innerHTML=out.join('');saveAtt();$$('[data-rm]').forEach(b=>b.onclick=()=>{const k=b.dataset.rm;if(k==='ref')A.ref=null;else if(k==='music')A.music=null;else A.pics.splice(+k.slice(3),1);chips()});ready()}
 const comp=$('#composer');
 ['dragenter','dragover'].forEach(t=>comp.addEventListener(t,e=>{e.preventDefault();comp.classList.add('drag')}));
@@ -618,13 +619,14 @@ $$('.sug').forEach(b=>b.onclick=()=>{const s=b.dataset.s;
   else{if(EXACT)$('#exact').click();prompt_.value='Diwali night: a young woman lights diyas on her balcony and tells her friends how she sends her family a greeting with her own photo and name';grow();prompt_.focus()}});
 $('#send').onclick=go;
 async function go(){const text=prompt_.value.trim();$('#goErr').textContent='';
+  if($('#kind').value==='dub'&&!A.ref){$('#goErr').textContent='Add the video to dub: press + → Video to dub, or drop it on the box.';return}
   if(!text&&!A.ref){$('#goErr').textContent='Write an idea, paste your dialogue, or add a reference ad.';prompt_.focus();return}
-  const imgs=$('#kind').value==='images',mus=$('#kind').value==='music',ao=ST&&ST.addons||{};
+  const imgs=$('#kind').value==='images',mus=$('#kind').value==='music',dub=$('#kind').value==='dub',ao=ST&&ST.addons||{};
   const needAddon=(name,what)=>{$('#goErr').innerHTML=`${what} needs the free <b>${name}</b> add-on. <button class="linkbtn" id="goSet">Open ⚙ → Add-ons to install it</button>`;$('#goSet').onclick=()=>{kv();drawer('settings')}};
   if(mus&&!(ao.music&&ao.music.installed)&&!(ST.api&&ST.api.on)){needAddon('Music & songs','Music');return}
   if(!mus&&$('#kind').value==='video'&&$('#vmusic').value&&!(ao.music&&ao.music.installed)&&!(ST.api&&ST.api.on)&&!A.music){needAddon('Music & songs','AI background music');return}
   if(imgs&&ST&&ST.makers&&ST.makers.image==='photos'&&!A.pics.length){$('#goErr').innerHTML='Images only needs AI pictures. <button class="linkbtn" id="goSet">Open ⚙ to install the free image AI</button> (or add your own photos with +).';$('#goSet').onclick=()=>{kv();drawer('settings')};return}
-  const fd=new FormData();fd.append('kind',$('#kind').value);fd.append('review',REVIEW?'1':'');fd.append('ai_motion',$('#kind').value==='video'?$('#motion').value:'');fd.append('style',$('#style').value);fd.append('count',$('#count').value);fd.append('same_look',$('#lock').value);fd.append('music_style',$('#mstyle').value);fd.append('vocals',$('#mvocal').value);fd.append('music_seconds',$('#mlen').value);fd.append('ai_music',$('#kind').value==='video'?$('#vmusic').value:'');
+  const fd=new FormData();fd.append('kind',$('#kind').value);fd.append('review',REVIEW?'1':'');fd.append('voice_gender',$('#vgender').value);fd.append('voice_style',$('#vstyle').value);fd.append('style',$('#style').value);fd.append('count',$('#count').value);fd.append('same_look',$('#lock').value);fd.append('music_style',$('#mstyle').value);fd.append('vocals',$('#mvocal').value);fd.append('music_seconds',$('#mlen').value);fd.append('ai_music',$('#kind').value==='video'?$('#vmusic').value:'');
   fd.append(mus?($('#mvocal').value==='mine'?'dialogue':'idea'):imgs?'idea':(EXACT?'dialogue':'idea'),text);fd.append('seconds',$('#len').value);fd.append('aspect',$('#aspect').value);fd.append('voice_mode',$('#voice').value);fd.append('language',$('#lang').value);fd.append('quality',QUAL);
   if(A.ref)fd.append('reference',A.ref);if(A.music)fd.append('music',A.music);A.pics.forEach(f=>fd.append('refs',f));
   $('#send').classList.remove('ready');const r0=comp.getBoundingClientRect();F.impulse(r0.left+r0.width/2,r0.top+r0.height/2,9);F.set(.9);
@@ -632,10 +634,10 @@ async function go(){const text=prompt_.value.trim();$('#goErr').textContent='';
   catch(e){$('#goErr').textContent=e.message;F.set(.18);ready()}}
 
 /* ---------- status / settings / history ---------- */
-const MK={image:{nvidia:'AI images (NVIDIA)',local:'AI images (this Mac)',service:'AI images (video service)',photos:'Your photos / colour cards'},video:{service:'Real video + speech (video service)',nvidia:'Real video + speech (NVIDIA)',motion:'AI motion (add-on) + narrator',photo_motion:'Photo motion: pictures + camera moves'},voice:{mac:'Mac voice (free, offline)',windows:'Windows voice (free, offline)',kokoro:'Kokoro voice',tone:'Test tone'}};
+const MK={image:{nvidia:'AI images (NVIDIA)',local:'AI images (this Mac)',service:'AI images (video service)',photos:'Your photos / colour cards'},video:{service:'Real video + speech (video service)',photo_motion:'Photo motion: pictures + camera moves'},voice:{natural:'Natural voices (add-on)',mac:'Mac voice (free, offline)',windows:'Windows voice (free, offline)',tone:'Test tone'}};
 async function status(){try{ST=await api('/api/status');const mk=ST.makers||{},talk=mk.video!=='photo_motion';
   $('#sDot').className='dot '+(ST.engine==='mock'?'warn':'ok');
-  $('#sText').textContent=ST.engine==='mock'?'Test mode':mk.video==='service'?'Real video · service':mk.video==='nvidia'?'Real video · NVIDIA':mk.video==='motion'?'AI motion':'Photo motion';
+  $('#sText').textContent=ST.engine==='mock'?'Test mode':mk.video==='service'?'Real video · service':'Photo motion';
   kindUI();$('#voice').querySelector('[value=oncamera]').textContent=talk?'People talk':'People talk (needs video service)';
   if(ST.language&&!$('#lang').dataset.set){$('#lang').value=ST.language;$('#lang').dataset.set=1}}
   catch(e){$('#sDot').className='dot';$('#sText').textContent='App not running'}}
@@ -661,11 +663,15 @@ function renderAddons(r){const L=r.addons||[];$('#addSys').textContent=`This com
     return `<div class="addon ${a.installed?'is-on':''}"><div class="ad-h"><b>${esc(a.name)}</b>${badge}</div><p class="note">${esc(a.desc)}</p><p class="note meta">${esc(a.size)} · ${esc(a.time)}</p>
       ${!a.fits&&!a.installed?`<p class="note why">${esc(a.why)}</p>`:''}
       ${run||err?`<div class="prog ${err?'err':''}"><div class="ptop2"><b>${esc(a.step)}</b><span>${Math.round(a.pct||0)}%</span></div><div class="ptrack"><i style="width:${a.pct||0}%"></i></div><p class="note">${esc(a.detail||'')}${run?` · running for ${mins} min · you can keep working`:''}</p></div>`:''}
-      ${!a.installed&&!run&&(a.fits||err)?`<button class="btn" data-install="${a.id}">${err?'Try again':'Install'}</button>`:''}${sub(a)}</div>`}).join('');
+      ${a.upgrade&&!run?`<p class="note why">${esc(a.upgrade)}</p>`:''}
+      ${a.needs_token&&!run?`<div class="hfbox"><p class="note">One time: the voice model's makers (AI4Bharat) ask for a free Hugging Face account. 1) Sign up free at huggingface.co. 2) Open huggingface.co/ai4bharat/indic-parler-tts and press <b>Agree and access</b>. 3) Settings → Access Tokens → New token (Read). Paste it here: it stays on this computer.</p><input type="password" class="inp" id="hfTok" placeholder="hf_…" autocomplete="off" spellcheck="false"><button class="btn" id="hfSave" style="margin-top:6px;width:100%">Save token</button></div>`:''}
+      ${!a.installed&&!run&&(a.fits||err)?`<button class="btn" data-install="${a.id}">${err?'Try again':a.upgrade?'Upgrade':'Install'}</button>`:''}${sub(a)}</div>`}).join('');
+  const hs=$('#hfSave');if(hs)hs.onclick=async()=>{try{const r=await api('/api/settings/hf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:$('#hfTok').value})});
+    toast(r.access===''?'Token saved. Now press Install.':r.access==='needs_agree'?'Saved. Now open the model page and press “Agree and access”.':'Saved. '+r.access);addPoll()}catch(e){toast(e.message)}};
   $$('[data-install]').forEach(b=>b.onclick=async()=>{b.disabled=true;try{await api(`/api/addons/${b.dataset.install}/install`,{method:'POST'})}catch(e){toast(e.message)}addPoll()});
   const runA=L.find(a=>a.state==='running');if(runA)$('#sText').textContent=`Installing ${runA.name} ${Math.round(runA.pct||0)}%`;return !!runA}
 async function addPoll(){clearInterval(ADD_T);const tick=async()=>{try{const r=await api('/api/addons');const busy=renderAddons(r);if(!busy){clearInterval(ADD_T);ADD_T=0;await status()}}catch(e){}};await tick();if(!ADD_T)ADD_T=setInterval(tick,1500)}
-async function list(){const ps=await api('/api/projects');$('#plist').innerHTML=ps.length?ps.map(p=>`<button class="prow ${p.id===CUR?'cur':''}" data-id="${p.id}"><span class="sdot ${p.status}"></span><b>${esc(p.title||'Ad')}</b><small>${p.status==='running'?(p.progress||0)+'%':esc(STATUS[p.status]||p.status)}${p.kind==='images'?' · images':p.kind==='music'?' · music':''}${p.quality==='draft'?' · draft':''}</small><span class="rowact"><i data-ren="${p.id}" title="Rename">✎</i><i data-del="${p.id}" title="Delete">🗑</i></span></button>`).join(''):'<p class="note">Your ads appear here.</p>';
+async function list(){const ps=await api('/api/projects');$('#plist').innerHTML=ps.length?ps.map(p=>`<button class="prow ${p.id===CUR?'cur':''}" data-id="${p.id}"><span class="sdot ${p.status}"></span><b>${esc(p.title||'Ad')}</b><small>${p.status==='running'?(p.progress||0)+'%':esc(STATUS[p.status]||p.status)}${p.kind==='images'?' · images':p.kind==='music'?' · music':p.kind==='dub'?' · dub':''}${p.quality==='draft'?' · draft':''}</small><span class="rowact"><i data-ren="${p.id}" title="Rename">✎</i><i data-del="${p.id}" title="Delete">🗑</i></span></button>`).join(''):'<p class="note">Your ads appear here.</p>';
   $$('.prow').forEach(r=>r.onclick=e=>{if(e.target.closest('.rowact'))return;drawer(null);open(r.dataset.id)});
   $$('[data-ren]').forEach(b=>b.onclick=async e=>{e.stopPropagation();const row=b.closest('.prow'),cur=row.querySelector('b').textContent;const t=prompt('New name for this project:',cur);if(t&&t.trim()&&t.trim()!==cur){await renameP(b.dataset.ren,t.trim());list()}});
   $$('[data-del]').forEach(b=>b.onclick=async e=>{e.stopPropagation();await deleteP(b.dataset.del,b.closest('.prow').querySelector('b').textContent);list()})}
@@ -677,7 +683,7 @@ $('#pTitle').onblur=async()=>{const h=$('#pTitle');h.contentEditable='false';con
 $('#pPause').onclick=async()=>{try{await api(`/api/projects/${CUR}/stop`,{method:'POST'});toast(P&&P.status==='queued'?'Removed from the queue':'Pausing at the next safe point…');kick()}catch(e){toast(e.message)}};
 $('#pCont').onclick=async()=>{try{await api(`/api/projects/${CUR}/resume`,{method:'POST'});toast('Continuing from where it stopped');kick()}catch(e){toast(e.message)}};
 $('#pDel').onclick=()=>P&&deleteP(P.id,P.title);
-const RWK={prompt:'image_prompt',image_prompt:'image_prompt',video_prompt:'image_prompt',line:'line',lyrics:'lyrics',caption:'caption'};
+const RWK={prompt:'image_prompt',image_prompt:'image_prompt',video_prompt:'image_prompt',line:'line',dub:'line',lyrics:'lyrics',caption:'caption'};
 const ta=(k,v,rows,lab)=>`<div class="pbf"><span class="lab">${lab}<button type="button" class="rw" data-kind="${RWK[k]||'text'}" title="Tell Ghost how to change this text">✨ Rewrite</button><button type="button" class="rw hidden" data-back title="Back to before the rewrite">↶ Undo</button></span><textarea data-k="${k}" rows="${rows}">${esc(v||'')}</textarea></div>`;
 function wireRewrite(){$$('#pbBody .rw[data-kind]').forEach(b=>{const box=b.closest('.pbf'),t=box.querySelector('textarea'),back=box.querySelector('[data-back]'),kind=b.dataset.kind;
   b.onclick=()=>changeOpen({title:'Rewrite this',sub:'Ghost changes the same text and keeps the rest. Check it, then Save.',chips:{image_prompt:'image',caption:'song',lyrics:'lyrics'}[kind]||'text',ph:'e.g. shorter, more emotional, in Malayalam',go:'✨ Rewrite',
@@ -686,12 +692,14 @@ function wireRewrite(){$$('#pbBody .rw[data-kind]').forEach(b=>{const box=b.clos
   back.onclick=()=>{if(t.dataset.prev!=null){t.value=t.dataset.prev;delete t.dataset.prev;back.classList.add('hidden')}}})}
 function planOpen(p,focus){const b=$('#pbBody');let h='';
   if(p.kind==='images'){h=(p.stills||[]).map((x,i)=>`<div class="pbi" data-i="${i}"><div class="pbn">${i+1}</div><div class="pbc"><input class="inp" data-k="caption" value="${esc(x.caption||'')}">${ta('prompt',x.prompt,4,'Picture prompt')}</div></div>`).join('');$('#pbHint').textContent='Edit a prompt, then use Retake on that picture (or Make it).'}
+  else if(p.kind==='dub'){const D=p.dub||{};h=(D.segments||[]).map((x,i)=>`<div class="pbi" data-i="${i}"><div class="pbn">${i+1}</div><div class="pbc"><p class="note" style="padding:0">${Number(x.start).toFixed(1)}–${Number(x.end).toFixed(1)} s · ${esc(D.from||'')}: ${esc(x.text)}</p>${ta('dub',x.dub,2,'In '+(D.to||''))}</div></div>`).join('');$('#pbHint').textContent='Shorter lines fit their moment better. Then press Make it.'}
   else if(p.kind==='music'){const g=p.song||{};h=`<div class="pbi"><div class="pbc"><input class="inp" data-k="title" value="${esc(p.title||'')}">${ta('caption',g.caption,2,'Style (genre, instruments, mood, voice)')}${ta('lyrics',g.lyrics&&g.lyrics!=='[Instrumental]'?g.lyrics:'',12,'Lyrics · use [Verse] and [Chorus] lines')}</div></div>`;$('#pbHint').textContent='Then press Make it (or Make another take).'}
   else{h=`<div class="pbi"><div class="pbc">${ta('image_prompt',(p.plan||{}).image_prompt,3,'Main picture')}</div></div>`+(p.clips||[]).map((c,i)=>`<div class="pbi" data-i="${i}"><div class="pbn">${i+1}</div><div class="pbc">${ta('line',c.line,2,'What is said')}${ta('video_prompt',c.video_prompt,3,'Shot prompt')}</div></div>`).join('');$('#pbHint').textContent='Changes to words make that shot again when you continue or press Make this clip again.'}
   b.innerHTML=h;wireRewrite();$('#planBox').classList.remove('hidden');$('#pbMake').classList.toggle('hidden',p.status!=='review');
   const t=focus!=null?b.querySelector(`.pbi[data-i="${focus}"] textarea`):b.querySelector('textarea');if(t){t.scrollIntoView({block:'center',behavior:'smooth'});t.focus()}}
 function planCollect(){const p=P,b=$('#pbBody'),body={};
-  if(p.kind==='images')body.stills=[...b.querySelectorAll('.pbi')].map(x=>({caption:x.querySelector('[data-k=caption]').value,prompt:x.querySelector('[data-k=prompt]').value}));
+  if(p.kind==='dub')body.dub=[...b.querySelectorAll('.pbi[data-i]')].map(x=>({dub:x.querySelector('[data-k=dub]').value}));
+  else if(p.kind==='images')body.stills=[...b.querySelectorAll('.pbi')].map(x=>({caption:x.querySelector('[data-k=caption]').value,prompt:x.querySelector('[data-k=prompt]').value}));
   else if(p.kind==='music')body.song={title:b.querySelector('[data-k=title]').value,caption:b.querySelector('[data-k=caption]').value,lyrics:b.querySelector('[data-k=lyrics]').value};
   else{body.image_prompt=b.querySelector('[data-k=image_prompt]').value;body.clips=[...b.querySelectorAll('.pbi[data-i]')].map(x=>({line:x.querySelector('[data-k=line]').value,video_prompt:x.querySelector('[data-k=video_prompt]').value}))}
   return body}
@@ -736,7 +744,10 @@ async function refresh(force){if(!CUR)return;let p;try{p=await api('/api/project
     const ms=JSON.stringify((p.tracks||[]).map(t=>t.file))+p.status;if(force||ms!==LAST){LAST=ms;tracks(p)}
     $('#mMore').disabled=busy;$('#mRerun').classList.toggle('hidden',busy);
     if(!busy){clearInterval(TIMER);TIMER=setInterval(refresh,8000)}return}
-  const imgs=p.kind==='images';$('.stage').classList.toggle('hidden',imgs);$('.shots-h').classList.toggle('hidden',imgs);$('#shots').classList.toggle('hidden',imgs);$('#galWrap').classList.toggle('hidden',!imgs);
+  const imgs=p.kind==='images',dubk=p.kind==='dub';$('.stage').classList.toggle('hidden',imgs);$('.shots-h').classList.toggle('hidden',imgs||dubk);$('#shots').classList.toggle('hidden',imgs||dubk);
+  if(dubk){$('#pSteps').innerHTML=['analyse','plan','voice','edit'].map(s=>`<li class="${p.steps[s]}"><i></i>${esc({analyse:'Listening to the video',plan:'Translating',voice:'Recording the new voice',edit:'Keeping the background and mixing'}[s])}</li>`).join('');
+    $('#pTag').textContent=[(p.dub&&p.dub.from?p.dub.from+' → ':'')+(p.language||''),(p.dub&&p.dub.segments?p.dub.segments.length+' lines':'')].filter(Boolean).join(' · ');
+    if(!busy){clearInterval(TIMER);TIMER=setInterval(refresh,8000)}return}$('#galWrap').classList.toggle('hidden',!imgs);
   if(imgs){$('#pSteps').innerHTML=['analyse','plan','images'].filter(s=>p.steps[s]!=='skipped'||s!=='analyse').map(s=>`<li class="${p.steps[s]}"><i></i>${esc({analyse:'Reading the reference',plan:'Writing the image prompts',images:'Making the images'}[s])}</li>`).join('');
     const gs=JSON.stringify((p.stills||[]).map(x=>[x.image,x.status]))+p.status+p.quality;if(force||gs!==LAST){LAST=gs;gallery(p)}
     $('#gZip').classList.toggle('hidden',!(p.status==='done'));$('#gZip').href='/api/projects/'+p.id+'/zip';$('#gUp').classList.toggle('hidden',!(p.status==='done'&&p.quality==='draft'));$('#gRerun').classList.toggle('hidden',busy);undoBtn('#gUndo',p,busy);
@@ -747,11 +758,18 @@ async function refresh(force){if(!CUR)return;let p;try{p=await api('/api/project
 function tracks(p){const busy=p.status==='running'||p.status==='queued';const ts=p.tracks||[];
   $('#tracks').innerHTML=ts.map((t,i)=>{const u=fileUrl(p.id,t.file);const nm=`${(p.title||'song').replace(/[^\w\s-]/g,'')} - take ${i+1}.mp3`;
     return `<div class="track" style="animation-delay:${i*60}ms"><div class="tk-h"><span class="eq"><i></i><i></i><i></i><i></i></span><b>Take ${i+1}</b><small>${esc([t.bpm?t.bpm+' BPM':'',t.key||''].filter(Boolean).join(' · '))}</small></div>${t.change?`<div class="from">From take ${t.from}: ${esc(t.change)}${t.how==='new tune'?' (new tune)':''}</div>`:''}
-      <audio controls preload="metadata" src="${u}"></audio><div class="row2"><a class="btn" href="${u}" download="${esc(nm)}">Download MP3</a><button class="btn" data-tchg="${t.n||i+1}" data-k="${i+1}" ${busy?'disabled':''} title="Same song, different sound">✨ Change</button></div></div>`}).join('')+
+      <audio controls preload="metadata" src="${u}"></audio><div class="row2"><a class="btn" href="${u}" download="${esc(nm)}">Download MP3</a><button class="btn" data-tchg="${t.n||i+1}" data-k="${i+1}" ${busy?'disabled':''} title="Same song, different sound">✨ Change</button></div>
+      <div class="row2"><button class="btn" data-trep="${t.n||i+1}" data-k="${i+1}" data-len="${Math.round(t.seconds||0)}" ${busy?'disabled':''} title="Re-make only one part; the rest stays exactly the same">Replace a part</button><button class="btn" data-tstem="${t.n||i+1}" ${busy?'disabled':''} title="Vocals, drums, bass and the rest as separate files">Split stems</button></div>
+      ${t.stems?`<div class="row2 stems">${Object.entries(t.stems).map(([k,f])=>`<a class="btn" href="${fileUrl(p.id,f)}" download="${esc((p.title||'song')+' - take '+(i+1)+' - '+k+'.mp3')}">${esc({vocals:'Vocals',drums:'Drums',bass:'Bass',other:'Other',no_vocals:'Music only'}[k]||k)}</a>`).join('')}</div>`:''}</div>`}).join('')+
     (busy?`<div class="track wait"><div class="tk-h"><span class="eq on"><i></i><i></i><i></i><i></i></span><b>Composing…</b><small>about 5–10 min per song on a Mac</small></div></div>`:'');
   $$('#tracks audio').forEach(a=>{const eq=a.parentElement.querySelector('.eq');a.onplay=()=>{$$('#tracks audio').forEach(o=>{if(o!==a)o.pause()});eq.classList.add('on')};a.onpause=a.onended=()=>eq.classList.remove('on')});
   $$('#tracks [data-tchg]').forEach(b=>b.onclick=()=>{const n=+b.dataset.tchg;changeOpen({title:`Change take ${b.dataset.k}`,sub:'Same song and words, different sound. It’s added as a new take, so this one stays.',chips:'song',ph:'e.g. more upbeat, male voice, acoustic',strength:true,
     note:'To change the words, use ✎ Edit lyrics & style → ✨ Rewrite.',run:async(ins,_s,st)=>{await change('song',n,ins,'one',st);toast('Changing take '+b.dataset.k)}})});
+  $$('#tracks [data-trep]').forEach(b=>b.onclick=()=>{const n=+b.dataset.trep,len=+b.dataset.len||60;
+    changeOpen({title:`Replace a part of take ${b.dataset.k}`,sub:'Write the seconds to re-make, e.g. “30-45: a gospel choir”. Everything else stays exactly the same.',chips:'song',ph:'e.g. 30-45: softer, only piano',
+      note:`This take is about ${len} s long. It's added as a new take, so this one stays.`,go:'Replace it',run:async ins=>{const m=ins.match(/(\d+(?:\.\d+)?)\s*(?:-|–|to)\s*(\d+(?:\.\d+)?)\s*:?\s*(.*)/);if(!m)throw new Error('Start with the seconds, e.g. 30-45: softer');
+        await api(`/api/projects/${CUR}/music/${n}/replace`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({start:+m[1],end:+m[2],instruction:m[3]||''})});toast('Re-making that part');kick()}})});
+  $$('#tracks [data-tstem]').forEach(b=>b.onclick=async()=>{try{await api(`/api/projects/${CUR}/music/${b.dataset.tstem}/stems`,{method:'POST'});toast('Splitting into vocals, drums, bass and the rest');kick()}catch(e){toast(e.message)}});
   const ly=(p.song&&p.song.lyrics&&p.song.lyrics!=='[Instrumental]')?p.song.lyrics:'';$('#lyrBox').classList.toggle('hidden',!ly);$('#lyrics').textContent=ly}
 $('#mEdit').onclick=()=>P&&planOpen(P);
 $('#mMore').onclick=async()=>{try{await api(`/api/projects/${CUR}/music/more`,{method:'POST'});toast('Making another take');kick()}catch(e){toast(e.message)}};

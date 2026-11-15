@@ -193,7 +193,7 @@ def plan(cfg: dict, *, idea: str = "", dialogue: str = "", reference: dict | Non
     n_clips = max(1, round(seconds / (max_s - 1.0))) if need_script else max(1, len(split_lines(dialogue)))
     if reference and not (reference.get("transcript") or "").strip():
         src += "\n(The reference's speech could not be heard: copy its look, people, framing and camera moves, and write a fresh script.)"
-    prompt = f"""You are a film director and prompt engineer for the open video model LTX-2 (it makes video AND the spoken audio with lip-sync from a first-frame image).
+    prompt = f"""You are a film director and prompt engineer for an image-to-video model (it makes video AND the spoken audio with lip-sync from a first-frame image).
 Make a {seconds} s {aspect} ad for {b['name']} in {lang}. About the brand: {b['about']}
 {src}
 {'Write the script yourself: a strong 2-second hook, natural spoken ' + lang + ', a clear call to action to download ' + b['spoken'] + ' at the end.' if need_script else 'Use EXACTLY this dialogue, every word, in order:' + chr(10) + dialogue}
@@ -203,7 +203,7 @@ Rules: {RULES} {people_note(idea or dialogue)} {knowledge.hints((idea or '') + '
 Split the speech into clips of at most {max_s} s each (about 15 {lang} words), at natural pauses, never mid-phrase.
 Make EXACTLY {n_clips} clips so the ad really lasts about {seconds} seconds. Give each clip a different shot (close-up, medium, detail, wide…) and a different camera move.
 The title must be a real 2-5 word name for this ad (never "short name").
-For every clip write an LTX-2 prompt as one rich paragraph: who (same character description every time), exact action and micro-expressions second by second, where, light, camera framing and move, then the speech as: He/She says in {lang}: "<line>" (spoken once, natural pace, ends before the clip ends), then ambient sound. No music, no subtitles, no text.
+For every clip write a video prompt as one rich paragraph: who (same character description every time), exact action and micro-expressions second by second, where, light, camera framing and move, then the speech as: He/She says in {lang}: "<line>" (spoken once, natural pace, ends before the clip ends), then ambient sound. No music, no subtitles, no text.
 Pick a camera_move per clip from {MOVES} and a handheld shake 0-1.5 (0 = tripod).
 Return JSON only:
 {{"title":"short name","character":{{"look":"full description of the main fictional character","voice":"voice description"}},
@@ -496,3 +496,31 @@ Answer as JSON: {{"text": "<the edited text>"}}""", temperature=0.3)
     out = str(data.get("text") or "").strip()
     return out or text
 
+
+
+def translate_lines(cfg: dict, lines: list[str], src: str, target: str, context: str = "") -> list[str]:
+    """Dubbing: each line in natural spoken target language, about the same length (it must fit the same moment)."""
+    from . import llm
+    if not llm.available():
+        raise RuntimeError("Dubbing needs the Script AI add-on (⚙ → Add-ons) to translate.")
+    out: list[str] = []
+    for k in range(0, len(lines), 20):
+        chunk = lines[k:k + 20]
+        numbered = "\n".join(f"{i + 1}. {t}" for i, t in enumerate(chunk))
+        for attempt in range(2):
+            data = llm.ask_json(cfg["models"]["llm"], f"""Translate these {len(chunk)} spoken lines from {src or 'the original language'} into natural, everyday spoken {target}
+for dubbing a video{(' (' + context[:200] + ')') if context else ''}.
+Rules: keep the meaning and the emotion; keep names, brands and numbers; use words people really say, not formal or literary words;
+each line about the same length as the original so it fits the same moment; write {target} in its own script.
+{knowledge.hints(' '.join(chunk))}
+LINES:
+{numbered}
+
+Answer as JSON: {{"lines": ["<line 1 in {target}>", "<line 2>", ...]}} with exactly {len(chunk)} items.""", temperature=0.3)
+            got = [str(x).strip() for x in (data.get("lines") or [])]
+            if len(got) == len(chunk) and all(got):
+                break
+        if len(got) != len(chunk):
+            got = (got + chunk)[:len(chunk)]  # keep timing honest: untranslated lines stay as they were
+        out += got
+    return out

@@ -166,6 +166,17 @@ def test_tier0_needs_no_model():
     assert b.done == [("retake_picture", {"index": 1, "fresh": False, "project_id": "p1"})]
 
 
+def test_music_tools():
+    assert tools.validate("replace_song_part", {"take": "1", "start": "30s", "end": 45}) == {"take": 1, "start": 30.0, "end": 45.0}
+    try:
+        tools.validate("replace_song_part", {"take": 1, "start": 30, "end": 31})
+        raise AssertionError
+    except tools.ToolError:
+        pass
+    names = {s["function"]["name"] for s in tools.schemas("music")}
+    assert {"replace_song_part", "split_song_stems", "change_song"} <= names and "change_picture" not in names
+
+
 def test_json_text_tool_call():
     m = {"content": 'Sure {"name": "pause", "arguments": {}}'}
     assert orchestrator._calls_from(m) == [("pause", {})]

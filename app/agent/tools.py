@@ -71,6 +71,11 @@ TOOLS: list[Tool] = [
     Tool("change_song", "Same song and words, different sound (e.g. more upbeat, male voice). Adds a new take.",
          {"project_id": PID, "take": I, "instruction": S, "amount": {"type": "string", "enum": ["little", "medium", "lot"]}},
          ["take", "instruction"], label=lambda a: f"Change song take {a['take']}: {a['instruction']}"),
+    Tool("replace_song_part", "Re-make only part of a song take (seconds start..end), keep the rest exactly. Adds a new take.",
+         {"project_id": PID, "take": I, "start": {"type": "number", "minimum": 0}, "end": {"type": "number", "minimum": 1}, "instruction": S},
+         ["take", "start", "end"], label=lambda a: f"Re-make {a['start']:.0f}–{a['end']:.0f} s of take {a['take']}" + (f": {a['instruction']}" if a.get("instruction") else "")),
+    Tool("split_song_stems", "Split a song take into vocals, drums, bass and the rest (separate files).", {"project_id": PID, "take": I}, ["take"],
+         label=lambda a: f"Split take {a['take']} into stems"),
     Tool("more_song_takes", "Make one more take of the song.", {"project_id": PID}, label=lambda a: "Make another song take"),
     Tool("rewrite_text", "Rewrite text Ghost wrote, by an instruction. field: picture_prompt (needs index), line or shot_prompt "
          "(needs index), lyrics, style (song style), main_prompt. Saves it; remake the picture/shot afterwards if needed.",
@@ -103,7 +108,7 @@ BY_NAME = {t.name: t for t in TOOLS}
 
 PICTURE = {"change_picture", "retake_picture", "set_main_look"}
 SHOT = {"change_shot", "retake_shot"}
-SONG = {"change_song", "more_song_takes"}
+SONG = {"change_song", "more_song_takes", "replace_song_part", "split_song_stems"}
 SWAP = {("images", "change_shot"): "change_picture", ("images", "retake_shot"): "retake_picture",
         ("video", "change_picture"): "change_shot", ("video", "retake_picture"): "retake_shot"}
 
@@ -142,7 +147,11 @@ def validate(name: str, args: Any) -> dict:
             continue  # ignore unknown / empty keys instead of failing
         ty = spec.get("type")
         try:
-            if ty == "integer":
+            if ty == "number":
+                v = float(str(v).strip().rstrip("s"))
+                if v < spec.get("minimum", -10**9):
+                    raise ToolError(f"'{k}' must be at least {spec.get('minimum')}")
+            elif ty == "integer":
                 v = int(str(v).strip().lstrip("#"))
                 if v < spec.get("minimum", -10**9) or v > spec.get("maximum", 10**9):
                     raise ToolError(f"'{k}' must be between {spec.get('minimum')} and {spec.get('maximum')}")
@@ -162,6 +171,8 @@ def validate(name: str, args: Any) -> dict:
         raise ToolError("This field needs 'index'")
     if name == "undo" and out["target"] != "all" and "index" not in out:
         raise ToolError("Undo of one picture or shot needs 'index'")
+    if name == "replace_song_part" and out["end"] - out["start"] < 2:
+        raise ToolError("Choose at least 2 seconds (end must be after start)")
     if name == "remember" and out["kind"] == "means" and not out.get("means"):
         raise ToolError("kind=means needs 'means'")
     return out

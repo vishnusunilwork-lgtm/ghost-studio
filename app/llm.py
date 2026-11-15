@@ -57,7 +57,20 @@ def installed() -> list[str]:
         return []
 
 
-PREFER = ["qwen2.5", "qwen3", "llama3", "gemma", "mistral", "phi"]
+PREFER = ["qwen3.6", "qwen3.5", "qwen3", "qwen2.5", "llama3", "gemma", "mistral", "phi"]
+
+
+def family_rank(name: str) -> int:
+    """Newer families first: qwen3.6 > qwen3.5 > qwen3 > qwen2.5 > others."""
+    for n, fam in enumerate(PREFER):
+        if name.startswith(fam):
+            return n
+    return len(PREFER)
+
+
+def thinks(model: str) -> bool:
+    """Qwen 3.x can 'think' before answering: great for hard problems, slow for quick jobs. We turn it off."""
+    return model.startswith("qwen3")
 
 
 def pick(model: str, vision: bool = False) -> str:
@@ -79,8 +92,11 @@ def ask_json(model: str, prompt: str, images: list[bytes] | None = None, tempera
     msg = {"role": "user", "content": prompt}
     if images:
         msg["images"] = [base64.b64encode(b).decode() for b in images]
-    r = _post("/api/chat", {"model": model, "messages": [msg], "stream": False, "format": "json",
-                            "keep_alive": "10m", "options": {"temperature": temperature, "num_ctx": 8192}})
+    body = {"model": model, "messages": [msg], "stream": False, "format": "json",
+            "keep_alive": "10m", "options": {"temperature": temperature, "num_ctx": 8192}}
+    if thinks(model):
+        body["think"] = False
+    r = _post("/api/chat", body)
     return _json_from(r.get("message", {}).get("content", ""))
 
 
@@ -101,4 +117,6 @@ def chat(model: str, messages: list[dict], tools: list[dict] | None = None, temp
             "options": {"temperature": temperature, "num_ctx": 8192}}
     if tools:
         body["tools"] = tools
+    if thinks(model):
+        body["think"] = False  # tool picking needs no long reasoning: answer fast
     return _post("/api/chat", body, timeout=timeout).get("message", {}) or {}

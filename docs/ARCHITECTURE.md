@@ -42,11 +42,32 @@ ChatGPT. Its code is private, and none of it is used here.
 | Observability | Tracing and metrics. | `.ghost/agent.log` is one JSON line per turn: route, model, each step's time, tool calls, errors, fallbacks. |
 | Evaluation | Benchmarks. | `tests/test_agent.py` has 11 offline checks with a scripted model. `tests/eval_live.py` has 14 real requests in English and Hinglish, run against the real local models. |
 
+## Media engines: the same ideas as Gemini, ElevenLabs and Suno, with free models
+
+The big services publish what they do, not their code or weights. Ghost uses the same published ideas with
+open models that allow commercial use, running on your computer.
+
+| Idea from the reports | The big service | Ghost |
+|---|---|---|
+| Fast model + careful model behind one box | Gemini Flash/Pro, GPT-5 router | Router tiers (above), Qwen 3.5 small + large, "thinking" switched off for quick tool picks |
+| Natively multimodal understanding | Gemini | Qwen3-VL checks pictures (hands, eyes) and reads reference ads; faster-whisper hears them |
+| Voice design (describe a voice in words) | ElevenLabs Voice Design | Natural voices: Indic Parler-TTS (AI4Bharat). The voice is a sentence: speaker, tone, pace, recording quality |
+| Dubbing (transcribe → translate → re-voice → keep background) | ElevenLabs Dubbing | `dub.py`: whisper timings → script AI translation of the same length → natural voice → fit each line to its slot (≤1.45×) → Demucs removes the old voice, keeps music → one ffmpeg mix, video untouched |
+| Music from text, cover, replace a section | Suno Create / Cover / Replace Section | ACE-Step 1.5: text2music, cover (same tune, new sound, from your own audio too), repaint (re-make only seconds A–B) |
+| Stem separation | Suno Stems | Demucs htdemucs: vocals, drums, bass, other |
+| Content provenance | SynthID, C2PA | Not built in yet. Label AI content yourself |
+
+Isolation: voices and stems each run in their own small Python (`.ghost/engines/<name>/.venv`) through a worker
+(`app/workers/`), the same way the music engine does. Their library versions can't break the picture models,
+and a crash in one engine can't take down the app.
+
 ## Measured on the build machine
 
 These numbers come from a cloud test machine with no graphics chip, so it is much slower than a Mac.
 
-- **Accuracy:** 12/14 correct on `tests/eval_live.py`. The two failures happened when the 7B model couldn't load in that machine's memory. After the fallback fix, both requests ran on the 3B model, but it got one of them only partly right.
+- **Accuracy with Qwen 3.5 4B (v3.12):** 13/14 correct on `tests/eval_live.py`, including the two-step song request the older model got wrong. The miss ("4 more pictures like this but at Diwali") led to a new rule in the system prompt; with it, that request is now handled correctly (proposes a new project based on the open one).
+- **Accuracy with Qwen 2.5 (v3.11):** 12/14 correct. The two failures happened when the 7B model couldn't load in that machine's memory. After the fallback fix, both requests ran on the 3B model, but it got one of them only partly right.
+- **Dubbing (end-to-end test):** a 12-second English video with music → Hindi in 60 s on that machine. Demucs removed the original voice (a speech check of the result found none) and kept the music.
 - **Speed on that machine:** tier 0 replies take under 10 ms. A tier 1 (3B model) reply takes 4–25 s when the model is already loaded. On Apple-chip Macs, local models run much faster, so most replies should take a few seconds. That hasn't been measured yet.
 
 ## Limits

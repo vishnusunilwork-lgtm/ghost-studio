@@ -1,5 +1,5 @@
-# AI Film Studio Local - settings
-# Everything runs on this computer. No accounts, no API keys, no cloud.
+# Ghost Studio - settings
+# Everything runs on this computer. No accounts needed; a video-service key is optional.
 # Change a model here, restart the app, and it is used from then on.
 
 engine: auto            # auto = best maker this computer has (see app/engines.py). "mock" = test media only
@@ -12,24 +12,20 @@ brand:
 language: Hindi
 
 models:
-  # Writes scripts, splits lines, writes every prompt (runs in Ollama)
-  llm: qwen2.5:14b
-  # Looks at reference-ad frames (runs in Ollama)
-  vision: qwen2.5vl:7b
+  # Understands you (Talk to Ghost), writes scripts and every prompt, translates (Ollama). If this one isn't
+  # downloaded, Ghost uses the newest installed model automatically.
+  llm: qwen3.5:9b
+  # Looks at reference-ad frames and checks pictures (Ollama)
+  vision: qwen3-vl:8b
   # First-frame images (Hugging Face, diffusers)
   image: black-forest-labs/FLUX.2-klein-base-4B   # Apache 2.0 (the 9B is non-commercial)
-  # Video WITH speech and lip-sync, from the first-frame image (Hugging Face, diffusers)
-  # LICENSE: LTX-2 is free below US$10M yearly revenue; bigger companies need a Lightricks commercial agreement.
   # AI-made videos must be labelled as AI-generated.
-  video: Lightricks/LTX-2
   # Image AI on Macs (free, optional: install it under the gear). Distilled = only 4 steps. Apache 2.0
   image_mac: black-forest-labs/FLUX.2-klein-4B
   # Mac built-in narrator voice. Empty = pick by language (Hindi: Lekha). Add voices in
   # System Settings > Accessibility > Spoken Content > System voice > Manage voices
   mac_voice: ""
-  # Narration voice (Kokoro, runs locally). Hindi voices: hf_alpha, hf_beta (female), hm_omega, hm_psi (male)
-  tts_voice: hm_omega
-  # Speech to text for reference ads (faster-whisper)
+  # Speech to text for reference ads and dubbing (faster-whisper)
   whisper: medium
 
 quality:
@@ -37,13 +33,11 @@ quality:
   video_width: 576
   video_height: 1024
   fps: 24
-  video_steps: 30
   image_steps: 50
   image_steps_mac: 4
   best_long_side: 1344     # Best pictures size (long side, pixels)
   mac_quantize: 8          # Apple chips: 8-bit = faster, same look. 0 = full precision
   # Draft mode: quick low-res preview to check the idea, then "Make it final" re-renders the same takes
-  video_steps_draft: 12
   image_steps_draft: 20
   export_crf: 16          # lower = better quality, bigger file (16 is visually lossless)
   clip_seconds: 7.5       # longest line per clip

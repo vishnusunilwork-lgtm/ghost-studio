@@ -187,6 +187,8 @@ class Runner:
         p = self.store.load(pid)
         d = self.store.dir(pid)
         q = self.cfg["quality"]
+        if p.get("kind") == "dub":
+            return self._dub(pid)
         # 1 reference
         ref = None
         if p.get("reference"):
@@ -313,7 +315,6 @@ class Runner:
         from . import llm
         llm.unload()
         p = self.store.load(pid)
-        self.eng.allow_motion = bool(p.get("ai_motion"))
         d = self.store.dir(pid)
         idx = [only] if only is not None else range(len(p["clips"]))
         (gw, gh), _, draft = sizes(p)
@@ -368,7 +369,7 @@ class Runner:
             if not text:
                 continue
             f = d / f"narr{i + 1:02d}.wav"
-            self.eng.speech(text, f, p.get("language") or self.cfg.get("language", "Hindi"))
+            self.eng.speech(text, f, p.get("language") or self.cfg.get("language", "Hindi"), p.get("voice_gender", "female"), p.get("voice_style", "warm"))
             c["narration_file"] = str(f)
         self._done(p, "voice")
 
@@ -513,9 +514,13 @@ class Runner:
             self.store.save(p)
             return
         try:
+            mine = p.get("music") if p.get("music") and Path(p["music"]).exists() else None  # "Cover my song / my humming"
+            if mine:
+                self._say(p, "music", "Making a cover of your audio (same tune, new sound)", 25)
             out = addons.MusicServer.generate(caption=pl["caption"], lyrics=pl.get("lyrics", ""), seconds=pl.get("seconds", 60),
                                               language=pl.get("language", "unknown"), out_dir=self.store.dir(pid), takes=takes,
-                                              bpm=pl.get("bpm"), describe=pl.get("describe", ""), fast=p.get("quality") == "draft",
+                                              bpm=pl.get("bpm"), describe="" if mine else pl.get("describe", ""), fast=p.get("quality") == "draft",
+                                              src_audio=mine, cover_strength=float(p.get("cover_strength", 0.45)),
                                               log=lambda m: self._say(self.store.load(pid), "music", m))
         finally:
             addons.MusicServer.stop_later()
@@ -538,6 +543,8 @@ class Runner:
             return self._stills(pid, resume=True)
         if p.get("kind") == "music":
             return self._compose(pid, takes=1) if p.get("song") else self._all(pid)
+        if p.get("kind") == "dub":
+            return self._dub_finish(pid) if (p.get("dub") or {}).get("segments") else self._dub(pid)
         if not p.get("clips"):
             return self._all(pid)
         if not p.get("image") or not Path(p["image"]).exists():
@@ -802,6 +809,135 @@ class Runner:
         p["steps"]["music"] = "done"
         p["status"], p["progress"] = "done", 100
         p["log"].append(time.strftime("%H:%M:%S ") + f"Changed take {n}: {instruction} → take {len(p['tracks'])}")
+        self.store.save(p)
+
+    def _replace_part(self, pid, n: int, start: float, end: float, instruction: str = "", lyrics: str = ""):
+        """Suno-style "Replace section": re-make only start..end of a take; everything else stays exactly as it was."""
+        from . import addons
+        p = self.store.load(pid)
+        tr = next((t for t in p.get("tracks") or [] if int(t.get("n", 0)) == int(n)), None)
+        if not tr or not Path(tr["file"]).exists():
+            raise RuntimeError("That take is missing.")
+        if not addons.music_installed():
+            raise RuntimeError("Replacing a part needs the Music & songs add-on (⚙ → Add-ons).")
+        pl = p.get("song") or {}
+        caption = tr.get("caption") or pl.get("caption", "")
+        if instruction:
+            caption = planner.rewrite(self.cfg, caption, instruction, kind="caption")
+        self._say(p, "music", f"Re-making {start:.0f}–{end:.0f} s of take {n}" + (f": {instruction}" if instruction else ""), 20)
+        E.free()
+        from . import llm
+        llm.unload()
+        try:
+            out = addons.MusicServer.generate(caption=caption, lyrics=lyrics or tr.get("lyrics") or pl.get("lyrics") or "[Instrumental]",
+                                              seconds=float(tr.get("seconds") or pl.get("seconds") or 60), language=pl.get("language", "unknown"),
+                                              out_dir=self.store.dir(pid), takes=1, src_audio=tr["file"], task="repaint", repaint=(start, end),
+                                              log=lambda m: self._say(self.store.load(pid), "music", m))
+        finally:
+            addons.MusicServer.stop_later()
+        p = self.store.load(pid)
+        for t in out:
+            p["tracks"].append({**t, "caption": caption, "lyrics": lyrics or tr.get("lyrics"), "n": len(p["tracks"]) + 1, "from": int(n),
+                                "change": f"{start:.0f}–{end:.0f} s re-made" + (f": {instruction}" if instruction else ""), "how": "same tune"})
+        p["status"], p["progress"] = "done", 100
+        p["log"].append(time.strftime("%H:%M:%S ") + f"Replaced {start:.0f}–{end:.0f} s of take {n} → take {len(p['tracks'])}")
+        self.store.save(p)
+
+    def _stems(self, pid, n: int):
+        """Split a take into vocals, drums, bass and the rest (Demucs)."""
+        from . import addons
+        p = self.store.load(pid)
+        tr = next((t for t in p.get("tracks") or [] if int(t.get("n", 0)) == int(n)), None)
+        if not tr:
+            raise RuntimeError("That take is missing.")
+        if not addons.stems_installed():
+            raise RuntimeError("Install the Song stems add-on first (⚙ → Add-ons).")
+        self._say(p, "music", f"Splitting take {n} into vocals, drums, bass and the rest (about 1–2 min)", 30)
+        found = addons.split_stems(Path(tr["file"]), self.store.dir(pid) / f"stems{n}")
+        p = self.store.load(pid)
+        for t in p["tracks"]:
+            if int(t.get("n", 0)) == int(n):
+                t["stems"] = found
+        p["status"], p["progress"] = "done", 100
+        p["log"].append(time.strftime("%H:%M:%S ") + f"Take {n} split into {len(found)} stems")
+        self.store.save(p)
+
+    # ------------------------------------------------------------ dubbing
+    def _dub(self, pid):
+        from . import dub
+        p = self.store.load(pid)
+        d = self.store.dir(pid)
+        for st in ("images", "videos", "music"):
+            p["steps"][st] = "skipped"
+        src = Path(p.get("reference") or "")
+        if not src.exists():
+            raise RuntimeError("Add the video to dub (press + and choose the video).")
+        self._say(p, "analyse", "Listening to the video", 5)
+        segs, code = self.eng.transcribe_segments(src)
+        if not segs:
+            raise RuntimeError("Could not hear any speech in the video. Dubbing needs the Script AI add-on (it includes speech-to-text).")
+        src_lang = dub.LANG_NAMES.get(code, code or "")
+        target = p.get("language") or "English"
+        p["dub"] = {"from": src_lang, "to": target, "segments": segs, "seconds": dub.probe(src)["duration"]}
+        if p.get("title") in (None, "", "New ad"):
+            p["title"] = f"{(p.get('idea') or 'Video')[:40]} - {target} dub"
+        p["log"].append(time.strftime("%H:%M:%S ") + f"Heard {len(segs)} sentences in {src_lang or 'the video'}")
+        self._done(p, "analyse")
+        self._say(p, "plan", f"Translating {len(segs)} sentences into {target}", 20)
+        from . import llm
+        lines = planner.translate_lines(self.cfg, [s["text"] for s in segs], src_lang, target, p.get("idea", ""))
+        llm.unload()
+        p = self.store.load(pid)
+        for s, t in zip(p["dub"]["segments"], lines):
+            s["dub"] = t
+        self._done(p, "plan")
+        if self._review_stop(p):
+            return
+        self._dub_finish(pid)
+
+    def _dub_finish(self, pid):
+        from . import addons, dub
+        p = self.store.load(pid)
+        d = self.store.dir(pid)
+        src = Path(p["reference"])
+        segs = p["dub"]["segments"]
+        target = p["dub"]["to"]
+        self._say(p, "voice", f"Recording {len(segs)} lines in {target}", 40)
+        raw = [{"text": s.get("dub") or s["text"], "out": str(d / f"dubraw{i:03d}.wav")} for i, s in enumerate(segs)]
+        self.eng.speak_many(raw, target, p.get("voice_gender", "female"), p.get("voice_style", "warm"))
+        total = p["dub"].get("seconds") or dub.probe(src)["duration"]
+        lines, sped = [], 0
+        for i, (s, slot) in enumerate(zip(segs, dub.slots(segs, total))):
+            E.check_stop()
+            f = d / f"dub{i:03d}.wav"
+            length = dub.fit(Path(raw[i]["out"]), f, slot)
+            sped += length < (dub.probe(Path(raw[i]["out"]))["duration"] - 0.05)
+            lines.append({"file": str(f), "at": s["start"]})
+        self._done(p, "voice")
+        self._say(p, "edit", "Keeping the background and mixing", 85)
+        bg, vol = None, 0.12
+        whole = dub.extract_audio(src, d / "dub_original.wav")
+        if addons.stems_installed():
+            try:
+                found = addons.split_stems(whole, d / "dub_stems", two=True)
+                bg, vol = Path(found.get("no_vocals") or ""), 1.0
+                if not bg.exists():
+                    bg, vol = whole, 0.12
+            except Exception as e:
+                p["log"].append(time.strftime("%H:%M:%S ") + "Background split skipped: " + str(e)[:120])
+                bg, vol = whole, 0.12
+        else:
+            bg = whole
+            p["log"].append(time.strftime("%H:%M:%S ") + "Tip: install Song stems to remove the original voice and keep only the music.")
+        safe = "".join(ch for ch in p["title"] if ch.isalnum() or ch in " -_").strip() or "dubbed"
+        out = dub.mix(src, bg, vol, lines, d / f"{safe} - dubbed.mp4")
+        p = self.store.load(pid)
+        p["final"] = str(out)
+        p["status"], p["progress"] = "done", 100
+        if sped:
+            p["log"].append(time.strftime("%H:%M:%S ") + f"{sped} line(s) were sped up a little to fit their moment. Shorter wording fits better (✎ Edit).")
+        self._done(p, "edit")
+        p["log"].append(time.strftime("%H:%M:%S ") + "Finished: " + out.name)
         self.store.save(p)
 
     def _undo_all(self, pid):

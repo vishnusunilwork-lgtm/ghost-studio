@@ -15,6 +15,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 KEEP = {".venv", "projects", "config.local.yaml", ".ghost", ".git"}
+# Files older versions shipped that are no longer used (removed on update; never your ads or settings)
+OBSOLETE = ["install.sh", "run.sh", "run.bat", "install.ps1"]
 _cache: dict = {"t": 0.0, "data": None}
 
 
@@ -118,6 +120,10 @@ def apply() -> str:
             shutil.copytree(item, dst, dirs_exist_ok=True)
         else:
             shutil.copy2(item, dst)
+    for name in OBSOLETE:
+        f = ROOT / name
+        if f.is_file() and not (src / name).exists():
+            f.unlink(missing_ok=True)
     try:
         os.chmod(ROOT / "Start Ghost Studio.command", 0o755)
     except Exception:

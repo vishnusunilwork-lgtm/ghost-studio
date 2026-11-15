@@ -28,6 +28,8 @@ You act through tools. Rules:
 - When the person asks for something you can do with a tool, call the tool. Do not just describe it.
 - Pictures, shots and takes are numbered from 1, as the person sees them. "this one"/"it" means the open project.
 - Use change_* to edit the SAME picture/shot/song. Use retake/new take only when they want a different one.
+- "More pictures like this", "the same for Diwali", "a new set", "another song like this" = create_project with same_as = the open project's id.
+- "Replace / redo the part from 0:30 to 0:45" = replace_song_part. "Separate the vocals" = split_song_stems.
 - Several steps are fine: call the tools one after another.
 - Only say something was done if a tool result says so. If a tool reports an error, fix the call or ask.
 - create_project, delete_project, start_again and changes to ALL items wait for the person's OK; the app asks them.
@@ -123,7 +125,10 @@ def describe(p: dict | None) -> str:
         ed = f" changed: {', '.join(c['edits'][-2:])}" if c.get("edits") else ""
         lines.append(f"shot {i}: \"{(c.get('line') or '')[:70]}\"{ed}")
     for t in p.get("tracks") or []:
-        lines.append(f"song take {t.get('n')}" + (f" (from take {t['from']}: {t['change']})" if t.get("change") else ""))
+        lines.append(f"song take {t.get('n')} ({float(t.get('seconds') or 0):.0f} s)" + (f" (from take {t['from']}: {t['change']})" if t.get("change") else "")
+                     + (" stems ready" if t.get("stems") else ""))
+    if p.get("dub"):
+        lines.append(f"dub {p['dub'].get('from')} -> {p['dub'].get('to')}, {len(p['dub'].get('segments') or [])} lines")
     if (p.get("undo") or []):
         lines.append("last change to all: " + p["undo"][-1].get("what", ""))
     return "\n".join(lines)[:3000]

@@ -104,14 +104,15 @@ def complexity(text: str) -> float:
 
 
 def pick_models(cfg: dict) -> tuple[str, str]:
-    """(fast, careful) from what is installed: smallest and biggest text model."""
-    have = sorted(llm.text_models(), key=llm.size_of)
-    want = cfg.get("models", {}).get("llm", "qwen2.5:7b")
+    """(fast, careful): the newest model family installed; its smallest for speed, its biggest for care."""
+    have = llm.text_models()
     if not have:
         return "", ""
-    prefer = [m for m in have if m.startswith(("qwen2.5", "qwen3", "llama3"))] or have
-    careful = want if want in have else prefer[-1]
-    fast = prefer[0] if llm.size_of(prefer[0]) <= 4 else careful
+    best = min(llm.family_rank(m) for m in have)
+    fam = sorted([m for m in have if llm.family_rank(m) == best], key=llm.size_of)
+    want = cfg.get("models", {}).get("llm", "")
+    careful = want if want in fam else fam[-1]
+    fast = fam[0] if llm.size_of(fam[0]) <= 5 else careful
     return fast, careful
 
 

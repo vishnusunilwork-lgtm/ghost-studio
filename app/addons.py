@@ -1,8 +1,11 @@
 """Ghost add-ons: free generators that install once and then run on this computer.
 
+  script   : Qwen 3.5 / 3.6 in Ollama (Apache 2.0)  understands you, writes scripts, lyrics and prompts
   pictures : FLUX.2 klein 4B (Apache 2.0)          photo-real images
-  music    : ACE-Step 1.5 (MIT)                    songs with vocals in 50+ languages, or instrumentals
-  motion   : Wan 2.2 TI2V 5B (Apache 2.0)          real AI movement from a picture (big computers only)
+  realism  : Z-Image-Turbo (Apache 2.0)            most realistic pictures
+  music    : ACE-Step 1.5 (MIT)                    songs with vocals in 50+ languages, covers, replace a part
+  voices   : Indic Parler-TTS (Apache 2.0)         natural Malayalam, Hindi, Tamil… narration, voice described in words
+  stems    : Demucs (MIT)                          split a song into vocals, drums, bass and the rest
 
 Every add-on shows real progress while it installs, and can be re-run safely (it skips what is done).
 Ghost talks to each one directly; nothing leaves this computer except the one-time downloads.
@@ -73,7 +76,8 @@ def _folder_bytes(p: Path) -> int:
 
 def _hf_size(repo: str) -> int:
     try:
-        req = urllib.request.Request(f"https://huggingface.co/api/models/{repo}?blobs=true", headers={"User-Agent": "GhostStudio"})
+        req = urllib.request.Request(f"https://huggingface.co/api/models/{repo}?blobs=true",
+                                     headers={"User-Agent": "GhostStudio", **({"Authorization": "Bearer " + hf_token()} if hf_token() else {})})
         with urllib.request.urlopen(req, timeout=30) as r:
             d = json.loads(r.read())
         return sum((s.get("size") or 0) for s in d.get("siblings", []))
@@ -238,9 +242,19 @@ def install_realism(cfg):
 
 
 # ---------------------------------------------------------------- add-on: script AI (Ollama model)
-def _script_model() -> str:
+def _script_models() -> tuple[list[str], list[str], list[str]]:
+    """(main choices, fast choices, vision choices), newest first. Older Ollama apps can't run the newest
+    families, so each list falls back to a model they can run."""
     m = memory_gb()
-    return "qwen2.5:14b" if m >= 32 else "qwen2.5:7b" if m >= 12 else "qwen2.5:3b"
+    if m >= 32:
+        main = ["qwen3.6:35b-a3b", "qwen3.5:35b-a3b", "qwen3.5:9b", "qwen2.5:14b"]
+    elif m >= 15:
+        main = ["qwen3.5:9b", "qwen2.5:7b"]
+    else:
+        main = ["qwen3.5:4b", "qwen2.5:3b"]
+    fast = ["qwen3.5:4b", "qwen2.5:3b"] if m >= 15 else []
+    vision = ["qwen3-vl:8b", "qwen2.5vl:7b"] if m >= 24 else ["qwen3-vl:4b", "qwen2.5vl:3b"]
+    return main, fast, vision
 
 
 def ollama_up() -> bool:
@@ -257,7 +271,16 @@ def script_installed(cfg=None) -> bool:
     if importlib.util.find_spec("faster_whisper") is None:
         return False
     have = llm.installed()
-    return any(h.split(":")[0] in ("qwen2.5", "qwen3", "llama3.1", "llama3.2", "gemma2", "gemma3", "mistral") for h in have)
+    return any(h.split(":")[0] in ("qwen2.5", "qwen3", "qwen3.5", "qwen3.6", "llama3.1", "llama3.2", "gemma2", "gemma3", "mistral") for h in have)
+
+
+def script_upgrade() -> str:
+    """Text shown when an older script AI (Qwen 2.5) is installed and the newer one would understand people better."""
+    from . import llm
+    have = llm.installed()
+    if have and script_installed() and not any(h.startswith(("qwen3.5", "qwen3.6")) for h in have):
+        return "Upgrade to Qwen 3.5: understands you better in Talk to Ghost. Replaces Qwen 2.5 and frees its space."
+    return ""
 
 
 def _ollama_pull(aid, model, lo, hi):
@@ -277,17 +300,49 @@ def _ollama_pull(aid, model, lo, hi):
                 _set(aid, pct=round(lo + (hi - lo) * done / tot, 1), detail=f"{done / 1e9:.1f} of {tot / 1e9:.1f} GB")
 
 
+def _pull_first(aid, choices, lo, hi) -> str:
+    """Pull the first model this Ollama can run (newest first)."""
+    last = ""
+    for m in choices:
+        try:
+            _ollama_pull(aid, m, lo, hi)
+            return m
+        except Exception as e:  # e.g. "requires a newer version of Ollama" or not in the library
+            last = str(e)[:200]
+    raise RuntimeError("Could not download a script model: " + last + ". Update the Ollama app, then try again.")
+
+
+def _ollama_delete(model):
+    try:
+        req = urllib.request.Request("http://127.0.0.1:11434/api/delete", data=json.dumps({"model": model}).encode(),
+                                     headers={"Content-Type": "application/json"}, method="DELETE")
+        urllib.request.urlopen(req, timeout=60).read()
+    except Exception:
+        pass
+
+
 def install_script(cfg):
     aid = "script"
     if not ollama_up():
         raise RuntimeError("Ollama is not running. Install it free from ollama.com, open it once, then press Install again.")
-    model = _script_model()
-    _ollama_pull(aid, model, 0, 65)
-    _ollama_pull(aid, "qwen2.5vl:3b" if memory_gb() < 24 else "qwen2.5vl:7b", 65, 90)  # eyes for the quality check
-    # ears for reference ads: speech-to-text (faster-whisper, MIT)
+    from . import llm
+    before = llm.installed()
+    main, fast, vision = _script_models()
+    model = _pull_first(aid, main, 0, 55)
+    if fast and model not in fast:
+        try:
+            _pull_first(aid, fast, 55, 70)  # small and quick: Talk to Ghost answers simple requests with it
+        except Exception:
+            pass
+    _pull_first(aid, vision, 70, 90)  # eyes: quality check of pictures, reading reference ads
+    # ears for reference ads and dubbing: speech-to-text (faster-whisper, MIT)
     _pip(aid, ["faster-whisper"], 90, 93)
     _hf_download(aid, "Systran/faster-whisper-small", 93, 100)
     cfg["models"]["llm"] = model
+    if model.startswith("qwen3"):  # the newer family is in: remove the old one Ghost installed (frees 5-15 GB)
+        for old in before:
+            if old.startswith(("qwen2.5:", "qwen2.5vl:")):
+                _ollama_delete(old)
 
 
 # ---------------------------------------------------------------- add-on: music (ACE-Step 1.5)
@@ -436,7 +491,8 @@ class MusicServer:
     @classmethod
     def generate(cls, *, caption: str, lyrics: str, seconds: float, language: str, out_dir: Path, takes: int = 2,
                  seed: int = -1, bpm: int | None = None, describe: str = "", fast: bool = False, log=lambda m: None,
-                 src_audio: str | None = None, cover_strength: float = 0.5) -> list[dict]:
+                 src_audio: str | None = None, cover_strength: float = 0.5, task: str = "cover",
+                 repaint: tuple[float, float] | None = None) -> list[dict]:
         cls.start(log)
         body = {"prompt": caption, "lyrics": lyrics or "[Instrumental]", "audio_duration": max(10, min(600, float(seconds))),
                 "vocal_language": language or "unknown", "audio_format": "mp3", "batch_size": max(1, min(4, takes)),
@@ -446,9 +502,12 @@ class MusicServer:
         if describe:  # the music engine writes caption + lyrics itself
             body.update({"sample_mode": True, "sample_query": describe})
             body.pop("lyrics", None)
-        if src_audio:  # "Change": keep this song's melody and words, change its sound (ACE-Step cover mode)
+        if src_audio and task == "repaint" and repaint:  # "Replace a part": re-make only start..end, keep the rest
+            body.update({"task_type": "repaint", "src_audio_path": str(src_audio), "repainting_start": float(repaint[0]),
+                         "repainting_end": float(repaint[1]), "thinking": False})
+        elif src_audio:  # "Change" / "Cover my song": keep the melody (and words), change the sound (ACE-Step cover mode)
             body.update({"task_type": "cover", "src_audio_path": str(src_audio),
-                         "audio_cover_strength": max(0.1, min(1.0, float(cover_strength)))})
+                         "audio_cover_strength": max(0.1, min(1.0, float(cover_strength))), "thinking": False})
         task = cls._post("/release_task", body)
         tid = task.get("task_id") if isinstance(task, dict) else task
         t0 = time.time()
@@ -484,37 +543,135 @@ class MusicServer:
         return out
 
 
-# ---------------------------------------------------------------- add-on: motion (Wan 2.2 TI2V 5B)
-WAN = "Wan-AI/Wan2.2-TI2V-5B-Diffusers"
+# ---------------------------------------------------------------- isolated engines
+# Voices and stems each get their own small Python (like the music engine), so their library versions can never
+# break the picture models. Ghost talks to them through a tiny worker script.
+WORKERS = Path(__file__).resolve().parent / "workers"
 
 
-def motion_fits() -> tuple[bool, str]:
-    v = cuda_vram_gb()
-    if v:
-        return (v >= 12, "" if v >= 12 else f"Needs an NVIDIA card with 12 GB or more (this one has {v} GB).")
-    m = memory_gb()
-    if IS_MAC and platform.machine() == "arm64":
-        return (m >= 32, "" if m >= 32 else f"Needs a Mac with 32 GB memory or more (this one has {m:.0f} GB).")
-    return (False, "Needs an Apple M-chip Mac with 32 GB+ or an NVIDIA graphics card.")
+def _engine_py(name: str) -> Path:
+    d = ENGINES / name / ".venv"
+    return d / ("Scripts/python.exe" if IS_WIN else "bin/python")
 
 
-def motion_installed(cfg=None) -> bool:
+def _make_engine(aid: str, name: str, pkgs: list[str], lo: float, hi: float):
+    uv = _get_uv(aid)
+    root = ENGINES / name
+    root.mkdir(parents=True, exist_ok=True)
+    if not _engine_py(name).exists():
+        _run_streamed(aid, [uv, "venv", "--python", "3.11", str(root / ".venv")], lo=lo, hi=lo + 3, label="Preparing")
+    _run_streamed(aid, [uv, "pip", "install", "--python", str(_engine_py(name)), *pkgs], lo=lo + 3, hi=hi, label="Installing")
+
+
+def run_worker(name: str, script: str, job: dict, timeout: int = 3600) -> dict:
+    """Run one job in an engine's own Python. job/answer are JSON; errors come back as text."""
+    env = {**os.environ, "HF_HUB_DISABLE_TELEMETRY": "1", "PYTORCH_ENABLE_MPS_FALLBACK": "1"}
+    if hf_token():
+        env["HF_TOKEN"] = hf_token()
+    r = subprocess.run([str(_engine_py(name)), str(WORKERS / script)], input=json.dumps(job), capture_output=True, text=True,
+                       timeout=timeout, env=env)
     try:
-        import diffusers  # noqa: F401
+        out = json.loads((r.stdout.strip().splitlines() or ["{}"])[-1])
     except Exception:
-        return False
-    return _hf_cached(WAN)
+        out = {}
+    if r.returncode != 0 or out.get("error"):
+        raise RuntimeError(out.get("error") or (r.stderr or "worker failed")[-400:])
+    return out
 
 
-def install_motion(cfg):
-    _pip("motion", ["torch", "transformers", "diffusers>=0.43.0", "accelerate", "sentencepiece", "safetensors", "huggingface_hub",
-                    "imageio", "imageio-ffmpeg", "ftfy"], 0, 15)
-    _hf_download("motion", WAN, 15, 100)
+# ---------------------------------------------------------------- add-on: natural voices (Indic Parler-TTS)
+VOICES = "ai4bharat/indic-parler-tts"
+HF_TOKEN = {"v": ""}  # free Hugging Face read token: AI4Bharat asks people to accept its terms before downloading
 
 
-# ---------------------------------------------------------------- registry
+def hf_token() -> str:
+    return HF_TOKEN["v"] or os.environ.get("HF_TOKEN", "")
+
+
+def voices_access() -> str:
+    """'' if the voice model can be downloaded with the saved token, else a plain-words reason."""
+    try:
+        req = urllib.request.Request(f"https://huggingface.co/api/models/{VOICES}/tree/main",
+                                     headers={"User-Agent": "GhostStudio", **({"Authorization": "Bearer " + hf_token()} if hf_token() else {})})
+        with urllib.request.urlopen(req, timeout=20):
+            pass
+        req = urllib.request.Request(f"https://huggingface.co/{VOICES}/resolve/main/config.json",
+                                     headers={"User-Agent": "GhostStudio", **({"Authorization": "Bearer " + hf_token()} if hf_token() else {})})
+        with urllib.request.urlopen(req, timeout=20):
+            return ""
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            return "needs_token" if not hf_token() else "needs_agree"
+        return f"Hugging Face answered {e.code}. Try again later."
+    except Exception as e:
+        return "No internet: " + str(e)[:80]
+
+
+def voices_installed(cfg=None) -> bool:
+    return _engine_py("voices").exists() and _hf_cached(VOICES)
+
+
+def install_voices(cfg):
+    why = voices_access()
+    if why == "needs_token":
+        raise RuntimeError("The voice model's makers (AI4Bharat) ask for a free Hugging Face account. Paste your free token below, then press Install again.")
+    if why == "needs_agree":
+        raise RuntimeError("Open huggingface.co/ai4bharat/indic-parler-tts while signed in, press “Agree and access”, then press Install again.")
+    if why:
+        raise RuntimeError(why)
+    base = ["torch", "soundfile", "numpy", "huggingface_hub"]
+    try:  # the released package first (PyPI); the newest source if that fails
+        _make_engine("voices", "voices", base + ["parler-tts==0.2.3"], 0, 30)
+    except Exception:
+        _make_engine("voices", "voices", base + ["parler-tts @ https://github.com/huggingface/parler-tts/archive/refs/heads/main.tar.gz"], 0, 30)
+    _set("voices", step="Downloading the voice model", detail="Checking size…")
+    total = _hf_size(VOICES)
+    err: list = []
+    th = threading.Thread(target=lambda: _safe(lambda: run_worker("voices", "voice_worker.py", {"download": True}, 7200), err), daemon=True)
+    th.start()
+    _watch_download("voices", _hf_cache(VOICES), total, 30, 100, th.is_alive)
+    if err:
+        raise RuntimeError(err[0])
+
+
+def speak_natural(lines: list[dict], device: str) -> dict:
+    """lines: [{text, lang, voice, style, out}] — the model loads once for all of them."""
+    return run_worker("voices", "voice_worker.py", {"lines": lines, "device": device})
+
+
+# ---------------------------------------------------------------- add-on: stems (Demucs)
+def stems_installed(cfg=None) -> bool:
+    return _engine_py("stems").exists() and (ENGINES / "stems" / "ready").exists()
+
+
+def install_stems(cfg):
+    _make_engine("stems", "stems", ["torch", "torchaudio", "soundfile", "demucs"], 0, 80)
+    _set("stems", step="Downloading the separation model", detail="about 80 MB")
+    r = subprocess.run([str(_engine_py("stems")), "-c", "from demucs.pretrained import get_model; get_model('htdemucs')"],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError("Could not download the stems model: " + r.stderr[-300:])
+    (ENGINES / "stems" / "ready").write_text("htdemucs")
+
+
+def split_stems(src: Path, out_dir: Path, two: bool = False) -> dict:
+    """Vocals, drums, bass and the rest as MP3s (htdemucs, MIT). two=True: just vocals + everything else (for dubbing)."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    dev = "cuda" if cuda_vram_gb() else "cpu"  # Demucs on CPU works on every Mac
+    cmd = [str(_engine_py("stems")), "-m", "demucs", "-n", "htdemucs", "-d", dev, "--mp3", "-o", str(out_dir)]
+    if two:
+        cmd += ["--two-stems", "vocals"]
+    r = subprocess.run(cmd + [str(src)], capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError("Stem split failed: " + r.stderr[-300:])
+    found = {f.stem: str(f) for f in (out_dir / "htdemucs" / Path(src).stem).glob("*.mp3")}
+    if not found:
+        raise RuntimeError("Stem split made no files")
+    return found
+
+
 ADDONS = {
-    "script": {"name": "Script AI", "desc": "Writes scripts, lyrics and every prompt, and checks each picture for bad hands and eyes. Qwen 2.5 in Ollama (Apache 2.0).",
+    "script": {"name": "Script AI", "desc": "Understands you in Talk to Ghost, writes scripts, lyrics and every prompt, translates for dubbing, and checks each picture for bad hands and eyes. Qwen 3.5 in Ollama (Apache 2.0).",
                "size": "about 8 GB", "time": "a few seconds per script", "install": install_script, "installed": script_installed,
                "fits": lambda: (ollama_up(), "" if ollama_up() else "Needs the free Ollama app: get it at ollama.com, open it, then come back.")},
     "realism": {"name": "Best pictures", "desc": "Most realistic people, hands and eyes for Final pictures. Z-Image-Turbo (Apache 2.0). Draft keeps the fast model.",
@@ -524,12 +681,16 @@ ADDONS = {
     "pictures": {"name": "AI pictures", "desc": "Photo-real images for shots and Images only. FLUX.2 klein (Apache 2.0).",
                  "size": "about 10 GB", "time": "about 10–35 s per picture on a Mac", "install": install_pictures, "installed": pictures_installed,
                  "fits": lambda: ((memory_gb() >= 16 or cuda_vram_gb() >= 8), "" if (memory_gb() >= 16 or cuda_vram_gb() >= 8) else "Needs 16 GB memory or more.")},
-    "music": {"name": "Music & songs", "desc": "Songs with vocals in Hindi and 50+ languages, or instrumentals, in any style. ACE-Step 1.5 (MIT).",
+    "music": {"name": "Music & songs", "desc": "Songs with vocals in Hindi and 50+ languages or instrumentals, covers of your own tune or humming, and replacing any part of a song. ACE-Step 1.5 (MIT).",
               "size": "about 15 GB", "time": "about 5–10 min per song on a Mac, under a minute on NVIDIA", "install": install_music, "installed": music_installed,
               "fits": lambda: ((memory_gb() >= 16 or cuda_vram_gb() >= 6), "" if (memory_gb() >= 16 or cuda_vram_gb() >= 6) else "Needs 16 GB memory or more.")},
-    "motion": {"name": "AI motion video", "desc": "Real AI movement from each picture (no speech; a narrator speaks). Wan 2.2 (Apache 2.0). Experimental.",
-               "size": "about 25 GB", "time": "about 10–20 min per shot on a 32 GB Mac", "install": install_motion, "installed": motion_installed,
-               "fits": motion_fits},
+    "voices": {"name": "Natural voices", "desc": "Human-sounding narration in Malayalam, Hindi, Tamil, English and more Indian languages, "
+               "female or male, warm, excited, calm or announcer. Used for ads and dubbing. Indic Parler-TTS (Apache 2.0).",
+               "size": "about 6 GB", "time": "a few seconds per sentence", "install": install_voices, "installed": voices_installed,
+               "fits": lambda: ((memory_gb() >= 8 or cuda_vram_gb() >= 4), "" if (memory_gb() >= 8 or cuda_vram_gb() >= 4) else "Needs 8 GB memory or more.")},
+    "stems": {"name": "Song stems", "desc": "Split any song into vocals, drums, bass and the rest. Also lets dubbing keep the background music. Demucs (MIT).",
+              "size": "about 2 GB", "time": "about 1–2 min per song", "install": install_stems, "installed": stems_installed,
+              "fits": lambda: (True, "")},
 }
 
 
@@ -543,8 +704,15 @@ def listing(cfg) -> list[dict]:
             installed = a["installed"](cfg) and st["state"] != "running"
         except Exception:
             pass
+        up = ""
+        if aid == "script" and installed:
+            try:
+                up = script_upgrade()
+            except Exception:
+                pass
+        token = aid == "voices" and not installed and not hf_token()
         out.append({"id": aid, "name": a["name"], "desc": a["desc"], "size": a["size"], "time": a["time"], "fits": ok, "why": why,
-                    "installed": installed, **st})
+                    "installed": installed and not up, "upgrade": up, "needs_token": token, **st})
     return out
 
 

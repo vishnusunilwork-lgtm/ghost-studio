@@ -2,9 +2,10 @@
 
   images   : NVIDIA GPU  ->  Mac image AI (if installed)  ->  video service (if a key is added)
              ->  your own photos  ->  simple colour cards
-  video    : video service (if a key is added)  ->  NVIDIA GPU (LTX-2)
+  video    : video service (if a key is added)
              ->  "photo motion" (the image + your camera moves; works on every computer)
-  narrator : Mac built-in voices (free, offline)  ->  Kokoro (if installed)  ->  test tone
+  narrator : Natural voices add-on (Indic Parler-TTS: Malayalam, Hindi, Tamil… described voices)
+             ->  Mac / Windows built-in voices  ->  test tone
 
 No key is needed. A key only unlocks real moving video with speech.
 """
@@ -220,7 +221,6 @@ class Engines:
         self.cfg = cfg
         self.mock = force_mock
         self.fal = Fal(cfg)
-        self.allow_motion = False  # AI motion is very slow on a Mac: only when a project asks for it
 
     # which maker is used for each step (shown in the app)
     def plan(self) -> dict:
@@ -228,8 +228,8 @@ class Engines:
         local_img = not self.mock and image_ai_installed() and (cuda or gpu_info().get("mps"))
         return {
             "image": "service" if (self.fal.on and not self.mock) else "nvidia" if cuda else "local" if local_img else "photos",
-            "video": "service" if self.fal.on and not self.mock else "nvidia" if cuda else "motion" if (not self.mock and self.allow_motion and _motion_ready()) else "photo_motion",
-            "voice": "mac" if shutil.which("say") else "windows" if platform.system() == "Windows" else "kokoro" if _has("kokoro") else "tone",
+            "video": "service" if self.fal.on and not self.mock else "photo_motion",
+            "voice": "natural" if (not self.mock and _voices_ready()) else "mac" if shutil.which("say") else "windows" if platform.system() == "Windows" else "tone",
         }
 
     @property
@@ -239,7 +239,7 @@ class Engines:
     @property
     def talks(self) -> bool:
         """Can the video itself speak with lip-sync?"""
-        return self.plan()["video"] in ("service", "nvidia")
+        return self.plan()["video"] == "service"
 
     # ------------------------------------------------------------ images
     def image(self, prompt: str, out: Path, width: int, height: int, seed: int = 0,
@@ -431,42 +431,7 @@ class Engines:
             Fal.download(r["video"]["url"], out)
             Spend.add(cost)
             return out
-        if how == "nvidia":
-            return self._ltx(image, prompt, seconds, out, seed, width, height, steps)
-        if how == "motion":
-            try:
-                return self._wan(image, prompt, seconds, out, seed, aspect)
-            except Exception as e:  # never lose the ad: fall back to photo motion for this shot
-                free()
-                print("AI motion failed, using photo motion:", e)
         return self.photo_clip(image, seconds, out, width, height)
-
-    def _wan(self, image, prompt, seconds, out, seed, aspect):
-        """AI motion with Wan 2.2 TI2V 5B (Apache 2.0). No speech: a narrator speaks over it."""
-        import torch
-        from diffusers.utils import export_to_video, load_image
-        from . import addons
-
-        def load():
-            import diffusers
-            vae = diffusers.AutoencoderKLWan.from_pretrained(addons.WAN, subfolder="vae", torch_dtype=torch.float32)
-            p = diffusers.WanImageToVideoPipeline.from_pretrained(addons.WAN, vae=vae, torch_dtype=torch.bfloat16)
-            if _device() == "cuda":
-                p.enable_model_cpu_offload()
-            else:
-                p.to(_device())
-            return p
-        pipe = _pipe("motion", load)
-        big = _device() == "cuda" and addons.cuda_vram_gb() >= 20
-        long_side, short_side = (1280, 704) if big else (832, 480)
-        w, h = (short_side, long_side) if aspect in ("9:16", "4:5") else (long_side, short_side) if aspect == "16:9" else (short_side + 64, short_side + 64)
-        frames = int(min(121 if big else 49, 4 * round(min(seconds, 5.0) * 24 / 4) + 1))
-        img = load_image(str(image)).resize((w, h))
-        res = pipe(image=img, prompt=prompt, height=h, width=w, num_frames=frames, guidance_scale=5.0, callback_on_step_end=_step_cb,
-                   negative_prompt="text, subtitles, watermark, logo, blurry, distorted face, extra fingers, static, jittery",
-                   num_inference_steps=30 if big else 16, generator=torch.Generator("cpu").manual_seed(int(seed) % 2**31)).frames[0]
-        export_to_video(res, str(out), fps=24)
-        return out
 
     def _photo_only(self, image, seconds, out, width, height):
         return self.photo_clip(image, seconds, out, width, height)
@@ -482,35 +447,18 @@ class Engines:
               "-c:v", "libx264", "-preset", "veryfast", "-crf", "12", "-c:a", "aac", "-shortest", str(out)])
         return out
 
-    def _ltx(self, image, prompt, seconds, out, seed, width, height, steps):
-        import torch
-        from diffusers.utils import encode_video, load_image
-        q = self.cfg["quality"]
-        mid = self.cfg["models"]["video"]
-
-        def load():
-            from diffusers import LTX2ImageToVideoPipeline
-            p = LTX2ImageToVideoPipeline.from_pretrained(mid, torch_dtype=torch.bfloat16)
-            p.enable_model_cpu_offload()
-            return p
-        pipe = _pipe("video", load)
-        fps = float(q["fps"])
-        frames = int(8 * round(seconds * fps / 8) + 1)
-        video, audio = pipe(image=load_image(str(image)), prompt=prompt, callback_on_step_end=_step_cb,
-                            negative_prompt="worst quality, inconsistent motion, blurry, jittery, distorted face, extra fingers, text, subtitles, watermark, logo",
-                            width=int(width or q["video_width"]), height=int(height or q["video_height"]), num_frames=frames,
-                            frame_rate=fps, num_inference_steps=int(steps or q["video_steps"]), guidance_scale=3.0,
-                            generator=torch.Generator("cpu").manual_seed(seed), output_type="np", return_dict=False)
-        encode_video(video[0], fps=int(fps), audio=audio[0].float().cpu(),
-                     audio_sample_rate=pipe.vocoder.config.output_sampling_rate, output_path=str(out))
-        return out
-
     # ------------------------------------------------------------ narrator
     MAC_VOICES = {"Hindi": ["Lekha"], "English": ["Rishi", "Veena", "Samantha"], "Tamil": ["Vani"],
                   "Telugu": ["Geeta"], "Kannada": ["Soumya"], "Marathi": ["Lekha"], "Bengali": ["Piya"]}
 
-    def speech(self, text: str, out: Path, lang: str = "Hindi") -> Path:
+    def speech(self, text: str, out: Path, lang: str = "Hindi", voice: str = "female", style: str = "warm") -> Path:
         how = self.plan()["voice"]
+        if how == "natural":
+            try:
+                return self._natural(text, out, lang, voice, style)
+            except Exception as e:  # never lose the ad: fall back to the built-in voice
+                print("Natural voice failed, using the built-in voice:", e)
+                how = "mac" if shutil.which("say") else "windows" if platform.system() == "Windows" else "tone"
         if how == "mac" and not self.mock:
             have = subprocess.run(["say", "-v", "?"], capture_output=True, text=True).stdout
             pick = (self.cfg.get("models", {}).get("mac_voice") or "").strip()
@@ -536,18 +484,40 @@ class Engines:
             _run(["powershell", "-NoProfile", "-Command", ps])
             tf.unlink(missing_ok=True)
             return out
-        if how == "kokoro" and not self.mock:
-            import numpy as np
-            import soundfile as sf
-            from kokoro import KPipeline
-            code = {"Hindi": "h", "English": "a"}.get(lang, "h")
-            tts = _pipe("tts:" + code, lambda: KPipeline(lang_code=code))
-            sf.write(str(out), np.concatenate([a for _, _, a in tts(text, voice=self.cfg["models"]["tts_voice"])]), 24000)
-            return out
         secs = max(1.5, len(text.split()) / 2.4)
         _run([ffmpeg_bin(), "-y", "-loglevel", "error", "-f", "lavfi", "-i", "sine=frequency=520:sample_rate=24000",
               "-af", "volume=0.2", "-t", f"{secs:.2f}", str(out)])
         return out
+
+    def _natural(self, text, out, lang, voice, style):
+        from . import addons
+        dev = "cuda" if has_cuda() else "mps" if gpu_info().get("mps") else "cpu"
+        addons.speak_natural([{"text": text, "lang": lang, "voice": voice, "style": style, "out": str(out)}], dev)
+        return out
+
+    def speak_many(self, lines: list[dict], lang: str, voice: str = "female", style: str = "warm") -> None:
+        """Many lines in one go (dubbing): with Natural voices the model loads once. lines: [{text, out}]"""
+        if self.plan()["voice"] == "natural":
+            from . import addons
+            dev = "cuda" if has_cuda() else "mps" if gpu_info().get("mps") else "cpu"
+            try:
+                addons.speak_natural([{**ln, "lang": lang, "voice": voice, "style": style} for ln in lines], dev)
+                return
+            except Exception as e:
+                print("Natural voices failed, using the built-in voice:", e)
+        for ln in lines:
+            check_stop()
+            self.speech(ln["text"], Path(ln["out"]), lang, voice, style)
+
+    def transcribe_segments(self, media: Path) -> tuple[list[dict], str]:
+        """Speech to text with timings (for dubbing): [{start, end, text}], detected language."""
+        if self.mock or not _has("faster_whisper"):
+            return [], ""
+        from faster_whisper import WhisperModel
+        size = self.cfg["models"]["whisper"] if has_cuda() else "small"
+        m = _pipe("whisper", lambda: WhisperModel(size, device="cuda" if has_cuda() else "cpu", compute_type="float16" if has_cuda() else "int8"))
+        segs, info = m.transcribe(_pcm16k(media), language=None, vad_filter=True)
+        return [{"start": round(s.start, 2), "end": round(s.end, 2), "text": s.text.strip()} for s in segs if s.text.strip()], info.language
 
     def transcribe(self, media: Path) -> str:
         if self.mock or not _has("faster_whisper"):
@@ -555,7 +525,7 @@ class Engines:
         from faster_whisper import WhisperModel
         size = self.cfg["models"]["whisper"] if has_cuda() else "small"
         m = _pipe("whisper", lambda: WhisperModel(size, device="cuda" if has_cuda() else "cpu", compute_type="float16" if has_cuda() else "int8"))
-        segs, _ = m.transcribe(str(media), language=None, vad_filter=True)
+        segs, _ = m.transcribe(_pcm16k(media), language=None, vad_filter=True)
         return " ".join(s.text.strip() for s in segs)
 
 
@@ -576,10 +546,19 @@ def _realism_ready() -> bool:
         return False
 
 
-def _motion_ready() -> bool:
+def _pcm16k(media: Path):
+    """Decode any audio/video with ffmpeg (the one Ghost already uses) into what Whisper reads: 16 kHz mono floats.
+    Avoids depending on the PyAV version installed alongside."""
+    import numpy as np
+    raw = subprocess.run([ffmpeg_bin(), "-v", "error", "-i", str(media), "-ac", "1", "-ar", "16000", "-f", "f32le", "-"],
+                         capture_output=True, check=True).stdout
+    return np.frombuffer(raw, dtype=np.float32).copy()
+
+
+def _voices_ready() -> bool:
     try:
         from . import addons
-        return addons.motion_installed() and addons.motion_fits()[0]
+        return addons.voices_installed()
     except Exception:
         return False
 
