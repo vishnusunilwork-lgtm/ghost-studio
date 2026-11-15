@@ -68,6 +68,10 @@ Tested: a real "today news in trivandrum" question answered from 8 live headline
 - **Fast mode uses the smallest current model** for prompts; Quality uses the larger one.
 - **Models stay in memory:** on computers with 32 GB or more, the script AI stays loaded while pictures are made. The picture model is pre-loaded at start on 16 GB+. The chat model loads when the Talk drawer opens.
 
+## Talking pictures (v3.16, free mode)
+
+`talk.py`: the picture AI makes a mouth-open version of each speaking shot. The two pictures are compared and only the changed area (the mouth) is blended in with a soft edge, so nothing else flickers. If the edit changed too much, Ghost skips it. The voice's loudness, measured 24× a second, switches mouth closed/open (held at least 2 frames, so it looks like syllables). The editor then adds the camera move. It's a puppet-style effect; real action needs the video service.
+
 ## Media engines: the same ideas as Gemini, ElevenLabs and Suno, with free models
 
 The big services publish what they do, not their code or weights. Ghost uses the same published ideas with

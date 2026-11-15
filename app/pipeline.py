@@ -235,6 +235,7 @@ class Runner:
         self._videos(pid)
         # 5 narration
         self._voice(pid)
+        self._talk(pid)
         # 6 AI background music (if chosen and the music add-on is installed)
         self._music_for_ad(pid)
         # 6 edit
@@ -383,6 +384,51 @@ class Runner:
             c["narration_file"] = str(f)
         self._done(p, "voice")
 
+    def _talk(self, pid):
+        """Free mode: make each speaking character's mouth move with its voice (see talk.py)."""
+        from . import talk
+        p = self.store.load(pid)
+        if (p.get("engine_plan") or {}).get("video") != "photo_motion" or p.get("talking") is False or not self.eng.can_edit() or self.eng.mock:
+            return
+        speak = [c for c in p["clips"] if c.get("narration_file") and c.get("line") and not c.get("narration")]
+        if not speak:
+            return
+        d = self.store.dir(pid)
+        q = self.cfg["quality"]
+        (gw, gh), _, draft = sizes(p)
+        looks = {pp.get("key"): pp.get("look", "") for pp in (p.get("plan") or {}).get("people") or []}
+        made: dict[str, str | None] = {}
+        for n, c in enumerate(speak):
+            self._say(p, "voice", f"Making the mouths move with the voices ({n + 1} of {len(speak)})", 86 + int(4 * n / len(speak)))
+            closed = c.get("image") or (p.get("person_images") or {}).get(c.get("speaker")) or p.get("image")
+            if not closed or not Path(closed).exists():
+                continue
+            if c.get("video") and Path(c["video"]).name.startswith("talk") and Path(c["video"]).exists():
+                continue  # already talking
+            ready = d / f"{Path(closed).stem}_talk.png"
+            if closed not in made and ready.exists():
+                made[closed] = str(ready)
+            if closed not in made:
+                who = (looks.get(c.get("speaker")) or "the character").split(",")[0][:80]
+                try:
+                    made[closed] = str(talk.mouth_frame(self.eng, Path(closed), d / f"{Path(closed).stem}_talk.png", who) or "") or None
+                except E.Cancelled:
+                    raise
+                except Exception as e:
+                    p["log"].append(time.strftime("%H:%M:%S ") + "Talking mouth skipped: " + str(e)[:120])
+                    made[closed] = None
+            if not made[closed]:
+                continue
+            i = p["clips"].index(c)
+            out = d / f"talk{i + 1:02d}_{c['seed']}.mp4"
+            try:
+                talk.talk_clip(Path(closed), Path(made[closed]), Path(c["narration_file"]), float(c["seconds"]), out,
+                               int(q["fps"]), gw, gh)
+                p["clips"][i]["video"] = str(out)
+            except Exception as e:
+                p["log"].append(time.strftime("%H:%M:%S ") + "Talking shot skipped: " + str(e)[:120])
+            self.store.save(p)
+
     def _edit(self, pid):
         p = self.store.load(pid)
         d = self.store.dir(pid)
@@ -435,6 +481,7 @@ class Runner:
                              [Path(r) for r in p.get("refs") or []], Path(p["image"]))
         self.store.save(p)
         self._videos(pid, only=i)
+        self._talk(pid)
         self._edit(pid)
 
     def _reedit(self, pid):
@@ -561,6 +608,7 @@ class Runner:
             self._images(pid)
         self._videos(pid, resume=True)
         self._voice(pid)
+        self._talk(pid)
         self._music_for_ad(pid)
         self._edit(pid)
 
@@ -778,6 +826,7 @@ class Runner:
             self._videos(pid)
         else:
             self._videos(pid, only=i)
+        self._talk(pid)
         self._edit(pid)
 
     def _change_song(self, pid, n: int, instruction: str, strength: float = 0.5):
@@ -1015,4 +1064,5 @@ class Runner:
         self._images(pid)
         self._videos(pid)
         self._voice(pid)
+        self._talk(pid)
         self._edit(pid)
