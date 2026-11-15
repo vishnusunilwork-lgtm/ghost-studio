@@ -83,6 +83,19 @@ def test_google():
         assert "limit" in str(e)
     eng = E.Engines({"api": {"google_key": "k" * 39}, "quality": {}})
     assert eng.cloud and eng.plan()["video"] == "service" and eng.plan()["image"] == "service"
+    # the console's settings: model, 1080p (8 s clips), no audio, 2 results, text-to-video
+    E.Spend.f = Path(tempfile.mkdtemp()) / "spend.json"
+    g3 = E.Google({"api": {"google_key": "k" * 39, "google_project": "my-proj-1", "google_tier": "fast", "google_resolution": "1080p",
+                           "google_audio": False, "google_takes": 2, "google_mode": "text", "monthly_limit_usd": 50}})
+    g3._prefixes = lambda m, locs: [f"{base}/v1/projects/my-proj-1/locations/{locs[0]}/publishers/google/models/{m}"]
+    H.polls = 0
+    SEEN.clear()
+    g3.video(d / "a.png", "train at night", 5, d / "t.mp4")
+    body = [b for p, b, k in SEEN if p.endswith(":predictLongRunning")][0]
+    pr = body["parameters"]
+    assert "veo-3.1-fast" in [p for p, b, k in SEEN if p.endswith(":predictLongRunning")][0]
+    assert pr["durationSeconds"] == 8 and pr["resolution"] == "1080p" and pr["generateAudio"] is False and pr["sampleCount"] == 2
+    assert "image" not in body["instances"][0] and abs(E.Spend.month()["usd"] - 8 * 0.10 * 2) < 1e-6
     # a key from a project where Vertex AI is off: Ghost explains the fix and makes pictures on this computer instead
     g2 = E.Google({"api": {"google_key": "k" * 39, "google_project": "my-proj-1"}})
     err = E.GoogleError(403, "Agent Platform API has not been used in project 78328758841 before or it is disabled. Enable it by visiting x")

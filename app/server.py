@@ -126,7 +126,9 @@ def status():
             "makers": RUNNER.eng.plan(), "addons": _addon_summary(), "current": _current(),
             "api": {"on": f.on, "key_end": f.key[-4:] if f.on else "", "limit": f.limit, "spent": m["usd"],
                     "price": f.price, "model": f.video_model},
-            "google": {"on": RUNNER.eng.goog.on, "problem": RUNNER.eng.goog.broken, "signin": RUNNER.eng.goog.auth == "gcloud", "project": RUNNER.eng.goog.project, "key": bool(RUNNER.eng.goog.key),
+            "google": {"on": RUNNER.eng.goog.on, "problem": RUNNER.eng.goog.broken, "signin": RUNNER.eng.goog.auth == "gcloud",
+                       "tier": RUNNER.eng.goog.tier, "resolution": RUNNER.eng.goog.resolution, "audio": RUNNER.eng.goog.audio,
+                       "takes": RUNNER.eng.goog.takes, "mode": RUNNER.eng.goog.mode, "seconds": RUNNER.eng.goog.fixed_len, "project": RUNNER.eng.goog.project, "key": bool(RUNNER.eng.goog.key),
                        "key_end": RUNNER.eng.goog.key[-4:] if RUNNER.eng.goog.key else "", "model": RUNNER.eng.goog.model,
                        "price": RUNNER.eng.goog.price, "limit": RUNNER.eng.goog.limit, "spent": m["usd"]},
             "brain": {"on": llm.cloud_on(), "model": (llm.ready() or [{}])[0].get("model", ""), "n": len(llm.CHAIN),
@@ -443,6 +445,12 @@ def set_search(body: Search):
 
 
 class ApiSettings(BaseModel):
+    google_tier: str | None = None
+    google_resolution: str | None = None
+    google_audio: bool | None = None
+    google_takes: int | None = None
+    google_mode: str | None = None
+    google_seconds: int | None = None
     fal_key: str | None = None
     google_key: str | None = None
     google_project: str | None = None
@@ -480,6 +488,17 @@ def set_api(body: ApiSettings):
             a["google_project"] = pr
         if body.google_location:
             a["google_location"] = body.google_location.strip()
+    for k, ok in (("google_tier", ("lite", "fast", "standard")), ("google_resolution", ("720p", "1080p", "4k")),
+                  ("google_mode", ("image", "text"))):
+        val = getattr(body, k)
+        if val is not None and val in ok:
+            a[k] = val
+    if body.google_audio is not None:
+        a["google_audio"] = bool(body.google_audio)
+    if body.google_takes is not None:
+        a["google_takes"] = max(1, min(4, int(body.google_takes)))
+    if body.google_seconds is not None:
+        a["google_seconds"] = body.google_seconds if body.google_seconds in (0, 4, 6, 8) else 0
     if body.monthly_limit_usd is not None:
         a["monthly_limit_usd"] = max(1.0, min(5000.0, float(body.monthly_limit_usd)))
     LOCAL.write_text(yaml.safe_dump(loc, allow_unicode=True), encoding="utf-8")

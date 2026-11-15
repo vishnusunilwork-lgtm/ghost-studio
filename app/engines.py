@@ -267,10 +267,17 @@ class Google:
         self.key = (a.get("google_key") or "").strip()
         self.project = (a.get("google_project") or "").strip()
         self.location = (a.get("google_location") or "us-central1").strip()
-        self.video_models = [a["google_video_model"]] if a.get("google_video_model") else list(self.VIDEO)
+        tier = a.get("google_tier") or "lite"  # lite | fast | standard (the console's "Model")
+        first = {"lite": self.VIDEO[0], "fast": self.VIDEO[1], "standard": self.VIDEO[2]}.get(tier, self.VIDEO[0])
+        self.video_models = [a["google_video_model"]] if a.get("google_video_model") else [first] + [m for m in self.VIDEO if m != first]
+        self.tier = tier
+        self.audio = a.get("google_audio", True) is not False          # "Generate audio"
+        self.takes = max(1, min(4, int(a.get("google_takes") or 1)))  # "Number of results"
+        self.mode = a.get("google_mode") or "image"                   # "Task": image-to-video (same look) | text-to-video
+        self.fixed_len = int(a.get("google_seconds") or 0)            # "Video length": 0 = fit each line, else 4 / 6 / 8
         self.image_models = [a["google_image_model"]] if a.get("google_image_model") else list(self.IMAGE)
         self.resolution = a.get("google_resolution") or "720p"
-        self.price = float(a.get("google_price_per_second") or 0.05)  # Veo 3.1 Lite, 720p with sound
+        self.price_override = float(a.get("google_price_per_second") or 0)
         self.image_price = float(a.get("google_price_per_image") or 0.04)
         self.limit = float(a.get("monthly_limit_usd") or 20)
         self.works: dict[str, tuple[str, str]] = {}  # kind -> (model, url prefix) that answered last time
@@ -386,6 +393,17 @@ class Google:
                     raise RuntimeError(f"Google Cloud error {e.code}: {e.msg[:200]}") from None
         raise RuntimeError(f"Google Cloud: no {kind} model answered ({last.code}: {last.msg[:200]})" if last else "Google Cloud: not set up")
 
+    # USD per second of video (Google's list prices; Lite as shown in your console, Fast/Standard approximate)
+    PRICES = {("lite", "720p", True): 0.05, ("lite", "1080p", True): 0.08, ("lite", "720p", False): 0.03, ("lite", "1080p", False): 0.05,
+              ("fast", "720p", True): 0.15, ("fast", "1080p", True): 0.15, ("fast", "4k", True): 0.35,
+              ("fast", "720p", False): 0.10, ("fast", "1080p", False): 0.10, ("fast", "4k", False): 0.30,
+              ("standard", "720p", True): 0.40, ("standard", "1080p", True): 0.40, ("standard", "4k", True): 0.60,
+              ("standard", "720p", False): 0.20, ("standard", "1080p", False): 0.20, ("standard", "4k", False): 0.40}
+
+    @property
+    def price(self) -> float:
+        return self.price_override or self.PRICES.get((self.tier, self.resolution, self.audio), 0.40)
+
     def check_budget(self, usd: float):
         m = Spend.month()
         if m["usd"] + usd > self.limit:
@@ -421,12 +439,20 @@ class Google:
         raise RuntimeError(f"Google made no picture ({why}). Try different words.")
 
     def video(self, image: Path, prompt: str, seconds: float, out: Path, seed: int = 0, aspect: str = "9:16") -> Path:
-        dur = 4 if seconds <= 4 else 6 if seconds <= 6 else 8
-        cost = dur * self.price
+        dur = self.fixed_len or (4 if seconds <= 4 else 6 if seconds <= 6 else 8)
+        res = self.resolution
+        if self.tier == "lite" and res == "4k":
+            res = "1080p"  # Lite stops at 1080p
+        if res != "720p":
+            dur = 8  # Google makes 1080p / 4K only as 8-second clips (the editor trims to the shot)
+        cost = dur * self.price * self.takes
         self.check_budget(cost)
-        body = {"instances": [{"prompt": prompt, "image": {"bytesBase64Encoded": self._b64(image), "mimeType": "image/jpeg"}}],
-                "parameters": {"aspectRatio": "16:9" if aspect == "16:9" else "9:16", "durationSeconds": dur, "generateAudio": True,
-                               "resolution": self.resolution, "sampleCount": 1, "personGeneration": "allow_all",
+        inst = {"prompt": prompt}
+        if self.mode != "text" and image and Path(image).exists():  # image-to-video keeps the same person and place in every shot
+            inst["image"] = {"bytesBase64Encoded": self._b64(image), "mimeType": "image/jpeg"}
+        body = {"instances": [inst],
+                "parameters": {"aspectRatio": "16:9" if aspect == "16:9" else "9:16", "durationSeconds": dur, "generateAudio": self.audio,
+                               "resolution": res, "sampleCount": self.takes, "personGeneration": "allow_all",
                                "seed": int(seed) % 2**32, "negativePrompt": "text, subtitles, watermark, logo, distorted face, extra fingers"}}
         try:
             op, pre = self._call("video", self.video_models, [self.location], "predictLongRunning", body)
@@ -449,19 +475,20 @@ class Google:
                 n = res.get("raiMediaFilteredCount")
                 why = "; ".join(res.get("raiMediaFilteredReasons") or []) if n else "no video returned"
                 raise RuntimeError("Google's safety check stopped this shot (" + why[:200] + "). Change the words or the picture.")
-            v = vids[0]
-            if v.get("bytesBase64Encoded"):
-                out.write_bytes(base64.b64decode(v["bytesBase64Encoded"]))
-            elif v.get("uri") or v.get("gcsUri"):
-                u = v.get("uri") or v.get("gcsUri")
-                if u.startswith("gs://"):
-                    b, _, name = u[5:].partition("/")
-                    u = f"https://storage.googleapis.com/storage/v1/b/{b}/o/{urllib.parse.quote(name, safe='')}?alt=media"
-                req = urllib.request.Request(u, headers=self._headers())
-                with urllib.request.urlopen(req, timeout=300) as r, open(out, "wb") as f:
-                    shutil.copyfileobj(r, f)
-            else:
-                raise RuntimeError("Google video: unexpected answer")
+            for k, v in enumerate(vids):  # take 1 is the shot; the others are kept next to it as alternatives
+                dst = out if k == 0 else out.with_name(f"{out.stem}_take{k + 1}{out.suffix}")
+                if v.get("bytesBase64Encoded"):
+                    dst.write_bytes(base64.b64decode(v["bytesBase64Encoded"]))
+                elif v.get("uri") or v.get("gcsUri"):
+                    u = v.get("uri") or v.get("gcsUri")
+                    if u.startswith("gs://"):
+                        b, _, name = u[5:].partition("/")
+                        u = f"https://storage.googleapis.com/storage/v1/b/{b}/o/{urllib.parse.quote(name, safe='')}?alt=media"
+                    req = urllib.request.Request(u, headers=self._headers())
+                    with urllib.request.urlopen(req, timeout=300) as r, open(dst, "wb") as f:
+                        shutil.copyfileobj(r, f)
+                elif k == 0:
+                    raise RuntimeError("Google video: unexpected answer")
             Spend.add(cost)
             return out
         raise RuntimeError("Google video took more than 15 minutes")

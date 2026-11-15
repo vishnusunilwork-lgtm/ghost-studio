@@ -1,3 +1,4 @@
+3.28.0: The same video settings as the Google Cloud console, under ⚙ → Google Cloud: model (Veo 3.1 Lite / Fast / best), resolution (720p, 1080p, 4K), image-to-video or text-to-video, video length, results per shot (1–4) and generate audio, with the price per second shown.
 3.27.1: The Sign in with Google button now also shows when an older API key is saved (it replaces the key).
 3.27.0: Sign in with Google — no API key. ⚙ → Google Cloud: type your project id and press Sign in with Google. Google’s normal sign-in page opens in your browser; choose your work account, press Allow, and Ghost uses Veo video and Gemini pictures with your access. Ghost never sees your password.
 3.26.1: If your Google Cloud key is not ready (for example Vertex AI is turned off in its project), Ghost no longer stops with an error: it says exactly what to turn on (with the link) and makes the pictures and video on this computer meanwhile.

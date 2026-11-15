@@ -517,6 +517,15 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
         <p class="note">No key? Leave it empty and sign in once with the Google Cloud CLI (<code>gcloud auth login</code>). The key stays only on this computer.</p></div>
       <div id="gOn" class="hidden"><p class="note" id="gInfo"></p>
         <button class="btn solid hidden" id="gSignin2" style="width:100%;margin-bottom:8px">Sign in with Google instead (no key)</button>
+        <div id="gVeo" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:4px 0 10px">
+          <label class="note" style="padding:0">Model<select class="inp" id="gvTier"><option value="lite">Veo 3.1 Lite (cheapest)</option><option value="fast">Veo 3.1 Fast</option><option value="standard">Veo 3.1 (best)</option></select></label>
+          <label class="note" style="padding:0">Resolution<select class="inp" id="gvRes"><option value="720p">720p</option><option value="1080p">1080p</option><option value="4k">4K (Fast / best only)</option></select></label>
+          <label class="note" style="padding:0">Task<select class="inp" id="gvMode"><option value="image">Image-to-video (same person in every shot)</option><option value="text">Text-to-video</option></select></label>
+          <label class="note" style="padding:0">Video length<select class="inp" id="gvLen"><option value="0">Fit each line (4, 6 or 8 s)</option><option value="4">4 seconds</option><option value="6">6 seconds</option><option value="8">8 seconds</option></select></label>
+          <label class="note" style="padding:0">Results per shot<select class="inp" id="gvTakes"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></label>
+          <label class="note" style="padding:0;display:flex;align-items:center;gap:8px;margin-top:18px"><input type="checkbox" id="gvAudio"> Generate audio</label>
+          <p class="note" id="gvCost" style="grid-column:1/-1;margin:0;padding:0"></p>
+        </div>
         <button class="btn" id="gTest" style="width:100%">Test again</button>
         <button class="btn" id="gRemove" style="margin-top:8px;width:100%">Disconnect Google Cloud (back to free)</button></div>
     </div>
@@ -718,11 +727,14 @@ function kv(){if(!ST)return;const m=ST.models||{},mk=ST.makers||{},a=ST.api||{};
   addPoll();
   $('#apiOff').classList.toggle('hidden',!!a.on);$('#apiOn').classList.toggle('hidden',!a.on);
   if(a.on){$('#apiInfo').textContent=`Connected (key …${a.key_end}) · this month: $${(a.spent||0).toFixed(2)} of $${a.limit} · about $${(a.price*30).toFixed(2)} per 30-second ad`;$('#apiLimit').value=a.limit}
-  const g=ST.google||{};const gset=g.on||!!g.problem;$('#gSignin2').classList.toggle('hidden',!!g.signin);$('#gOff').classList.toggle('hidden',gset);$('#gOn').classList.toggle('hidden',!gset);
+  const g=ST.google||{};const gset=g.on||!!g.problem;$('#gVeo').classList.toggle('hidden',!g.on);if(g.on){$('#gvTier').value=g.tier||'lite';$('#gvRes').value=g.resolution||'720p';$('#gvMode').value=g.mode||'image';$('#gvLen').value=String(g.seconds||0);$('#gvTakes').value=String(g.takes||1);$('#gvAudio').checked=g.audio!==false;$('#gvCost').textContent=`≈ $${(g.price||0).toFixed(2)} per second of video${(g.takes||1)>1?` × ${g.takes} results`:''} · a 30-second ad ≈ $${((g.price||0)*30*(g.takes||1)).toFixed(2)}`+((g.resolution||'720p')!=='720p'?' · 1080p/4K shots are made as 8-second clips':'')}$('#gSignin2').classList.toggle('hidden',!!g.signin);$('#gOff').classList.toggle('hidden',gset);$('#gOn').classList.toggle('hidden',!gset);
   if(g.signin&&!g.problem&&g.on){api('/api/google/signin').then(st=>{$('#gInfo').innerHTML=`Signed in with Google${st.account?' as <b>'+esc(st.account)+'</b>':''} (no key) · project ${esc(g.project||'')} · ${esc(g.model)} · this month: $${(g.spent||0).toFixed(2)} of $${g.limit}`}).catch(()=>{})}
   else if(g.problem){$('#gInfo').innerHTML='<b style="color:#ff8a8a">Not ready.</b> '+esc(g.problem).replace(/(https:\/\/[^\s—]+)/,'<a href="$1" target="_blank" rel="noopener">open the switch</a>')+' Then press Test again.'}
   else if(g.on){$('#gInfo').textContent=`Connected · project ${g.project||'(key only)'}${g.key?' · key …'+g.key_end:' · CLI sign-in'} · ${g.model} · this month: $${(g.spent||0).toFixed(2)} of $${g.limit} · about $${(g.price*20).toFixed(2)} per 20-second ad`}}
 let GST=null;
+['gvTier','gvRes','gvMode','gvLen','gvTakes','gvAudio'].forEach(id=>$('#'+id).onchange=async()=>{const b={google_tier:$('#gvTier').value,google_resolution:$('#gvRes').value,google_mode:$('#gvMode').value,google_seconds:+$('#gvLen').value,google_takes:+$('#gvTakes').value,google_audio:$('#gvAudio').checked};
+  if(b.google_tier==='lite'&&b.google_resolution==='4k'){b.google_resolution='1080p';toast('Veo 3.1 Lite goes up to 1080p')}
+  try{await api('/api/settings/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});await status();kv();toast('Video settings saved')}catch(e){toast(e.message)}});
 $('#gSignin2').onclick=()=>{const g=(ST&&ST.google)||{};const pr=prompt('Your Google Cloud project id (where the Veo page works for you):',/^[a-z][a-z0-9-]{4,61}[a-z0-9]$/.test(g.project||'')&&!/^projects\d/.test(g.project||'')?g.project:'prj-mt-p-ads-genai-services');
   if(!pr)return;$('#gProject').value=pr.trim();$('#gOff').classList.remove('hidden');$('#gOn').classList.add('hidden');$('#gSignin').click()};
 $('#gSignin').onclick=async()=>{const pr=$('#gProject').value.trim();if(!pr){toast('Type the project id first');$('#gProject').focus();return}
