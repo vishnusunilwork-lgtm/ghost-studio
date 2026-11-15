@@ -90,6 +90,24 @@ def free():
         pass
 
 
+def free_all():
+    """Before a separate big engine (AI motion) runs: drop every picture model, MLX ones included."""
+    free()
+    if _MLX_POOL is not None:
+        def clear():
+            _LOADED.clear()
+            gc.collect()
+            try:
+                import mlx.core as mx
+                mx.clear_cache()
+            except Exception:
+                pass
+        try:
+            _mlx(clear)
+        except Exception:
+            pass
+
+
 def _device():
     import torch
     if torch.cuda.is_available():
@@ -433,7 +451,7 @@ class Engines:
         local_img = not self.mock and image_ai_installed() and (cuda or gpu_info().get("mps"))
         return {
             "image": "service" if self.cloud else "nvidia" if cuda else "local" if local_img else "photos",
-            "video": "service" if self.cloud else "photo_motion",
+            "video": "service" if self.cloud else "local_motion" if (not self.mock and _motion_ready()) else "photo_motion",
             "voice": "natural" if (not self.mock and _voices_ready()) else "mac" if shutil.which("say") else "windows" if platform.system() == "Windows" else "tone",
         }
 
@@ -770,6 +788,14 @@ def _pcm16k(media: Path):
     raw = subprocess.run([ffmpeg_bin(), "-v", "error", "-i", str(media), "-ac", "1", "-ar", "16000", "-f", "f32le", "-"],
                          capture_output=True, check=True).stdout
     return np.frombuffer(raw, dtype=np.float32).copy()
+
+
+def _motion_ready() -> bool:
+    try:
+        from . import addons
+        return addons.motion_installed()
+    except Exception:
+        return False
 
 
 def _voices_ready() -> bool:

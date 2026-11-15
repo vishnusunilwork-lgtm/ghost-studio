@@ -100,6 +100,29 @@ and takes roughly 20 s per second of video even with the MLX port; and the face 
 has non-commercial model weights. Wav2Lip is non-commercial. It may be added later as an optional add-on for human
 presenters, after testing on a Mac.
 
+## AI motion on this Mac (v3.21)
+
+Three ways Ghost makes a shot, picked automatically: **Google Cloud / video service** (Veo 3.1: motion, sound,
+lip-sync) → **AI motion on this Mac** (add-on) → **photo motion** (pictures + camera moves, talking mouths).
+
+The AI motion add-on runs **FastMetal-5B-QAD** (Hao AI Lab, FastVideo, Apache 2.0): Wan2.2-TI2V-5B (Apache 2.0)
+distilled from ~50 denoising steps to 3 and quantised to INT8 for Apple's MLX. Its makers measured, on an M4 Max
+with 36 GB, about 151 s for a 5-second 720p clip and about 47 s in fast mode (half the frames, the rest filled in by
+RIFE frame interpolation); a 24 GB M5 MacBook Air took about 90–200 s. Peak memory about 9 GB.
+
+How Ghost uses it (`addons.make_motion` → `workers/motion_worker.py`, its own Python 3.12):
+- every shot of the ad in ONE run: the text encoder (UMT5, on the CPU) encodes all shot descriptions once, then the
+  video model loads once and makes the shots one after another (the stock script loads both per shot);
+- the picture model is dropped from memory first (`engines.free_all`);
+- each prompt = framing + the shot's subject/place/action + its motion, Indian words spelled out (knowledge.py),
+  spoken lines removed (the model has no sound; Ghost adds voice and music);
+- Fast = 832×448 with frame interpolation; Quality = 1280×704;
+- ✨ Change on a moving shot adds the change to its description and re-makes it; Pause stops the run at once;
+- the clip's first frame becomes the shot's picture.
+
+Limits: text-to-video only in the released Mac build (no starting picture), so the same character can differ a little
+between shots; no lip-sync. Wan2.2 on a Mac without this distilled model took over an hour for 2 seconds.
+
 ## Your own Google Cloud (v3.20)
 
 Why a free local Ghost can't match Veo in seconds: Veo, Gemini image, Seedance and the models behind Higgsfield are

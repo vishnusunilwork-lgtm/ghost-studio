@@ -6,6 +6,7 @@
   music    : ACE-Step 1.5 (MIT)                    songs with vocals in 50+ languages, covers, replace a part
   voices   : Indic Parler-TTS (Apache 2.0)         natural Malayalam, Hindi, Tamil… narration, voice described in words
   stems    : Demucs (MIT)                          split a song into vocals, drums, bass and the rest
+  motion   : FastMetal-5B (Wan2.2, Apache 2.0)     real moving video on an Apple-chip Mac, no cloud
 
 Every add-on shows real progress while it installs, and can be re-run safely (it skips what is done).
 Ghost talks to each one directly; nothing leaves this computer except the one-time downloads.
@@ -671,6 +672,113 @@ def split_stems(src: Path, out_dir: Path, two: bool = False) -> dict:
     return found
 
 
+# ---------------------------------------------------------------- add-on: AI motion (FastMetal-5B on Apple chips)
+# Real moving video on the Mac itself: Wan2.2-TI2V-5B (Apache 2.0) distilled by Hao AI Lab to 3 steps + INT8 for MLX
+# (FastVideo, Apache 2.0). Measured by its makers on an M4 Max 36 GB: about 47 s (fast) to 151 s (720p) per 5 s shot.
+MOTION_SRC_COMMIT = "1a41551d529c1298d0600a2e394f9537219748ea"  # FastVideo main, 14 Nov 2026 (pinned: tested layout)
+MOTION_REPO = "FastVideo/FastMetal-5B-QAD"
+MOTION_DIR = ENGINES / "motion"
+
+
+def motion_fits() -> tuple[bool, str]:
+    if not (IS_MAC and platform.machine() == "arm64"):
+        return False, "Needs a Mac with an Apple chip (M1 or newer). With an NVIDIA computer or no Mac, use Google Cloud or the video service."
+    if memory_gb() and memory_gb() < 16:
+        return False, "Needs 16 GB memory or more."
+    return True, ""
+
+
+def motion_installed(cfg=None) -> bool:
+    return _engine_py("motion").exists() and (MOTION_DIR / "ready").exists()
+
+
+def install_motion(cfg):
+    ok, why = motion_fits()
+    if not ok:
+        raise RuntimeError(why)
+    uv = _get_uv("motion")
+    MOTION_DIR.mkdir(parents=True, exist_ok=True)
+    src = MOTION_DIR / "src"
+    if not (src / "pyproject.toml").exists():
+        _set("motion", step="Downloading the motion engine code", detail="FastVideo (Apache 2.0)")
+        tgz = MOTION_DIR / "src.tgz"
+        urllib.request.urlretrieve(f"https://codeload.github.com/hao-ai-lab/FastVideo/tar.gz/{MOTION_SRC_COMMIT}", tgz)
+        tmp = MOTION_DIR / "src_tmp"
+        shutil.rmtree(tmp, ignore_errors=True)
+        with tarfile.open(tgz) as t:
+            t.extractall(tmp, filter="data")
+        top = next(tmp.iterdir())
+        shutil.rmtree(src, ignore_errors=True)
+        top.rename(src)
+        shutil.rmtree(tmp, ignore_errors=True)
+        tgz.unlink(missing_ok=True)
+    _set("motion", pct=4)
+    if not _engine_py("motion").exists():
+        _run_streamed("motion", [uv, "venv", "--python", "3.12", str(MOTION_DIR / ".venv")], lo=4, hi=6, label="Preparing")
+    _run_streamed("motion", [uv, "pip", "install", "--python", str(_engine_py("motion")), "-e", f"{src}[mlx]"],
+                  lo=6, hi=30, label="Installing (about 4 GB)")
+    model = MOTION_DIR / "FastMetal-5B-QAD"
+    _set("motion", step="Downloading the motion model", detail="Checking size…")
+    total = _hf_size(MOTION_REPO)
+    err: list = []
+    th = threading.Thread(target=lambda: _safe(lambda: run_worker("motion", "motion_worker.py", {"download": True, "model": str(model)}, 14400), err),
+                          daemon=True)
+    th.start()
+    _watch_download("motion", model, total, 30, 100, th.is_alive)
+    if err:
+        raise RuntimeError(err[0])
+    (MOTION_DIR / "ready").write_text(MOTION_REPO)
+
+
+def make_motion(shots: list[dict], width: int, height: int, fast: bool, on_progress=None, cancelled=None) -> list[str]:
+    """All shots of an ad in one run (the models load once). shots: [{prompt, out, seconds, seed}]."""
+    job = {"src": str(MOTION_DIR / "src"), "model": str(MOTION_DIR / "FastMetal-5B-QAD"), "shots": shots,
+           "width": width, "height": height, "fast": fast}
+    env = {**os.environ, "HF_HUB_DISABLE_TELEMETRY": "1", "PYTORCH_ENABLE_MPS_FALLBACK": "1", "TOKENIZERS_PARALLELISM": "false",
+           "FASTVIDEO_ATTENTION_BACKEND": "TORCH_SDPA", "PYTHONPATH": str(MOTION_DIR / "src")}
+    p = subprocess.Popen([str(_engine_py("motion")), str(WORKERS / "motion_worker.py")], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                         stderr=subprocess.PIPE, text=True, env=env, cwd=str(MOTION_DIR / "src"))
+    p.stdin.write(json.dumps(job))
+    p.stdin.close()
+    err_tail: list[str] = []
+
+    def drain():
+        for x in p.stderr:
+            err_tail.append(x)
+            del err_tail[:-40]
+    threading.Thread(target=drain, daemon=True).start()
+
+    def watch():  # Pause / Update stop the model run straight away, not at the end of a shot
+        while p.poll() is None:
+            if cancelled and cancelled():
+                p.kill()
+            time.sleep(1)
+    threading.Thread(target=watch, daemon=True).start()
+    last: dict = {}
+    try:
+        for line in p.stdout:
+            try:
+                ev = json.loads(line)
+            except Exception:
+                continue
+            last = ev
+            if on_progress and ev.get("progress"):
+                on_progress(ev)  # may raise Pause/Cancel: the model run is stopped below
+            if cancelled and cancelled():
+                break
+    except BaseException:
+        p.kill()
+        raise
+    if not last.get("ok"):
+        p.kill()
+    p.wait()
+    if last.get("ok"):
+        return last["files"]
+    if cancelled and cancelled():
+        raise RuntimeError("AI motion stopped (paused)")
+    raise RuntimeError("AI motion: " + (last.get("error") or "".join(err_tail)[-400:] or "stopped"))
+
+
 ADDONS = {
     "script": {"name": "Script AI", "desc": "Understands you in Talk to Ghost, writes scripts, lyrics and every prompt, translates for dubbing, and checks each picture for bad hands and eyes. Qwen 3.5 in Ollama (Apache 2.0).",
                "size": "about 8 GB", "time": "a few seconds per script", "install": install_script, "installed": script_installed,
@@ -692,6 +800,10 @@ ADDONS = {
     "stems": {"name": "Song stems", "desc": "Split any song into vocals, drums, bass and the rest. Also lets dubbing keep the background music. Demucs (MIT).",
               "size": "about 2 GB", "time": "about 1–2 min per song", "install": install_stems, "installed": stems_installed,
               "fits": lambda: (True, "")},
+    "motion": {"name": "AI motion (on this Mac)", "desc": "Real moving video made on your Mac, no cloud and no cost per video: a dog really walks through the market, "
+               "people move, the camera travels. FastMetal-5B (Wan2.2, Apache 2.0). No sound in the clip: Ghost adds voice and music.",
+               "size": "about 24 GB", "time": "about 1–3 min per shot on M4 Max, slower on older Macs", "install": install_motion,
+               "installed": motion_installed, "fits": motion_fits},
 }
 
 

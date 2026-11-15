@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import queue
 import random
+import re
+import subprocess
 import threading
 import time
 import traceback
@@ -221,7 +223,7 @@ class Runner:
                           seconds=int(p.get("seconds", 30)), voice_mode=p.get("voice_mode", "oncamera"),
                           language=p.get("language"), aspect=p.get("aspect") or "9:16", style=self._style(p, ref),
                           fast=p.get("quality") == "draft", cast=p.get("cast", "auto"),
-                          photo=self.eng.plan()["video"] == "photo_motion")
+                          photo=self.eng.plan()["video"] != "service")
         p["plan"] = {k: v for k, v in pl.items() if k != "clips"}
         p["title"] = p.get("title") if p.get("title") not in (None, "", "New ad") else pl.get("title") or "New ad"
         p["clips"] = [{**c, "status": "waiting", "seed": random.randint(1, 10**6)} for c in pl.get("clips", [])]
@@ -350,6 +352,8 @@ class Runner:
             self.store.save(p)
             self._done(p, "videos")
             return
+        if self.eng.plan()["video"] == "local_motion":
+            return self._motion(p, list(idx), resume, draft, only)
         for i in idx:
             c = p["clips"][i]
             if resume and c.get("video") and c.get("status") == "done" and Path(c["video"]).exists():
@@ -361,6 +365,69 @@ class Runner:
                            width=gw, height=gh, steps=steps, aspect=p.get("aspect") or "9:16")
             c["video"], c["status"] = str(out), "done"
             self.store.save(p)
+        if only is None:
+            self._done(p, "videos")
+
+    MOTION_PROMPT = ("{shot}. {move} Realistic live-action footage shot on a phone camera, natural motion, real physics, "
+                     "natural light, sharp focus, no text, no subtitles, no watermark.")
+
+    def _motion(self, p, idx, resume, draft, only):
+        """AI motion on this Mac: every shot of the ad in one run of the video model (it loads once)."""
+        from . import addons, knowledge
+        d = self.store.dir(p["id"])
+        todo = [i for i in idx if not (resume and p["clips"][i].get("video") and p["clips"][i].get("status") == "done"
+                                       and Path(p["clips"][i]["video"]).exists())]
+        if not todo:
+            if only is None:
+                self._done(p, "videos")
+            return
+        portrait = (p.get("aspect") or "9:16") != "16:9"
+        w, h = (448, 832) if draft else (704, 1280)  # the model's own sizes: fast preview, or 720p
+        if not portrait:
+            w, h = h, w
+        shots, n = [], len(todo)
+        for i in todo:
+            c = p["clips"][i]
+            shot = c.get("image_prompt") or p["plan"].get("image_prompt", "")
+            if i > 0:
+                shot = f"{self.FRAMINGS[i % len(self.FRAMINGS)]}. {shot}"
+            move = re.sub(r"\b(Says|Speaks?)\b.*?(\.|$)", "", c.get("video_prompt") or "")[:300]
+            if c.get("edits"):  # ✨ Change on a moving shot: the change goes into the description, then it is re-made
+                shot += ". " + "; ".join(c["edits"][-4:])
+            prompt = knowledge.apply(self.MOTION_PROMPT.format(shot=shot.strip().rstrip("."), move=move.strip()))
+            out = d / f"clip{i + 1:02d}_{c['seed']}{'_r%d' % c['rev'] if c.get('rev') else ''}{'_draft' if draft else ''}.mp4"
+            shots.append({"prompt": prompt[:1500], "out": str(out), "seconds": min(5.0, float(c.get("seconds") or 4)), "seed": int(c["seed"])})
+        t0 = time.time()
+        done = {"n": 0}
+
+        def prog(ev):
+            k = int(ev.get("i") or 0)
+            if ev.get("seconds"):
+                done["n"] = k
+            el = time.time() - t0
+            eta = f" · about {int(el / done['n'] * (n - done['n']) / 60) + 1} min left" if done["n"] else ""
+            self._say(p, "videos", f"AI motion on this Mac — {ev['progress']}{eta}", 30 + int(50 * min(k, n) / n))
+        E.free_all()  # the picture model leaves memory: the motion model needs it
+        self._say(p, "videos", f"AI motion on this Mac: {n} shot{'s' if n > 1 else ''} (first one also loads the model)", 30)
+        stop = lambda: p["id"] in self.cancel or E.STOP["flag"]  # noqa: E731
+        try:
+            files = addons.make_motion(shots, w, h, fast=draft, on_progress=prog, cancelled=stop)
+        except RuntimeError:
+            if stop():
+                raise E.Cancelled("Paused") from None
+            raise
+        for i, f in zip(todo, files):
+            c = p["clips"][i]
+            c["video"], c["status"] = f, "done"
+            try:  # the clip's first frame is the shot's picture (thumbnail, Change, Retake)
+                from .editor import ffmpeg_bin
+                img = Path(f).with_suffix(".png")
+                subprocess.run([ffmpeg_bin(), "-y", "-v", "error", "-i", f, "-frames:v", "1", str(img)], check=True)
+                c["image"] = str(img)
+            except Exception:
+                pass
+        p["log"].append(time.strftime("%H:%M:%S ") + f"AI motion: {len(files)} shot(s) in {int(time.time() - t0)} s")
+        self.store.save(p)
         if only is None:
             self._done(p, "videos")
 

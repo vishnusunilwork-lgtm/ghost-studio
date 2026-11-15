@@ -677,9 +677,9 @@ async function go(){const text=prompt_.value.trim();$('#goErr').textContent='';
   catch(e){$('#goErr').textContent=e.message;F.set(.18);ready()}}
 
 /* ---------- status / settings / history ---------- */
-const MK={image:{nvidia:'AI images (NVIDIA)',local:'AI images (this Mac)',service:'AI images (cloud: Google or fal)',photos:'Your photos / colour cards'},video:{service:'Real video + speech (cloud: Veo 3.1)',photo_motion:'Photo motion: pictures + camera moves'},voice:{natural:'Natural voices (add-on)',mac:'Mac voice (free, offline)',windows:'Windows voice (free, offline)',tone:'Test tone'}};
+const MK={image:{nvidia:'AI images (NVIDIA)',local:'AI images (this Mac)',service:'AI images (cloud: Google or fal)',photos:'Your photos / colour cards'},video:{service:'Real video + speech (cloud: Veo 3.1)',photo_motion:'Photo motion: pictures + camera moves',local_motion:'AI motion on this Mac (real movement)'},voice:{natural:'Natural voices (add-on)',mac:'Mac voice (free, offline)',windows:'Windows voice (free, offline)',tone:'Test tone'}};
 let VM_TOUCHED=false;
-async function status(){try{ST=await api('/api/status');const mk=ST.makers||{},talk=mk.video!=='photo_motion';
+async function status(){try{ST=await api('/api/status');const mk=ST.makers||{},talk=mk.video==='service';
   if(!VM_TOUCHED&&ST.addons&&ST.addons.music&&ST.addons.music.installed)$('#vmusic').value='1';  // music on by default when it can be made
   $('#sDot').className='dot '+(ST.engine==='mock'?'warn':'ok');
   $('#sText').textContent=ST.engine==='mock'?'Test mode':mk.video==='service'?'Real video · service':'Photo motion';
