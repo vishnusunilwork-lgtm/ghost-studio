@@ -628,7 +628,7 @@ def install_voices(cfg):
     _set("voices", step="Downloading the voice model", detail="Checking size…")
     total = _hf_size(VOICES)
     err: list = []
-    th = threading.Thread(target=lambda: _safe(lambda: run_worker("voices", "voice_worker.py", {"download": True}, 7200), err), daemon=True)
+    th = threading.Thread(target=lambda: _safe(lambda: run_worker("voices", "voice_worker.py", {"download": True, "repo": VOICES}, 7200), err), daemon=True)
     th.start()
     _watch_download("voices", _hf_cache(VOICES), total, 30, 100, th.is_alive)
     if err:
@@ -637,7 +637,7 @@ def install_voices(cfg):
 
 def speak_natural(lines: list[dict], device: str) -> dict:
     """lines: [{text, lang, voice, style, out}] — the model loads once for all of them."""
-    return run_worker("voices", "voice_worker.py", {"lines": lines, "device": device})
+    return run_worker("voices", "voice_worker.py", {"lines": lines, "device": device, "repo": VOICES})
 
 
 # ---------------------------------------------------------------- add-on: stems (Demucs)

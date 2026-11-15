@@ -6,7 +6,7 @@ import json
 import re
 import sys
 
-REPO = "ai4bharat/indic-parler-tts-pretrained"
+REPO = "ai4bharat/indic-parler-tts"  # Ghost passes the exact model in each job ("repo")
 # Named speakers the model card recommends per language (female, male)
 SPEAKERS = {"Malayalam": ("Anjali", "Harish"), "Hindi": ("Divya", "Rohit"), "Tamil": ("Jaya", ""), "English": ("Mary", "Thoma")}
 STYLES = {"warm": "a warm, friendly and expressive tone", "excited": "an excited, energetic and happy tone",
@@ -16,6 +16,8 @@ STYLES = {"warm": "a warm, friendly and expressive tone", "excited": "an excited
 
 def main():
     job = json.loads(sys.stdin.read() or "{}")
+    global REPO
+    REPO = job.get("repo") or REPO
     if job.get("download"):
         from huggingface_hub import snapshot_download
         snapshot_download(REPO)
