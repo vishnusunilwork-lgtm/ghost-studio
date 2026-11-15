@@ -126,7 +126,7 @@ def status():
             "makers": RUNNER.eng.plan(), "addons": _addon_summary(), "current": _current(),
             "api": {"on": f.on, "key_end": f.key[-4:] if f.on else "", "limit": f.limit, "spent": m["usd"],
                     "price": f.price, "model": f.video_model},
-            "google": {"on": RUNNER.eng.goog.on, "problem": RUNNER.eng.goog.broken, "project": RUNNER.eng.goog.project, "key": bool(RUNNER.eng.goog.key),
+            "google": {"on": RUNNER.eng.goog.on, "problem": RUNNER.eng.goog.broken, "signin": RUNNER.eng.goog.auth == "gcloud", "project": RUNNER.eng.goog.project, "key": bool(RUNNER.eng.goog.key),
                        "key_end": RUNNER.eng.goog.key[-4:] if RUNNER.eng.goog.key else "", "model": RUNNER.eng.goog.model,
                        "price": RUNNER.eng.goog.price, "limit": RUNNER.eng.goog.limit, "spent": m["usd"]},
             "brain": {"on": llm.cloud_on(), "model": (llm.ready() or [{}])[0].get("model", ""), "n": len(llm.CHAIN),
@@ -843,6 +843,55 @@ def delete_project(pid: str):
     if d.parent != STORE.root.resolve():
         raise HTTPException(400, "Not a project folder")
     shutil.rmtree(d, ignore_errors=True)
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------- Sign in with Google (no API key)
+class SignIn(BaseModel):
+    project: str
+
+
+@app.post("/api/google/signin")
+def google_signin(body: SignIn):
+    """Installs Google's sign-in tool if needed and opens Google's sign-in page in your browser."""
+    from . import addons
+    pr = body.project.strip()
+    if not re.fullmatch(r"[a-z][a-z0-9-]{4,61}[a-z0-9]", pr):
+        raise HTTPException(400, "Type the project id first, e.g. my-company-project (small letters, numbers, dashes).")
+    if addons._st("gcloud")["state"] == "running":
+        return addons._st("gcloud")
+    loc = _local()
+    a = loc.setdefault("api", {})
+    a["google_project"], a["google_auth"] = pr, "gcloud"
+    a.pop("google_key", None)  # the sign-in replaces a key
+    _save_local(loc)
+    CFG.setdefault("api", {}).update(google_project=pr, google_auth="gcloud")
+    CFG["api"].pop("google_key", None)
+    RUNNER.eng.goog = E.Google(CFG)
+    _th.Thread(target=addons.gcloud_signin, args=(pr,), daemon=True).start()
+    time.sleep(0.3)
+    return addons._st("gcloud")
+
+
+@app.get("/api/google/signin")
+def google_signin_state():
+    from . import addons
+    st = dict(addons._st("gcloud"))
+    st["account"] = addons.gcloud_account() if st.get("state") in ("done", "idle") else ""
+    return st
+
+
+@app.post("/api/google/signout")
+def google_signout():
+    from . import addons
+    addons.gcloud_signout()
+    loc = _local()
+    a = loc.setdefault("api", {})
+    for k in ("google_auth", "google_project"):
+        a.pop(k, None)
+        CFG.get("api", {}).pop(k, None)
+    _save_local(loc)
+    RUNNER.eng.goog = E.Google(CFG)
     return {"ok": True}
 
 

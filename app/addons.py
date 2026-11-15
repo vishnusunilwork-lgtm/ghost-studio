@@ -779,6 +779,103 @@ def make_motion(shots: list[dict], width: int, height: int, fast: bool, on_progr
     raise RuntimeError("AI motion: " + (last.get("error") or "".join(err_tail)[-400:] or "stopped"))
 
 
+# ---------------------------------------------------------------- Sign in with Google (Google Cloud CLI, no API key)
+# Google's own sign-in tool, installed privately for Ghost. You sign in once in your browser (OAuth, with your normal
+# two-step verification); Ghost then gets short-lived passes from it. No key and no password ever reach Ghost.
+GCLOUD_DIR = ENGINES / "gcloud"
+GCLOUD_CFG = GHOST / "gcloud-config"  # Ghost's own sign-in, separate from any gcloud you use yourself
+_GC_URL = "https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-{}"
+
+
+def gcloud_bin() -> str:
+    p = GCLOUD_DIR / "google-cloud-sdk" / "bin" / ("gcloud.cmd" if IS_WIN else "gcloud")
+    return str(p) if p.exists() else ""
+
+
+def gcloud_env() -> dict:
+    return {**os.environ, "CLOUDSDK_CONFIG": str(GCLOUD_CFG), "CLOUDSDK_CORE_DISABLE_USAGE_REPORTING": "true",
+            "CLOUDSDK_PYTHON": os.environ.get("CLOUDSDK_PYTHON") or sys.executable, "CLOUDSDK_CORE_DISABLE_PROMPTS": "1"}
+
+
+def gcloud(*args, timeout: int = 60) -> subprocess.CompletedProcess:
+    return subprocess.run([gcloud_bin(), *args], capture_output=True, text=True, timeout=timeout, env=gcloud_env())
+
+
+def install_gcloud():
+    """Google Cloud CLI, about 55 MB to download (Apache 2.0)."""
+    if gcloud_bin():
+        return
+    arch = platform.machine().lower()
+    name = ("darwin-arm.tar.gz" if arch in ("arm64", "aarch64") else "darwin-x86_64.tar.gz") if IS_MAC else \
+        "windows-x86_64.zip" if IS_WIN else ("linux-arm.tar.gz" if arch in ("arm64", "aarch64") else "linux-x86_64.tar.gz")
+    GCLOUD_DIR.mkdir(parents=True, exist_ok=True)
+    arc = GCLOUD_DIR / ("gc.zip" if name.endswith(".zip") else "gc.tgz")
+    _set("gcloud", state="running", step="Downloading Google's sign-in tool", detail="about 55 MB", pct=5)
+    urllib.request.urlretrieve(_GC_URL.format(name), arc)
+    _set("gcloud", step="Unpacking", pct=70)
+    if name.endswith(".zip"):
+        import zipfile
+        with zipfile.ZipFile(arc) as z:
+            z.extractall(GCLOUD_DIR)
+    else:
+        with tarfile.open(arc) as t:
+            t.extractall(GCLOUD_DIR, filter="data")
+    arc.unlink(missing_ok=True)
+    if not IS_WIN:
+        os.chmod(gcloud_bin(), 0o755)
+    r = gcloud("--version")
+    if r.returncode != 0:
+        raise RuntimeError("Google's sign-in tool didn't start: " + (r.stderr or r.stdout)[-300:])
+    _set("gcloud", pct=100)
+
+
+def gcloud_account() -> str:
+    if not gcloud_bin():
+        return ""
+    try:
+        r = gcloud("config", "get-value", "account", timeout=20)
+        acc = (r.stdout or "").strip()
+        return acc if "@" in acc else ""
+    except Exception:
+        return ""
+
+
+def gcloud_token() -> str:
+    r = gcloud("auth", "print-access-token", timeout=40)
+    tok = (r.stdout or "").strip()
+    if r.returncode != 0 or not tok:
+        raise RuntimeError("Google sign-in has expired or was removed: press Sign in with Google again under ⚙.")
+    return tok
+
+
+def gcloud_signin(project: str):
+    """Opens Google's sign-in page in your browser and waits for you (up to 10 minutes)."""
+    _set("gcloud", state="running", step="Starting", detail="", pct=1, started=time.time())
+    try:
+        install_gcloud()
+        _set("gcloud", step="Sign in in your browser", detail="A Google page has opened: choose your work account and press Allow.", pct=80)
+        p = subprocess.Popen([gcloud_bin(), "auth", "login", "--brief", "--launch-browser"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                             text=True, env=gcloud_env())
+        try:
+            out, _ = p.communicate(timeout=600)
+        except subprocess.TimeoutExpired:
+            p.kill()
+            raise RuntimeError("Sign-in wasn't finished in 10 minutes. Press Sign in with Google again.")
+        if p.returncode != 0:
+            raise RuntimeError("Sign-in didn't finish: " + (out or "")[-300:])
+        if project:
+            gcloud("config", "set", "project", project)
+        _set("gcloud", state="done", step="Signed in", detail=gcloud_account(), pct=100)
+    except Exception as e:
+        _set("gcloud", state="error", step="Sign-in didn't work", detail=str(e)[:400])
+
+
+def gcloud_signout():
+    if gcloud_bin():
+        gcloud("auth", "revoke", "--all", timeout=40)
+    _set("gcloud", state="idle", step="", detail="", pct=0)
+
+
 ADDONS = {
     "script": {"name": "Script AI", "desc": "Understands you in Talk to Ghost, writes scripts, lyrics and every prompt, translates for dubbing, and checks each picture for bad hands and eyes. Qwen 3.5 in Ollama (Apache 2.0).",
                "size": "about 8 GB", "time": "a few seconds per script", "install": install_script, "installed": script_installed,

@@ -275,11 +275,18 @@ class Google:
         self.limit = float(a.get("monthly_limit_usd") or 20)
         self.works: dict[str, tuple[str, str]] = {}  # kind -> (model, url prefix) that answered last time
         self._tok = ("", 0.0)
+        self.auth = a.get("google_auth") or ""  # "gcloud" = Sign in with Google (no key)
         self.broken = ""  # set when the key/project isn't set up: Ghost then uses this computer until you fix it and test again
 
     @property
     def configured(self) -> bool:
-        return bool(self.key or (self.project and shutil.which("gcloud")))
+        return bool(self.key or (self.project and self.signed_in))
+
+    @property
+    def signed_in(self) -> bool:
+        """Signed in with Google (no key): Ghost's own Google Cloud CLI sign-in, or your own gcloud."""
+        from . import addons
+        return bool(addons.gcloud_bin() and self.auth == "gcloud") or bool(shutil.which("gcloud") and not self.key and self.auth != "off")
 
     @property
     def on(self) -> bool:
@@ -312,11 +319,16 @@ class Google:
         if self.key:
             return {"x-goog-api-key": self.key}
         tok, t = self._tok
-        if not tok or time.time() - t > 1800:
-            r = subprocess.run(["gcloud", "auth", "print-access-token"], capture_output=True, text=True, timeout=30)
-            if r.returncode != 0 or not r.stdout.strip():
-                raise RuntimeError("Google Cloud sign-in needed: run `gcloud auth login` once, or paste an API key under ⚙.")
-            self._tok = tok, t = r.stdout.strip(), time.time()
+        if not tok or time.time() - t > 1800:  # Google's passes last an hour: a fresh one every 30 minutes
+            from . import addons
+            if addons.gcloud_bin() and self.auth == "gcloud":
+                tok = addons.gcloud_token()
+            else:
+                r = subprocess.run(["gcloud", "auth", "print-access-token"], capture_output=True, text=True, timeout=30)
+                if r.returncode != 0 or not r.stdout.strip():
+                    raise RuntimeError("Google sign-in needed: press Sign in with Google under ⚙ → Google Cloud.")
+                tok = r.stdout.strip()
+            self._tok = tok, t = tok, time.time()
         h = {"Authorization": "Bearer " + tok}
         if self.project:
             h["x-goog-user-project"] = self.project

@@ -181,6 +181,15 @@ How Ghost uses it (`addons.make_motion` → `workers/motion_worker.py`, its own 
 Limits: text-to-video only in the released Mac build (no starting picture), so the same character can differ a little
 between shots; no lip-sync. Wan2.2 on a Mac without this distilled model took over an hour for 2 seconds.
 
+## Sign in with Google, no key (v3.27)
+
+⚙ → Google Cloud → **Sign in with Google**: Ghost installs Google's own Google Cloud CLI privately (`.ghost/engines/gcloud`,
+its own config in `.ghost/gcloud-config`, so it never touches a gcloud you use yourself) and runs `gcloud auth login`,
+which opens Google's normal sign-in page (OAuth, with your two-step verification). Ghost then asks the CLI for a
+short-lived access token (renewed every 30 minutes) and calls Vertex AI with it plus `x-goog-user-project` = your
+project. No API key; Ghost never sees the password. Disconnect revokes the sign-in. Consumer apps (ChatGPT, Flow, Gemini)
+offer no sign-in for other programs, so they stay with the hand-off.
+
 ## Your own Google Cloud (v3.20)
 
 Why a free local Ghost can't match Veo in seconds: Veo, Gemini image, Seedance and the models behind Higgsfield are

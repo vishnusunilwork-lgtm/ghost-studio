@@ -509,8 +509,11 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
     <div class="sect"><h4>Google Cloud <span class="tag">best quality</span></h4>
       <div id="gOff"><p class="note">Use your company's Google Cloud project for the <b>same models as the Google Cloud console</b>: <b>Veo 3.1</b> real moving video with its own sound and lip-sync, and <b>Gemini image</b> pictures. Every shot is made at the same time, so an ad takes about as long as one clip (usually 1–2 minutes). Google bills the project (Veo 3.1 Lite 720p with sound ≈ $0.05 a second); Ghost stops at your monthly limit.</p>
         <input type="text" id="gProject" class="inp" placeholder="Project id, e.g. my-ads-project" autocomplete="off" spellcheck="false">
+        <button class="btn solid" id="gSignin" style="margin-top:8px;width:100%">Sign in with Google (no key)</button>
+        <p class="note" id="gSignState" style="margin:6px 0 0">Opens Google's sign-in page in your browser. Use your work account (with two-step verification), press Allow, and you're connected: no API key. Ghost never sees your password.</p>
+        <p class="note" style="margin:10px 0 4px;padding:0">Or use an API key instead:</p>
         <input type="password" id="gKey" class="inp" style="margin-top:6px" placeholder="API key (console → Get API key)" autocomplete="off" spellcheck="false">
-        <button class="btn solid" id="gSave" style="margin-top:8px;width:100%">Save and test (makes one small picture, ≈ $0.04)</button>
+        <button class="btn" id="gSave" style="margin-top:8px;width:100%">Save and test (makes one small picture, ≈ $0.04)</button>
         <p class="note">No key? Leave it empty and sign in once with the Google Cloud CLI (<code>gcloud auth login</code>). The key stays only on this computer.</p></div>
       <div id="gOn" class="hidden"><p class="note" id="gInfo"></p>
         <button class="btn" id="gTest" style="width:100%">Test again</button>
@@ -715,13 +718,20 @@ function kv(){if(!ST)return;const m=ST.models||{},mk=ST.makers||{},a=ST.api||{};
   $('#apiOff').classList.toggle('hidden',!!a.on);$('#apiOn').classList.toggle('hidden',!a.on);
   if(a.on){$('#apiInfo').textContent=`Connected (key …${a.key_end}) · this month: $${(a.spent||0).toFixed(2)} of $${a.limit} · about $${(a.price*30).toFixed(2)} per 30-second ad`;$('#apiLimit').value=a.limit}
   const g=ST.google||{};const gset=g.on||!!g.problem;$('#gOff').classList.toggle('hidden',gset);$('#gOn').classList.toggle('hidden',!gset);
-  if(g.problem){$('#gInfo').innerHTML='<b style="color:#ff8a8a">Not ready.</b> '+esc(g.problem).replace(/(https:\/\/[^\s—]+)/,'<a href="$1" target="_blank" rel="noopener">open the switch</a>')+' Then press Test again.'}
+  if(g.signin&&!g.problem&&g.on){api('/api/google/signin').then(st=>{$('#gInfo').innerHTML=`Signed in with Google${st.account?' as <b>'+esc(st.account)+'</b>':''} (no key) · project ${esc(g.project||'')} · ${esc(g.model)} · this month: $${(g.spent||0).toFixed(2)} of $${g.limit}`}).catch(()=>{})}
+  else if(g.problem){$('#gInfo').innerHTML='<b style="color:#ff8a8a">Not ready.</b> '+esc(g.problem).replace(/(https:\/\/[^\s—]+)/,'<a href="$1" target="_blank" rel="noopener">open the switch</a>')+' Then press Test again.'}
   else if(g.on){$('#gInfo').textContent=`Connected · project ${g.project||'(key only)'}${g.key?' · key …'+g.key_end:' · CLI sign-in'} · ${g.model} · this month: $${(g.spent||0).toFixed(2)} of $${g.limit} · about $${(g.price*20).toFixed(2)} per 20-second ad`}}
+let GST=null;
+$('#gSignin').onclick=async()=>{const pr=$('#gProject').value.trim();if(!pr){toast('Type the project id first');$('#gProject').focus();return}
+  try{await api('/api/google/signin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({project:pr})});$('#gSignin').disabled=true;
+    clearInterval(GST);GST=setInterval(async()=>{const st=await api('/api/google/signin');$('#gSignState').textContent=(st.step||'')+(st.detail?' — '+st.detail:'');
+      if(st.state==='done'){clearInterval(GST);$('#gSignin').disabled=false;toast('Signed in with Google'+(st.account?' as '+st.account:''));await status();kv();gTest()}
+      if(st.state==='error'){clearInterval(GST);$('#gSignin').disabled=false;toast(st.detail||'Sign-in did not work')}},2000)}catch(e){toast(e.message)}};
 async function gTest(){toast('Testing Google Cloud…');try{const r=await api('/api/google/test',{method:'POST'});toast(`Google Cloud works: a picture in ${r.seconds} s (${r.model})`)}catch(e){toast(e.message)}}
 $('#gSave').onclick=async()=>{const k=$('#gKey').value.trim(),p=$('#gProject').value.trim();if(!k&&!p){toast('Add the project id and/or the API key');return}
   try{await api('/api/settings/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({google_key:k||null,google_project:p})});$('#gKey').value='';await status();kv();await gTest()}catch(e){toast(e.message)}};
 $('#gTest').onclick=gTest;
-$('#gRemove').onclick=()=>{if(confirm('Disconnect Google Cloud from Ghost on this computer?'))api('/api/settings/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({remove_google:true})}).then(()=>status()).then(kv).then(()=>toast('Disconnected — back to free'))};
+$('#gRemove').onclick=()=>{if(confirm('Disconnect Google Cloud from Ghost on this computer?'))api('/api/google/signout',{method:'POST'}).then(()=>api('/api/settings/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({remove_google:true})})).then(()=>status()).then(kv).then(()=>toast('Disconnected — back to free'))};
 const MB=b=>b>=1e9?(b/1e9).toFixed(1)+' GB':Math.max(0.1,b/1e6).toFixed(b<1e7?1:0)+' MB';
 async function stShow(){try{const r=await api('/api/storage');$('#stList').innerHTML=`<p class="note">Projects use ${MB(r.total)} · ${r.free_gb} GB free on this computer.</p>`+(r.projects.map(x=>`<div class="row2" style="align-items:center"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(x.title||'Untitled')} · <b>${MB(x.bytes)}</b></span>${x.shrunk?'<span class="note" style="padding:0">🧬 shrunk</span>':`<button class="btn" data-shrink="${x.id}" ${x.status==='running'||x.status==='queued'?'disabled':''}>Shrink</button>`}</div>`).join('')||'<p class="note">No projects yet.</p>');
   $$('#stList [data-shrink]').forEach(b=>b.onclick=async()=>{b.disabled=true;try{const r=await api(`/api/projects/${b.dataset.shrink}/shrink`,{method:'POST'});toast(`🧬 Shrunk: ${MB(r.freed)} freed`);stShow()}catch(e){toast(e.message);b.disabled=false}})}catch(e){toast(e.message)}}
