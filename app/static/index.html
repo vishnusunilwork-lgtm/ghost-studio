@@ -312,6 +312,9 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
 .pbf .lab{display:flex;align-items:center;gap:8px}.rw{margin-left:auto;font-size:12px;color:var(--mute);height:24px;padding:0 9px;border-radius:99px;border:1px solid var(--edge)}.rw:hover{color:var(--ink);border-color:var(--edge-hi)}.rw[data-back]{margin-left:0}.tile .row3 .btn{white-space:nowrap}
 .tile .row2 .btn.chgb{flex:2}.edited{font-size:12px;color:var(--mute);padding:0 4px;margin-top:-4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .track .from{font-size:12px;color:var(--mute)}
+.mem{display:flex;flex-direction:column;gap:6px;margin:8px 0}.mem .mi{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border-radius:12px;background:var(--glass-soft);border:1px solid var(--edge);font-size:13px;line-height:1.4}
+.mem .mi span{flex:1;min-width:0;overflow-wrap:anywhere}.mem .mi b{font-weight:600}.mem .mi button{flex:none;color:var(--mute);width:22px;height:22px;border-radius:50%}.mem .mi button:hover{color:var(--ink);background:var(--hover)}
+.memadd{display:flex;flex-direction:column;gap:6px;margin-top:8px}.memadd .btn{height:38px}
 </style>
 </head>
 <body>
@@ -429,6 +432,12 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
 <aside class="drawer right" id="settings" aria-label="Settings">
   <div class="dhead"><h3>This computer</h3><button class="icon" data-close aria-label="Close">✕</button></div>
   <div class="dbody"><div class="kv" id="kv"></div>
+    <div class="sect" id="memBox"><h4>What Ghost has learned <span class="tag">kept on this computer</span></h4>
+      <p class="note">Teach Ghost your words once; it uses them in every picture, shot and prompt. Indian words like <i>desi dog</i>, <i>auto</i>, <i>cutting chai</i>, <i>kasavu</i> and <i>desi cow</i> are already built in.</p>
+      <div class="mem" id="memList"></div>
+      <div class="memadd"><input class="inp" id="memWhen" placeholder="When I write… (e.g. our dog)" maxlength="200"><input class="inp" id="memMeans" placeholder="I mean… (e.g. a ginger Indian street dog with a white chest)" maxlength="600"><button class="btn" id="memAddMeans">Remember this word</button></div>
+      <div class="memadd"><input class="inp" id="memAlways" placeholder="Always… (e.g. warm evening light, no sunglasses)" maxlength="200"><button class="btn" id="memAddAlways">Always do this</button></div>
+    </div>
     <div class="sect" id="addBox"><h4>Add-ons <span class="tag">free · runs on this computer</span></h4>
       <p class="note" id="addSys">Install once. Ghost then uses them by itself.</p>
       <div class="addons" id="addList"></div></div>
@@ -515,7 +524,15 @@ $('#scrim').onclick=()=>drawer(null);$$('[data-close]').forEach(b=>b.onclick=()=
 addEventListener('keydown',e=>{if(e.key==='Escape'){drawer(null);closeMenu()}if(e.key==='/'&&document.activeElement.tagName!=='TEXTAREA'&&!$('#home').classList.contains('hidden')){e.preventDefault();$('#prompt').focus()}});
 $('#homeBtn').onclick=goHome;$('#newBtn').onclick=()=>{drawer(null);goHome()};
 $('#histBtn').onclick=async()=>{await list();drawer('hist')};
-$('#setBtn').onclick=$('#statusBtn').onclick=()=>{kv();drawer('settings')};
+$('#setBtn').onclick=$('#statusBtn').onclick=()=>{kv();loadMem();drawer('settings')};
+/* ---------- what Ghost has learned ---------- */
+function memRender(m){const it=[...(m.means||[]).map(x=>({k:'means',t:x.when,h:`When I write <b>${esc(x.when)}</b> I mean ${esc(x.means)}`})),...(m.always||[]).map(x=>({k:'always',t:x.text,h:`Always: <b>${esc(x.text)}</b>`}))];
+  $('#memList').innerHTML=it.map(x=>`<div class="mi"><span>${x.h}</span><button data-k="${x.k}" data-t="${esc(x.t)}" title="Forget this" aria-label="Forget this">✕</button></div>`).join('')||'<p class="note" style="padding:0">Nothing taught yet.</p>';
+  $$('#memList [data-k]').forEach(b=>b.onclick=async()=>{memRender(await api('/api/learned/remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:b.dataset.k,text:b.dataset.t})}));toast('Forgotten')})}
+async function loadMem(){try{memRender(await api('/api/learned'))}catch(e){}}
+async function memAdd(kind,text,means){memRender(await api('/api/learned',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,text,means})}))}
+$('#memAddMeans').onclick=async()=>{try{await memAdd('means',$('#memWhen').value,$('#memMeans').value);$('#memWhen').value=$('#memMeans').value='';toast('Remembered. Ghost uses it from now on.')}catch(e){toast(e.message)}};
+$('#memAddAlways').onclick=async()=>{try{await memAdd('always',$('#memAlways').value);$('#memAlways').value='';toast('Remembered. Ghost does this from now on.')}catch(e){toast(e.message)}};
 function goHome(){CUR=null;clearInterval(TIMER);show('home');F.set(.18);$('#pline').style.width='0';headline();history.replaceState(null,'','/');setTimeout(()=>$('#prompt').focus(),200)}
 
 /* ---------- composer ---------- */
@@ -761,7 +778,8 @@ $('#chgIn').onkeydown=e=>{if(e.key==='Enter'&&(e.metaKey||e.ctrlKey||!e.shiftKey
 $('#chgGo').onclick=async()=>{const ins=$('#chgIn').value.trim();if(!ins){toast('Write what to change, or tap a suggestion');return}
   const scope=$('#chgScope .on')?.dataset.s||'one',st=+($('#chgStr .on')?.dataset.v||.5);const g=$('#chgGo');g.disabled=true;const old=g.textContent;g.textContent='Working…';
   try{await CHG.run(ins,scope,st);chgClose()}catch(e){toast(e.message)}finally{g.disabled=false;g.textContent=old}};
-async function change(target,i,instruction,scope,strength){await api(`/api/projects/${CUR}/change`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target,i,instruction,scope:scope||'one',strength:strength||.5})});kick()}
+async function change(target,i,instruction,scope,strength){const r=await api(`/api/projects/${CUR}/change`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target,i,instruction,scope:scope||'one',strength:strength||.5})});kick();
+  if(r&&r.remember)setTimeout(async()=>{if(confirm(`You asked for “${r.remember}” twice.\n\nShould Ghost always do this in new pictures and shots? (You can change this any time under ⚙ → What Ghost has learned.)`)){try{await memAdd('always',r.remember);toast('Remembered')}catch(e){toast(e.message)}}},700)}
 async function undoIt(target,i){await api(`/api/projects/${CUR}/undo`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target,i:i||0})});kick()}
 function undoBtn(sel,p,busy){const u=(p.undo||[]).slice(-1)[0],b=$(sel);b.classList.toggle('hidden',!u||busy);if(u){b.textContent=`↶ Undo “${u.what.length>28?u.what.slice(0,28)+'…':u.what}”`;b.title='Undo the last change made to all of them'}}
 $('#gUndo').onclick=$('#pUndo').onclick=async()=>{try{await undoIt('all');toast('Back to before')}catch(e){toast(e.message)}};

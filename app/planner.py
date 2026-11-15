@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from . import llm
+from . import knowledge, llm
 
 RULES = ("No money, income, debt, loan, cure or guaranteed-result claims. No fear or threats. "
          "No TV-news look, no channel names, no logos, no readable on-screen text. "
@@ -198,7 +198,7 @@ Make a {seconds} s {aspect} ad for {b['name']} in {lang}. About the brand: {b['a
 {src}
 {'Write the script yourself: a strong 2-second hook, natural spoken ' + lang + ', a clear call to action to download ' + b['spoken'] + ' at the end.' if need_script else 'Use EXACTLY this dialogue, every word, in order:' + chr(10) + dialogue}
 Voice: {'people speak on camera' if voice_mode == 'oncamera' else 'a narrator speaks over the pictures (people do not talk)' if voice_mode == 'narrator' else 'mostly on camera, with a short narrator line at the end'}.
-Rules: {RULES} {people_note(idea or dialogue)}
+Rules: {RULES} {people_note(idea or dialogue)} {knowledge.hints((idea or '') + ' ' + (dialogue or ''))}
 {('DIRECTION STYLE (follow it exactly): ' + STYLES_DIR[style]['guide']) if style in STYLES_DIR else ''}
 Split the speech into clips of at most {max_s} s each (about 15 {lang} words), at natural pauses, never mid-phrase.
 Make EXACTLY {n_clips} clips so the ad really lasts about {seconds} seconds. Give each clip a different shot (close-up, medium, detail, wide…) and a different camera move.
@@ -344,7 +344,7 @@ def plan_images(cfg: dict, *, idea: str = "", reference: dict | None = None, cou
     prompt = f"""You are an art director and prompt engineer for a photo-real image model.
 Make {count} still images for {cfg['brand']['name']} ({cfg['brand']['about']}), {aspect} frame.
 {src}
-Rules: {RULES} {people_note(idea) if people else ''}
+Rules: {RULES} {people_note(idea) if people else ''} {knowledge.hints(idea)}
 {('LOOK AND DIRECTION: ' + STYLES_DIR[style]['guide']) if style in STYLES_DIR else ''}
 {"First invent ONE fictional main character and ONE place, described precisely (age, face, hair, skin tone, outfit with colours and pattern, jewellery; place, time, light)."
  if people else
@@ -487,7 +487,7 @@ def rewrite(cfg: dict, text: str, instruction: str, kind: str = "text", language
     data = llm.ask_json(cfg["models"]["llm"], f"""You edit {KIND_NOTE.get(kind, KIND_NOTE['text'])}.
 Apply ONLY this change: "{instruction}".
 Keep every other detail exactly as it is (people, place, wording, structure) unless the change needs it.{lang}
-Use only real, common words. Do not add explanations.
+Use only real, common words. Do not add explanations. {knowledge.hints(text + ' ' + instruction) if kind in ('image_prompt', 'caption') else ''}
 
 TEXT:
 {text}

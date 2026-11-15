@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 from . import engines as E
 from . import llm
-from . import planner
+from . import knowledge, planner
 from . import updater
 from .editor import MOVES
 from .pipeline import ASPECTS, LABEL, STEPS, Runner, Store
@@ -396,7 +396,31 @@ def change(pid: str, body: Change):
         RUNNER.submit(pid, "change_song", n=body.i, instruction=ins, strength=max(0.1, min(1.0, body.strength)))
     else:
         raise HTTPException(400, "Unknown target")
-    return {"ok": True}
+    return {"ok": True, "remember": ins if body.target != "song" and knowledge.seen(ins) else None}
+
+
+class Learn(BaseModel):
+    kind: str = "always"  # always | means
+    text: str = ""
+    means: str = ""
+
+
+@app.get("/api/learned")
+def learned_list():
+    return knowledge.learned()
+
+
+@app.post("/api/learned")
+def learned_add(body: Learn):
+    try:
+        return knowledge.add("means" if body.kind == "means" else "always", body.text, body.means)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/learned/remove")
+def learned_remove(body: Learn):
+    return knowledge.remove("means" if body.kind == "means" else "always", body.text)
 
 
 class Undo(BaseModel):

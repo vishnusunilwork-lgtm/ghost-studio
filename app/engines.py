@@ -244,6 +244,8 @@ class Engines:
     # ------------------------------------------------------------ images
     def image(self, prompt: str, out: Path, width: int, height: int, seed: int = 0,
               ref_images: list[Path] | None = None, steps: int | None = None, fallback: Path | None = None, best: bool = False) -> Path:
+        from . import knowledge
+        prompt = knowledge.apply(prompt)  # Indian words spelled out ("desi dog" = Indian pariah dog) + what you taught Ghost
         how = self.plan()["image"]
         if best and not ref_images and not self.mock and not self.fal.on and _realism_ready() and (_mflux_ok() or has_cuda()):
             try:
