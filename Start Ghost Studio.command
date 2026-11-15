@@ -58,13 +58,15 @@ once() {
   # 1) updates (public project, no sign-in)
   if [[ "$REPO" == */* ]]; then
     printf '%s' "$REPO" > .ghost/repo
-    REMOTE=$(curl -fsSL --max-time 15 "https://raw.githubusercontent.com/$REPO/main/VERSION?$(date +%s)" 2>/dev/null | tr -d '[:space:]')
+    SHA=$(curl -fsSL --max-time 10 -H "Accept: application/vnd.github.sha" "https://api.github.com/repos/$REPO/commits/main" 2>/dev/null | tr -d '[:space:]')
+    [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || SHA="main"   # by commit id: never a stale copy
+    REMOTE=$(curl -fsSL --max-time 15 "https://raw.githubusercontent.com/$REPO/$SHA/VERSION?$(date +%s)" 2>/dev/null | tr -d '[:space:]')
     LOCAL=$(cat VERSION 2>/dev/null | tr -d '[:space:]')
     # only when GitHub has a NEWER version (its version file can lag a few minutes behind)
     if [ -n "$REMOTE" ] && { newer "$REMOTE" "$LOCAL" || [ ! -f app/server.py ]; }; then
       say_status "Getting Ghost Studio $REMOTE…"
       rm -rf .ghost/new && mkdir -p .ghost/new
-      if curl -fsSL --max-time 300 "https://github.com/$REPO/archive/refs/heads/main.tar.gz" -o .ghost/new.tgz && tar -xzf .ghost/new.tgz -C .ghost/new; then
+      if curl -fsSL --max-time 300 "https://github.com/$REPO/archive/$( [ "$SHA" = main ] && echo refs/heads/main || echo "$SHA" ).tar.gz" -o .ghost/new.tgz && tar -xzf .ghost/new.tgz -C .ghost/new; then
         SRC=$(find .ghost/new -mindepth 1 -maxdepth 1 -type d | head -1)
         if [ -f "$SRC/app/server.py" ]; then
           cp -R "$SRC"/. ./

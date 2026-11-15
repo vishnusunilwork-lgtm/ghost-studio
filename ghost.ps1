@@ -47,7 +47,9 @@ function Once {
   # 1) updates (public project, no sign-in)
   Set-Content -Path (Join-Path $G "repo") -Value $REPO -NoNewline
   $remote = ""
-  try { $remote = (Invoke-WebRequest "https://raw.githubusercontent.com/$REPO/main/VERSION?$(Get-Random)" -UseBasicParsing -TimeoutSec 15).Content.Trim() } catch {}
+  $ref = "main"
+  try { $sha = (Invoke-WebRequest "https://api.github.com/repos/$REPO/commits/main" -Headers @{Accept = "application/vnd.github.sha"} -UseBasicParsing -TimeoutSec 10).Content.Trim(); if ($sha -match '^[0-9a-f]{40}$') { $ref = $sha } } catch {}
+  try { $remote = (Invoke-WebRequest "https://raw.githubusercontent.com/$REPO/$ref/VERSION?$(Get-Random)" -UseBasicParsing -TimeoutSec 15).Content.Trim() } catch {}
   $local = if (Test-Path VERSION) { (Get-Content VERSION -Raw).Trim() } else { "" }
   $isNewer = $false
   try { $isNewer = [version]($remote -replace '[^0-9.]', '') -gt [version](($local, "0.0.0" | Where-Object { $_ })[0] -replace '[^0-9.]', '') } catch { $isNewer = $remote -ne $local }
@@ -57,7 +59,7 @@ function Once {
       $tgz = Join-Path $G "new.tgz"; $new = Join-Path $G "new"
       if (Test-Path $new) { Remove-Item $new -Recurse -Force }
       New-Item -ItemType Directory -Force -Path $new | Out-Null
-      Invoke-WebRequest "https://github.com/$REPO/archive/refs/heads/main.tar.gz" -OutFile $tgz -UseBasicParsing
+      Invoke-WebRequest $(if ($ref -eq "main") { "https://github.com/$REPO/archive/refs/heads/main.tar.gz" } else { "https://github.com/$REPO/archive/$ref.tar.gz" }) -OutFile $tgz -UseBasicParsing
       tar -xzf $tgz -C $new
       $src = Get-ChildItem $new -Directory | Select-Object -First 1
       if (Test-Path (Join-Path $src.FullName "app\server.py")) {

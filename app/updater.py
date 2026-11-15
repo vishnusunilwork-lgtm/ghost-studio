@@ -56,6 +56,21 @@ def _v(s: str) -> tuple:
     return tuple(out)
 
 
+API = os.environ.get("GHOST_API", "https://api.github.com")
+
+
+def _latest_sha(r: str) -> str:
+    """The newest commit id. Files read by commit id are never stale (raw .../main/ can lag several minutes)."""
+    try:
+        req = urllib.request.Request(f"{API}/repos/{r}/commits/main",
+                                     headers={"User-Agent": "GhostStudio", "Accept": "application/vnd.github.sha"})
+        with urllib.request.urlopen(req, timeout=10) as x:
+            sha = x.read().decode().strip()
+        return sha if re.fullmatch(r"[0-9a-f]{40}", sha) else ""
+    except Exception:
+        return ""
+
+
 def check(force: bool = False) -> dict:
     if not force and _cache["data"] and time.time() - _cache["t"] < 120:
         return _cache["data"]
@@ -64,16 +79,18 @@ def check(force: bool = False) -> dict:
         data = {"available": False, "reason": "updates not set up"}
     else:
         try:
-            remote = _get(f"{RAW}/{r}/main/VERSION?{int(time.time())}").decode().strip()
+            ref = _latest_sha(r) or "main"
+            remote = _get(f"{RAW}/{r}/{ref}/VERSION?{int(time.time())}").decode().strip()
             notes = ""
             try:
-                for line in _get(f"{RAW}/{r}/main/WHATSNEW?{int(time.time())}").decode().splitlines():
+                for line in _get(f"{RAW}/{r}/{ref}/WHATSNEW?{int(time.time())}").decode().splitlines():
                     if line.startswith(remote + ":"):
                         notes = line.split(":", 1)[1].strip()
                         break
             except Exception:
                 pass
-            data = {"available": bool(remote) and _v(remote) > _v(local_version()), "remote": remote, "local": local_version(), "notes": notes}
+            data = {"available": bool(remote) and _v(remote) > _v(local_version()), "remote": remote, "local": local_version(),
+                    "notes": notes, "ref": ref}
         except Exception as e:
             data = {"available": False, "reason": "offline: " + str(e)[:120]}
     _cache.update(t=time.time(), data=data)
@@ -86,7 +103,8 @@ def apply() -> str:
     shutil.rmtree(tmp, ignore_errors=True)
     tmp.mkdir(parents=True)
     tgz = ROOT / ".ghost" / "new.tgz"
-    tgz.write_bytes(_get(f"{ARCHIVE}/{r}/archive/refs/heads/main.tar.gz", timeout=300))
+    sha = _latest_sha(r)
+    tgz.write_bytes(_get(f"{ARCHIVE}/{r}/archive/{sha}.tar.gz" if sha else f"{ARCHIVE}/{r}/archive/refs/heads/main.tar.gz", timeout=300))
     with tarfile.open(tgz) as t:
         t.extractall(tmp, filter="data") if sys.version_info >= (3, 12) else t.extractall(tmp)
     src = next(p for p in tmp.iterdir() if p.is_dir())
