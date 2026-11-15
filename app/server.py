@@ -19,7 +19,7 @@ from . import llm
 from . import knowledge, planner
 from . import updater
 from .editor import MOVES
-from .pipeline import ASPECTS, LABEL, STEPS, Runner, Store
+from .pipeline import ASPECTS, HANDOFF_APPS, LABEL, STEPS, Runner, Store, downloads_dir
 
 ROOT = Path(__file__).resolve().parent.parent
 CFG = yaml.safe_load((ROOT / "config.yaml").read_text(encoding="utf-8"))
@@ -147,6 +147,7 @@ async def create(idea: str = Form(""), dialogue: str = Form(""), seconds: int = 
                  voice_mode: str = Form("oncamera"), language: str = Form(""), title: str = Form(""),
                  aspect: str = Form("9:16"), quality: str = Form("final"), kind: str = Form("video"), count: int = Form(4),
                  review: str = Form(""), same_look: str = Form("1"), style: str = Form("auto"), voice_gender: str = Form("female"), voice_style: str = Form("warm"), cast: str = Form("auto"), music_style: str = Form("bollywood"), vocals: str = Form("ai"), music_seconds: int = Form(60), ai_music: str = Form(""),
+                 make_with: str = Form(""),
                  reference: UploadFile | None = File(None), music: UploadFile | None = File(None),
                  refs: list[UploadFile] | None = File(None)):
     if kind == "music" and not idea.strip() and not dialogue.strip():
@@ -159,7 +160,7 @@ async def create(idea: str = Form(""), dialogue: str = Form(""), seconds: int = 
                   voice_mode=voice_mode, language=language or CFG.get("language", "Hindi"), title=title.strip() or "New ad",
                   mode="reference" if reference else "idea",
                   aspect=aspect if aspect in ASPECTS else "9:16", quality=quality if quality in ("draft", "best") else "final",
-                  kind=kind if kind in ("images", "music", "dub") else "video", count=max(1, min(8, count)),
+                  kind=kind if kind in ("images", "music", "dub") else "video", make_with=make_with if make_with in HANDOFF_APPS and kind in ("video", "images") else "", count=max(1, min(8, count)),
                   music_style=music_style, vocals=vocals if vocals in ("ai", "mine", "instrumental") else "ai",
                   music_seconds=max(10, min(600, music_seconds)), ai_music=ai_music == "1", review=review == "1", same_look=same_look != "0", voice_gender="male" if voice_gender == "male" else "female",
                   voice_style=voice_style if voice_style in ("warm", "excited", "calm", "news", "devotional") else "warm",
@@ -842,6 +843,60 @@ def delete_project(pid: str):
         raise HTTPException(400, "Not a project folder")
     shutil.rmtree(d, ignore_errors=True)
     return {"ok": True}
+
+
+# ---------------------------------------------------------------- hand-off to your own membership apps
+@app.get("/api/projects/{pid}/handoff")
+def handoff_view(pid: str):
+    p = _get(pid)
+    h = p.get("handoff") or {}
+    app_ = HANDOFF_APPS.get(p.get("make_with") or "", {})
+    return {"app": p.get("make_with"), "name": app_.get("name"), "url": app_.get("url"), "prefill": app_.get("prefill", ""),
+            "how": app_.get("how"), "makes": app_.get("makes"), "prompts": h.get("prompts") or [], "files": h.get("files") or {},
+            "downloads": str(downloads_dir()), "finished": bool(h.get("finished"))}
+
+
+@app.post("/api/projects/{pid}/handoff/scan")
+def handoff_scan(pid: str):
+    _get(pid)
+    try:
+        got = RUNNER.handoff_scan(pid)
+    except PermissionError:
+        raise HTTPException(403, "Ghost may not read your Downloads folder yet: allow it when the Mac asks (System Settings → "
+                                 "Privacy & Security → Files and Folders → Terminal → Downloads).")
+    return {"new": got, **handoff_view(pid)}
+
+
+@app.post("/api/projects/{pid}/handoff/finish")
+def handoff_finish(pid: str):
+    p = _get(pid)
+    if not (p.get("handoff") or {}).get("files"):
+        raise HTTPException(400, "Nothing handed in yet: make at least one shot in the app and download it.")
+    RUNNER.submit(pid, "handoff_finish")
+    return {"ok": True}
+
+
+@app.post("/api/projects/{pid}/handoff/{i}")
+async def handoff_upload(pid: str, i: int, file: UploadFile = File(...)):
+    """Use a file you choose for shot/picture i (instead of waiting for Downloads)."""
+    import tempfile
+    _get(pid)
+    tmp = Path(tempfile.mkdtemp()) / Path(file.filename or "file.png").name
+    with tmp.open("wb") as f:
+        shutil.copyfileobj(file.file, f)
+    try:
+        RUNNER.handoff_take(pid, i, tmp)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return handoff_view(pid)
+
+
+@app.delete("/api/projects/{pid}/handoff/{i}")
+def handoff_clear(pid: str, i: int):
+    p = _get(pid)
+    (p.get("handoff") or {}).get("files", {}).pop(str(i), None)
+    STORE.save(p)
+    return handoff_view(pid)
 
 
 @app.get("/api/storage")

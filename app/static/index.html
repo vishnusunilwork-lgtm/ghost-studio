@@ -244,6 +244,7 @@ details.log pre{font:11.5px/1.6 ui-monospace,Menlo,monospace;color:var(--mute);w
 .lyrics{margin-top:16px;padding:14px 16px;border-radius:18px;background:var(--glass-soft);border:1px solid var(--edge)}.lyrics summary{cursor:pointer;color:var(--mute)}
 .lyrics pre{white-space:pre-wrap;font:14px/1.7 var(--font);color:var(--ink);margin:10px 0 0}
 .gallery-wrap{margin-top:8px}.galbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}.galbar .btn{height:42px}
+.hand-head{display:flex;gap:12px;align-items:center;justify-content:space-between;margin-bottom:10px}.hd-row{display:grid;grid-template-columns:28px 1fr 120px;gap:10px;align-items:start;padding:10px;border-radius:14px;background:var(--glass-soft);border:1px solid var(--edge);margin-bottom:8px}.hd-row pre{white-space:pre-wrap;font:12px/1.45 inherit;margin:4px 0 6px;max-height:84px;overflow:auto;opacity:.85}.hd-row .thumb{width:120px;aspect-ratio:9/16;border-radius:10px;background:#0006;display:grid;place-items:center;overflow:hidden;font-size:12px;text-align:center}.hd-row .thumb img,.hd-row .thumb video{width:100%;height:100%;object-fit:cover}.hd-btns{display:flex;gap:6px;flex-wrap:wrap}
 .gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px}
 .tile{display:flex;flex-direction:column;gap:8px;padding:8px;border-radius:20px;background:var(--glass-soft);border:1px solid var(--edge);box-shadow:var(--hi);animation:enter .5s var(--ease) both;min-width:0}
 .tile .im{aspect-ratio:var(--ar,9/16);border-radius:14px;overflow:hidden;background:#111;position:relative}
@@ -402,6 +403,7 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
           <label class="opt" id="castOpt" title="Who is on screen"><select id="cast"><option value="auto">Cast: Auto</option><option value="people">People</option><option value="animals">Talking animals</option><option value="cartoon">3D cartoon</option></select></label>
           <label class="opt hidden" id="vgenderOpt" title="Narrator voice"><select id="vgender"><option value="female">First voice: female</option><option value="male">First voice: male</option></select></label>
           <label class="opt hidden" id="vstyleOpt" title="How the voice sounds"><select id="vstyle"><option value="warm">Warm</option><option value="excited">Excited</option><option value="calm">Calm</option><option value="news">Announcer</option><option value="devotional">Devotional</option></select></label>
+          <label class="opt" id="withOpt" title="Who makes the pictures / video"><select id="makeWith"><option value="">Made by Ghost</option><option value="flow">Make in Google Flow (my plan)</option><option value="gemini">Make in Gemini app (my plan)</option><option value="chatgpt">Make in ChatGPT (my plan)</option></select></label>
           <label class="opt" id="vmusicOpt" title="Background music"><select id="vmusic"><option value="">No AI music</option><option value="1">AI background music</option></select></label>
           <label class="opt" id="voiceOpt" title="Voice"><select id="voice"><option value="oncamera">People talk</option><option value="narrator">Narrator</option><option value="both">Both</option></select></label>
           <label class="opt" title="Language"><select id="lang"><option>Hindi</option><option>English</option><option>Marathi</option><option>Tamil</option><option>Telugu</option><option>Bengali</option><option>Gujarati</option><option>Kannada</option><option>Malayalam</option><option>Punjabi</option></select></label>
@@ -448,6 +450,11 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
       <div class="galbar"><button class="btn" id="mMore">Make another take</button><button class="btn" id="mEdit">✎ Edit lyrics &amp; style</button><button class="btn" id="mRerun">Start again</button></div>
       <div class="tracks" id="tracks"></div>
       <details class="lyrics hidden" id="lyrBox"><summary>Lyrics</summary><pre id="lyrics"></pre></details>
+    </div>
+    <div class="gallery-wrap hidden" id="handWrap">
+      <div class="hand-head"><div><h4 id="hdTitle" style="margin:0 0 4px"></h4><p class="note" id="hdHow" style="margin:0;padding:0"></p></div><a class="btn solid" id="hdOpen" target="_blank" rel="noopener">Open</a></div>
+      <div id="hdRows"></div>
+      <div class="galbar" style="margin-top:12px"><span class="note" id="hdWatch" style="flex:1;padding:0"></span><button class="btn solid" id="hdFinish">Finish the ad</button></div>
     </div>
     <div class="gallery-wrap hidden" id="galWrap">
       <div class="galbar"><a class="btn solid" id="gZip" download><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 4v12M6 11l6 6 6-6M5 20h14"/></svg>Download all</a><button class="btn hidden" id="gUp">Make them in Quality</button><button class="btn hidden" id="gUndo">↶ Undo</button><button class="btn hidden" id="gRegrow" title="Make the full pictures again from their recipes">🧬 Regrow</button><button class="btn" id="gRerun">Start again</button></div>
@@ -637,7 +644,7 @@ prompt_.addEventListener('input',grow);
 prompt_.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();go()}});
 function kindUI(){const k=$('#kind').value,im=k==='images',mu=k==='music',vi=k==='video',du=k==='dub';
   const show=(id,on)=>$('#'+id).classList.toggle('hidden',!on);
-  show('countOpt',im);show('castOpt',vi||im);show('vgenderOpt',vi||du);show('vstyleOpt',vi||du);show('styleOpt',!mu&&!du);show('songTip',mu&&$('#lang').value!=='English'&&$('#mvocal').value!=='instrumental');show('lockOpt',im);show('lenOpt',vi);show('voiceOpt',vi);show('vmusicOpt',vi);show('exact',vi);show('aspectOpt',!mu&&!du);show('mstyleOpt',mu);show('mvocalOpt',mu);show('mlenOpt',mu);
+  show('countOpt',im);show('withOpt',vi||im);show('castOpt',vi||im);show('vgenderOpt',vi||du);show('vstyleOpt',vi||du);show('styleOpt',!mu&&!du);show('songTip',mu&&$('#lang').value!=='English'&&$('#mvocal').value!=='instrumental');show('lockOpt',im);show('lenOpt',vi);show('voiceOpt',vi);show('vmusicOpt',vi);show('exact',vi);show('aspectOpt',!mu&&!du);show('mstyleOpt',mu);show('mvocalOpt',mu);show('mlenOpt',mu);
   prompt_.placeholder=du?'Add the video with + (or drop it here), choose the language to dub into below. Optional: a note about the video…':mu?($('#mvocal').value==='mine'?'Paste your lyrics (you can add [Verse] and [Chorus] lines)…':'Describe the song: mood, story, occasion… e.g. a warm Diwali song about family'):im?'Describe the images, or drop a reference ad to copy its look…':(EXACT?'Paste the exact dialogue. Two people? Start lines with “Name: …”':'Describe the ad, or drop a reference video…')}
 let REVIEW=false;$('#review').onclick=()=>{REVIEW=!REVIEW;$('#review').classList.toggle('on',REVIEW)};
 $('#mvocal').onchange=kindUI;$('#vmusic').addEventListener('change',()=>{VM_TOUCHED=true});$('#lang').addEventListener('change',kindUI);
@@ -685,7 +692,7 @@ async function go(){const text=prompt_.value.trim();$('#goErr').textContent='';
   if(mus&&!(ao.music&&ao.music.installed)&&!(ST.api&&ST.api.on)){needAddon('Music & songs','Music');return}
   if(!mus&&$('#kind').value==='video'&&$('#vmusic').value&&!(ao.music&&ao.music.installed)&&!(ST.api&&ST.api.on)&&!A.music){needAddon('Music & songs','AI background music');return}
   if(imgs&&ST&&ST.makers&&ST.makers.image==='photos'&&!A.pics.length){$('#goErr').innerHTML='Images only needs AI pictures. <button class="linkbtn" id="goSet">Open ⚙ to install the free image AI</button> (or add your own photos with +).';$('#goSet').onclick=()=>{kv();drawer('settings')};return}
-  const fd=new FormData();fd.append('kind',$('#kind').value);fd.append('review',REVIEW?'1':'');fd.append('voice_gender',$('#vgender').value);fd.append('cast',$('#cast').value);fd.append('voice_style',$('#vstyle').value);fd.append('style',$('#style').value);fd.append('count',$('#count').value);fd.append('same_look',$('#lock').value);fd.append('music_style',$('#mstyle').value);fd.append('vocals',$('#mvocal').value);fd.append('music_seconds',$('#mlen').value);fd.append('ai_music',$('#kind').value==='video'?$('#vmusic').value:'');
+  const fd=new FormData();fd.append('kind',$('#kind').value);fd.append('review',REVIEW?'1':'');fd.append('voice_gender',$('#vgender').value);fd.append('cast',$('#cast').value);fd.append('voice_style',$('#vstyle').value);fd.append('style',$('#style').value);fd.append('count',$('#count').value);fd.append('same_look',$('#lock').value);fd.append('music_style',$('#mstyle').value);fd.append('vocals',$('#mvocal').value);fd.append('music_seconds',$('#mlen').value);fd.append('ai_music',$('#kind').value==='video'?$('#vmusic').value:'');if(['video','images'].includes($('#kind').value))fd.append('make_with',$('#makeWith').value);
   fd.append(mus?($('#mvocal').value==='mine'?'dialogue':'idea'):imgs?'idea':(EXACT?'dialogue':'idea'),text);fd.append('seconds',$('#len').value);fd.append('aspect',$('#aspect').value);fd.append('voice_mode',$('#voice').value);fd.append('language',$('#lang').value);fd.append('quality',QUAL);
   if(A.ref)fd.append('reference',A.ref);if(A.music)fd.append('music',A.music);A.pics.forEach(f=>fd.append('refs',f));
   $('#send').classList.remove('ready');const r0=comp.getBoundingClientRect();F.impulse(r0.left+r0.width/2,r0.top+r0.height/2,9);F.set(.9);
@@ -797,7 +804,7 @@ async function refresh(force){if(!CUR)return;let p;try{p=await api('/api/project
   if(p.status==='review'&&$('#planBox').classList.contains('hidden')&&!$('#planBox').dataset.shown){$('#planBox').dataset.shown=p.id;planOpen(p)}
   if(p.status==='queued'&&ST&&(!ST.current||ST.current.id!==p.id))status();
   const waitFor=(p.status==='queued'&&ST&&ST.current&&ST.current.id!==p.id)?`Waiting for “${ST.current.title}” to finish (${ST.current.progress||0}%). Pause that one to start this sooner.`:'';
-  const now=p.status==='review'?'Check and edit what Ghost wrote, then press Make it.':p.status==='stopped'?'Paused. Press Continue to carry on from here.':waitFor?waitFor:p.status==='done'?'Ready'+(p.quality==='draft'?' · fast preview':''):p.status==='error'?'Something went wrong':p.status==='queued'?'Waiting its turn…':((ST?.labels||{})[p.step]||'Working')+'…';
+  const now=p.status==='handoff'?'Your turn: make the shots in your app (below). Ghost picks up the downloads.':p.status==='review'?'Check and edit what Ghost wrote, then press Make it.':p.status==='stopped'?'Paused. Press Continue to carry on from here.':waitFor?waitFor:p.status==='done'?'Ready'+(p.quality==='draft'?' · fast preview':''):p.status==='error'?'Something went wrong':p.status==='queued'?'Waiting its turn…':((ST?.labels||{})[p.step]||'Working')+'…';
   if(now!==LASTNOW){LASTNOW=now;const n=$('#pNow');n.textContent=now;n.classList.remove('swap');void n.offsetWidth;n.classList.add('swap')}
   $('#phase').classList.toggle('spin',busy);
   $('#pline').style.width=busy?(p.progress||2)+'%':'0';
@@ -812,6 +819,7 @@ async function refresh(force){if(!CUR)return;let p;try{p=await api('/api/project
   if(fin&&(force||LASTFIN!==p.final)){LASTFIN=p.final;const u=fileUrl(p.id,p.final,Math.round(p.updated||0));scr.innerHTML=`<video src="${u}" controls playsinline autoplay muted loop></video>`;$('#pDl').href=u;$('#pDl').setAttribute('download',p.final.split(/[\\/]/).pop())}
   else if(!fin){LASTFIN='';const last=[...(p.clips||[])].reverse().find(c=>c.video);const src=last?fileUrl(p.id,last.video):p.image?fileUrl(p.id,p.image):'';const cur=scr.dataset.src||'';
     if(src&&src!==cur){scr.dataset.src=src;scr.innerHTML=last?`<video src="${src}" playsinline autoplay muted loop></video>`:`<img src="${src}" alt="">`}else if(!src&&!scr.querySelector('.veil')){scr.dataset.src='';scr.innerHTML='<div class="veil">Waiting for the first frame…</div>'}}
+  handView(p,force);
   const mus=p.kind==='music';$('#musWrap').classList.toggle('hidden',!mus);
   if(mus){$('.stage').classList.add('hidden');$('.shots-h').classList.add('hidden');$('#shots').classList.add('hidden');$('#galWrap').classList.add('hidden');
     $('#pSteps').innerHTML=['plan','music'].map(s=>`<li class="${p.steps[s]}"><i></i>${esc({plan:p.vocals==='instrumental'?'Planning the music':'Writing the song',music:'Composing and singing'}[s])}</li>`).join('');
@@ -830,6 +838,21 @@ async function refresh(force){if(!CUR)return;let p;try{p=await api('/api/project
   const sig=JSON.stringify((p.clips||[]).map(c=>[c.video,c.status,c.camera_move,c.shake,c.line,c.seconds]))+p.status;
   if(force||sig!==LAST){LAST=sig;shots(p)}
   if(!busy){clearInterval(TIMER);TIMER=setInterval(refresh,8000)}}
+let HD=null,HDT=null;
+async function handView(p,force){const show=p.status==='handoff';$('#handWrap').classList.toggle('hidden',!show);if(!show){clearInterval(HDT);HDT=null;return}
+  if(!HDT)HDT=setInterval(async()=>{try{const r=await api(`/api/projects/${p.id}/handoff/scan`,{method:'POST'});if(r.new.length){toast(`Picked up ${r.new.length} file(s) from Downloads`);HD=r;handDraw(p.id)}}catch(e){}},4000);
+  if(force||!HD||HD._pid!==p.id){HD=await api(`/api/projects/${p.id}/handoff`);HD._pid=p.id;handDraw(p.id)}}
+function handDraw(pid){const h=HD;if(!h)return;h._pid=pid;$('#hdTitle').textContent=`Make these in ${h.name} with your plan`;$('#hdHow').textContent=h.how+' Ghost picks up each download from your Downloads folder by itself, in order.';
+  $('#hdOpen').textContent='Open '+h.name;$('#hdOpen').href=h.url;
+  const n=h.prompts.length,done=Object.keys(h.files).length;$('#hdWatch').textContent=`${done} of ${n} handed in · watching ${h.downloads}`+(done<n?' · shots you skip, Ghost makes itself':'');
+  $('#hdFinish').disabled=!done;
+  $('#hdRows').innerHTML=h.prompts.map((x,i)=>{const f=h.files[String(i)];const u=f?fileUrl(pid,f,Date.now()%1e5):'';const vid=f&&/\.(mp4|mov|webm|m4v)$/i.test(f);
+    return `<div class="hd-row"><b>${x.n}</b><div><div class="note" style="padding:0"><b>${esc(x.caption||'')}</b></div><pre>${esc(x.prompt)}</pre><div class="hd-btns"><button class="btn" data-hcopy="${i}">Copy prompt</button>${h.prefill?`<a class="btn" target="_blank" rel="noopener" href="${h.prefill+encodeURIComponent(x.prompt)}">Open with this prompt</a>`:''}<label class="btn">Use a file…<input type="file" accept="image/*,video/*" data-hfile="${i}" hidden></label>${f?`<button class="btn" data-hclr="${i}">✕</button>`:''}</div></div>
+      <div class="thumb">${f?(vid?`<video src="${u}" muted loop autoplay playsinline></video>`:`<img src="${u}" alt="">`):'waiting…'}</div></div>`}).join('');
+  $$('#hdRows [data-hcopy]').forEach(b=>b.onclick=async()=>{try{await navigator.clipboard.writeText(h.prompts[+b.dataset.hcopy].prompt);toast('Copied: paste it in '+h.name)}catch(e){toast('Select the text and copy it')}});
+  $$('#hdRows [data-hfile]').forEach(inp=>inp.onchange=async()=>{const fd=new FormData();fd.append('file',inp.files[0]);try{HD=await api(`/api/projects/${pid}/handoff/${inp.dataset.hfile}`,{method:'POST',body:fd});handDraw(pid)}catch(e){toast(e.message)}});
+  $$('#hdRows [data-hclr]').forEach(b=>b.onclick=async()=>{HD=await api(`/api/projects/${pid}/handoff/${b.dataset.hclr}`,{method:'DELETE'});handDraw(pid)})}
+$('#hdFinish').onclick=async()=>{try{await api(`/api/projects/${CUR}/handoff/finish`,{method:'POST'});clearInterval(HDT);HDT=null;toast('Finishing: voice, music, edit and export');kick()}catch(e){toast(e.message)}};
 function tracks(p){const busy=p.status==='running'||p.status==='queued';const ts=p.tracks||[];
   $('#tracks').innerHTML=ts.map((t,i)=>{const u=fileUrl(p.id,t.file);const nm=`${(p.title||'song').replace(/[^\w\s-]/g,'')} - take ${i+1}.mp3`;
     return `<div class="track" style="animation-delay:${i*60}ms"><div class="tk-h"><span class="eq"><i></i><i></i><i></i><i></i></span><b>Take ${i+1}</b><small>${esc([t.bpm?t.bpm+' BPM':'',t.key||''].filter(Boolean).join(' · '))}</small></div>${t.change?`<div class="from">From take ${t.from}: ${esc(t.change)}${t.how==='new tune'?' (new tune)':''}</div>`:''}

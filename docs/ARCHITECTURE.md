@@ -100,6 +100,20 @@ and takes roughly 20 s per second of video even with the MLX port; and the face 
 has non-commercial model weights. Wav2Lip is non-commercial. It may be added later as an optional add-on for human
 presenters, after testing on a Mac.
 
+## Hand-off to your own membership apps (v3.26)
+
+Ghost is the parent; the apps you already pay for (Google AI Pro/Ultra: Flow and Gemini; ChatGPT Plus/Pro) make the shots,
+and you press their Generate button, so their terms are respected (no bots driving consumer apps) and your plan's credits
+are used without any API key.
+
+Make box → **Made by / Make in Google Flow / Gemini app / ChatGPT**. Ghost writes the script and one ready-to-paste prompt
+per shot (`Runner.handoff_prompts`: framing, Indian words spelled out, real-world scale, the spoken line for Veo's
+lip-sync, the aspect), then stops with status `handoff`. The panel shows Copy prompt / Open with this prompt (ChatGPT
+pre-fills) / Use a file…. Every 4 s Ghost looks in ~/Downloads for new pictures or videos (finished downloads only, newer
+than the hand-off, never the same file twice) and puts them into the empty shots in order. **Finish the ad**: Flow clips
+keep their own sound; pictures become shots with a camera move and voice; shots you skipped Ghost makes itself; then
+music, edit and export as usual. Images projects: the handed-in pictures become the set.
+
 ## Brain chain: free keys, automatic switching (v3.25)
 
 The same idea as FreeLLMAPI / OmniRoute, built into Ghost (no extra server, no Node): ⚙ → Smarter brain holds a list of

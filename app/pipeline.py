@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import queue
 import random
+import shutil
 import re
 import subprocess
 import threading
@@ -37,6 +38,22 @@ def sizes(p: dict) -> tuple[tuple[int, int], tuple[int, int], bool]:
 STEPS = ["analyse", "plan", "images", "videos", "voice", "music", "edit"]
 LABEL = {"analyse": "Reading the reference", "plan": "Writing script and prompts", "images": "Making the first frames",
          "videos": "Making the video clips", "voice": "Making the narration", "music": "Making the music", "edit": "Editing and exporting"}
+
+
+HANDOFF_APPS = {
+    "flow": {"name": "Google Flow", "url": "https://labs.google/fx/tools/flow", "makes": "video",
+             "how": "Paste the prompt, choose Veo and 9:16 (or the size you need), press Generate, then Download."},
+    "gemini": {"name": "Gemini app", "url": "https://gemini.google.com/app", "makes": "image",
+               "how": "Paste the prompt and send. When the picture (or video) appears, press Download."},
+    "chatgpt": {"name": "ChatGPT", "url": "https://chatgpt.com/", "makes": "image", "prefill": "https://chatgpt.com/?q=",
+                "how": "The prompt is filled in for you: send it. When the picture appears, press Download. Keep all shots in the same chat so the person stays the same."},
+}
+MEDIA_IMG = {".png", ".jpg", ".jpeg", ".webp"}
+MEDIA_VID = {".mp4", ".mov", ".webm", ".m4v"}
+
+
+def downloads_dir() -> Path:
+    return Path.home() / "Downloads"
 
 
 class Store:
@@ -281,7 +298,7 @@ class Runner:
                           seconds=int(p.get("seconds", 30)), voice_mode=p.get("voice_mode", "oncamera"),
                           language=p.get("language"), aspect=p.get("aspect") or "9:16", style=self._style(p, ref),
                           fast=p.get("quality") == "draft", cast=p.get("cast", "auto"),
-                          photo=self.eng.plan()["video"] != "service")
+                          photo=self.eng.plan()["video"] != "service" and p.get("make_with") != "flow")
         p["plan"] = {k: v for k, v in pl.items() if k != "clips"}
         p["title"] = p.get("title") if p.get("title") not in (None, "", "New ad") else pl.get("title") or "New ad"
         p["clips"] = [{**c, "status": "waiting", "seed": random.randint(1, 10**6)} for c in pl.get("clips", [])]
@@ -290,6 +307,8 @@ class Runner:
         self._done(p, "plan")
         if self._review_stop(p):
             return
+        if p.get("make_with") in HANDOFF_APPS:
+            return self._handoff_start(pid)
         # 3 images (one per person so the same face appears in all their clips)
         self._images(pid)
         # 4 videos
@@ -300,6 +319,159 @@ class Runner:
         # 6 AI background music (if chosen and the music add-on is installed)
         self._music_for_ad(pid)
         # 6 edit
+        self._edit(pid)
+
+    # ------------------------------------------------------------ hand-off: your own membership apps make the shots
+    def handoff_prompts(self, p: dict) -> list[dict]:
+        """One ready-to-paste prompt per shot / picture, written for the chosen app."""
+        from . import knowledge
+        app = p.get("make_with")
+        lang = p.get("language") or self.cfg.get("language", "Hindi")
+        aspect = p.get("aspect") or "9:16"
+        orient = {"9:16": "vertical 9:16", "16:9": "horizontal 16:9", "1:1": "square 1:1", "4:5": "vertical 4:5"}.get(aspect, aspect)
+        out = []
+        if p.get("kind") == "images":
+            for i, st in enumerate(p.get("stills") or []):
+                body = knowledge.apply(st["prompt"])
+                same = " Keep exactly the same person/subject and place as the first picture in this chat." if i and p.get("same_look", True) else ""
+                out.append({"n": i + 1, "caption": st.get("caption", ""), "prompt": f"Create a photorealistic {orient} image: {body}{same} No text, no logos, no watermark."})
+            return out
+        for i, c in enumerate(p.get("clips") or []):
+            look = knowledge.apply(c.get("image_prompt") or (p.get("plan") or {}).get("image_prompt", ""))
+            if app == "flow":
+                say = ""
+                if c.get("line") and p.get("voice_mode") != "narrator":
+                    say = f' The person speaks in {lang}, naturally, with lip-sync: "{c["line"]}".'
+                elif c.get("line"):
+                    say = " No one speaks; natural background sound only."
+                txt = (f"{orient} cinematic, photorealistic video, about {max(4, min(8, round(float(c.get('seconds') or 6))))} seconds. "
+                       f"{look} Action and camera: {c.get('video_prompt') or c.get('camera_move') or 'natural movement'}.{say} No subtitles, no text, no logos.")
+            else:
+                same = " Same person and place as the first picture in this chat." if i else ""
+                txt = f"Create a photorealistic {orient} image: {look}{same} The moment: {c.get('line', '')} No text, no logos, no watermark."
+            out.append({"n": i + 1, "caption": c.get("line", "")[:80], "prompt": txt})
+        return out
+
+    def _handoff_start(self, pid):
+        p = self.store.load(pid)
+        app = HANDOFF_APPS[p["make_with"]]
+        h = p.setdefault("handoff", {})
+        h.setdefault("since", time.time() - 5)
+        h.setdefault("files", {})
+        h["prompts"] = self.handoff_prompts(p)
+        h["app"] = p["make_with"]
+        p["status"], p["step"] = "handoff", "images"
+        p["steps"]["images"] = "running"
+        p["log"].append(time.strftime("%H:%M:%S ") + f"Prompts ready for {app['name']}. Make each one there with your plan; "
+                        "Ghost picks up the downloads by itself.")
+        self.store.save(p)
+
+    def handoff_take(self, pid: str, i: int, src: Path) -> dict:
+        """Put one made file into slot i (a shot or a picture)."""
+        p = self.store.load(pid)
+        d = self.store.dir(pid)
+        ext = src.suffix.lower()
+        if ext not in MEDIA_IMG | MEDIA_VID:
+            raise ValueError("Use a picture (PNG/JPG/WebP) or a video (MP4/MOV)")
+        dst = d / f"handoff{i + 1:02d}_{int(time.time()) % 100000}{ext}"
+        shutil.copy2(src, dst)
+        h = p.setdefault("handoff", {})
+        h.setdefault("files", {})[str(i)] = str(dst)
+        h.setdefault("used", []).append(src.name)
+        self.store.save(p)
+        return {"slot": i, "file": str(dst)}
+
+    def handoff_scan(self, pid: str) -> list[dict]:
+        """New downloads since the hand-off started go into the empty slots, in the order they were downloaded."""
+        p = self.store.load(pid)
+        h = p.get("handoff") or {}
+        n = len(h.get("prompts") or [])
+        empty = [i for i in range(n) if str(i) not in (h.get("files") or {})]
+        if not empty:
+            return []
+        dl = downloads_dir()
+        try:
+            cands = [f for f in dl.iterdir() if f.is_file() and f.suffix.lower() in MEDIA_IMG | MEDIA_VID]
+        except Exception:
+            return []
+        now = time.time()
+        used = set(h.get("used") or [])
+        fresh = sorted([f for f in cands if f.stat().st_mtime > h.get("since", now) and f.name not in used
+                        and now - f.stat().st_mtime > 2 and f.stat().st_size > 1000], key=lambda f: f.stat().st_mtime)
+        got = []
+        for f, i in zip(fresh, empty):
+            got.append(self.handoff_take(pid, i, f))
+        return got
+
+    def _handoff_finish(self, pid):
+        """Everything after the shots: the same finishing as any Ghost ad (or the pictures for an Images project)."""
+        from .editor import probe
+        p = self.store.load(pid)
+        h = p.get("handoff") or {}
+        files = h.get("files") or {}
+        if p.get("kind") == "images":
+            for k, f in files.items():
+                st = p["stills"][int(k)]
+                st.update(image=f, status="done", look="handoff")
+            missing = [i for i, st in enumerate(p["stills"]) if not st.get("image")]
+            h["finished"] = True
+            p["steps"]["images"] = "done"
+            for st_ in ("videos", "voice", "edit"):
+                p["steps"][st_] = "skipped"
+            p["status"], p["progress"] = "done", 100
+            self.store.save(p)
+            if missing:  # anything you didn't make there, Ghost makes itself
+                for i in missing:
+                    self._stills(pid, only=i)
+            return
+        (gw, gh), _, draft = sizes(p)
+        videos = 0
+        for k, f in files.items():
+            c = p["clips"][int(k)]
+            if Path(f).suffix.lower() in MEDIA_VID:
+                c["video"], c["status"] = f, "done"
+                try:
+                    c["seconds"] = round(min(12.0, max(1.5, probe(f)["duration"])), 2)
+                except Exception:
+                    pass
+                videos += 1
+            else:
+                c["image"] = f
+        # Flow/Veo clips already speak their lines (with lip-sync): keep their sound. Shots made from pictures get a voice.
+        p["clip_talks"] = videos > 0 and p.get("make_with") == "flow" and p.get("voice_mode") != "narrator"
+        p["engine_plan"] = {**self.eng.plan(), "video": "handoff" if videos else "photo_motion"}
+        if p["clip_talks"]:
+            silent = [c for c in p["clips"] if not (c.get("video") and Path(c["video"]).suffix.lower() in MEDIA_VID)]
+            for c in silent:
+                if c.get("line"):
+                    c["narration"] = c["line"]
+            p["voice_mode"] = "both" if silent else "oncamera"
+        h["finished"] = True
+        p["status"] = "running"
+        self._done(p, "images")
+        missing = [i for i, c in enumerate(p["clips"]) if not c.get("video") and not c.get("image")]
+        if missing:  # shots you skipped: Ghost makes the picture itself
+            self._say(p, "images", f"Making the {len(missing)} shot(s) you didn't hand in", 50)
+            if not p.get("image") or not Path(p["image"]).exists():
+                self._images(pid)
+                p = self.store.load(pid)
+            q = self.cfg["quality"]
+            for i in missing:
+                if not p["clips"][i].get("image"):
+                    self._shot_image(p, i, gw * (1 if draft else 2), gh * (1 if draft else 2),
+                                     int(q.get("image_steps_draft", 20)) if draft else int(q["image_steps"]),
+                                     [Path(r) for r in p.get("refs") or []], Path(p["image"]))
+            self.store.save(p)
+        for i, c in enumerate(p["clips"]):  # pictures become shots with a camera move (and talking mouths)
+            if not c.get("video") and c.get("image"):
+                out = self.store.dir(pid) / f"clip{i + 1:02d}_{c['seed']}_handoff.mp4"
+                self.eng.photo_clip(Path(c["image"]), float(c.get("seconds") or 4), out, gw, gh)
+                c["video"], c["status"] = str(out), "done"
+        self.store.save(p)
+        self._done(p, "videos")
+        self._voice(pid)
+        self._talk(pid)
+        self._music_for_ad(pid)
         self._edit(pid)
 
     def _review_stop(self, p) -> bool:
@@ -493,7 +665,7 @@ class Runner:
         p = self.store.load(pid)
         d = self.store.dir(pid)
         mode = p.get("voice_mode", "oncamera")
-        if not self.eng.talks and mode != "narrator":
+        if not (self.eng.talks or p.get("clip_talks")) and mode != "narrator":
             p["log"].append(time.strftime("%H:%M:%S ") + "This computer makes photo-motion ads, so a narrator speaks the lines.")
             mode = "narrator"
         if mode == "oncamera":
@@ -749,6 +921,8 @@ class Runner:
         p = self.store.load(pid)
         p["log"].append(time.strftime("%H:%M:%S ") + "Continuing")
         self.store.save(p)
+        if p.get("make_with") in HANDOFF_APPS and (p.get("stills") or p.get("clips")) and not (p.get("handoff") or {}).get("finished"):
+            return self._handoff_start(pid)
         if p.get("kind") == "images" and p.get("stills"):
             return self._stills(pid, resume=True)
         if p.get("kind") == "music":
@@ -788,6 +962,8 @@ class Runner:
         self._done(p, "plan")
         if self._review_stop(p):
             return
+        if p.get("make_with") in HANDOFF_APPS:
+            return self._handoff_start(pid)
         self._stills(pid)
 
     LOCK = ("Keep EXACTLY the same main subject as in the reference image (the same person: face, skin tone, hair, outfit, colours and "
