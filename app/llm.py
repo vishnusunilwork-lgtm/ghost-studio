@@ -38,8 +38,23 @@ def _json_from(text: str):
         raise ValueError("The local model did not return JSON: " + text[:300])
 
 
-def unload():
-    """Frees the script AI's memory so pictures, video and music run without swapping."""
+def _ram_gb() -> float:
+    try:
+        import os
+        return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / 1e9
+    except Exception:
+        try:
+            import subprocess
+            return int(subprocess.run(["sysctl", "-n", "hw.memsize"], capture_output=True, text=True).stdout.strip()) / 1e9
+        except Exception:
+            return 16.0
+
+
+def unload(force: bool = False):
+    """Frees the script AI's memory so pictures, video and music run without swapping.
+    On computers with 32 GB or more both fit, so the script AI stays loaded and answers instantly next time."""
+    if not force and _ram_gb() >= 31:
+        return
     try:
         with urllib.request.urlopen(OLLAMA + "/api/ps", timeout=3) as r:
             running = [m["name"] for m in json.loads(r.read()).get("models", [])]
@@ -93,7 +108,7 @@ def ask_json(model: str, prompt: str, images: list[bytes] | None = None, tempera
     if images:
         msg["images"] = [base64.b64encode(b).decode() for b in images]
     body = {"model": model, "messages": [msg], "stream": False, "format": "json",
-            "keep_alive": "10m", "options": {"temperature": temperature, "num_ctx": 8192}}
+            "keep_alive": "30m", "options": {"temperature": temperature, "num_ctx": 8192}}
     if thinks(model):
         body["think"] = False
     r = _post("/api/chat", body)
@@ -113,10 +128,48 @@ def text_models() -> list[str]:
 def chat(model: str, messages: list[dict], tools: list[dict] | None = None, temperature: float = 0.2,
          timeout: int = 300) -> dict:
     """One model step with native tool calling (Ollama /api/chat 'tools'). Returns the assistant message."""
-    body = {"model": model, "messages": messages, "stream": False, "keep_alive": "10m",
+    body = {"model": model, "messages": messages, "stream": False, "keep_alive": "30m",
             "options": {"temperature": temperature, "num_ctx": 8192}}
     if tools:
         body["tools"] = tools
     if thinks(model):
         body["think"] = False  # tool picking needs no long reasoning: answer fast
     return _post("/api/chat", body, timeout=timeout).get("message", {}) or {}
+
+
+def fast_model(want: str) -> str:
+    """Smallest model of the newest installed family (Fast mode, quick jobs). Falls back to the usual pick."""
+    have = text_models()
+    if not have:
+        return want
+    best = min(family_rank(m) for m in have)
+    fam = sorted([m for m in have if family_rank(m) == best], key=size_of)
+    return fam[0] if size_of(fam[0]) <= 5 else pick(want)
+
+
+def chat_stream(model: str, messages: list[dict], temperature: float = 0.5, timeout: int = 600):
+    """Yields the answer piece by piece as the model writes it (first words in about a second)."""
+    body = {"model": model, "messages": messages, "stream": True, "keep_alive": "30m",
+            "options": {"temperature": temperature, "num_ctx": 8192}}
+    if thinks(model):
+        body["think"] = False
+    req = urllib.request.Request(OLLAMA + "/api/chat", data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        for line in r:
+            try:
+                d = json.loads(line)
+            except Exception:
+                continue
+            piece = (d.get("message") or {}).get("content") or ""
+            if piece:
+                yield piece
+            if d.get("done"):
+                return
+
+
+def warm(model: str):
+    """Load a model into memory ahead of time (an empty request), so the first real answer starts at once."""
+    try:
+        _post("/api/generate", {"model": model, "keep_alive": "30m"}, timeout=120)
+    except Exception:
+        pass

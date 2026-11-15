@@ -35,7 +35,17 @@ You act through tools. Rules:
 - create_project, delete_project, start_again and changes to ALL items wait for the person's OK; the app asks them.
 - Words like "desi", Indian places, foods and clothes mean their Indian look. People are Indian unless they say otherwise.
 - If the request is unclear, ask ONE short question.
-- Reply in 1-2 short sentences, in the person's language (Hindi, Malayalam, English…). No lists unless asked."""
+- After acting, reply in 1-2 short sentences, in the person's language (Hindi, Malayalam, English…).
+- If no tool fits (a question, advice, writing help), just answer helpfully like a normal assistant."""
+
+
+CHAT = """You are Ghost, a friendly, very capable assistant (like ChatGPT or Gemini) built into Ghost Studio, on this computer.
+Answer any question on any topic: ideas, writing, scripts, captions, translations, explanations, planning, maths, coding, advice.
+- Reply in the person's language and script (English, Hindi, Hinglish, Malayalam, Tamil…). Default context is India.
+- Be clear and useful. Short questions get short answers; use short paragraphs or bullet points for longer ones.
+- You can make things inside Ghost Studio too: pictures, video ads, songs, dubbing, edits. If the person seems to want that,
+  say in one line what you would make and that they can ask you directly (e.g. "make 3 pictures of …").
+- If you don't know something or it may have changed recently, say so honestly. Never invent facts."""
 
 
 # ---------------------------------------------------------------- conversation store
@@ -166,3 +176,21 @@ def build(s: dict, project: dict | None, projects: list[dict], text: str) -> lis
     else:
         msgs[last]["content"] = f"[Ghost context]\n{dyn}\n\n[Person says]\n{msgs[last]['content']}"
     return [{"role": "system", "content": SYSTEM}, *msgs]
+
+
+def build_chat(s: dict, project: dict | None) -> list[dict]:
+    """Normal conversation: no tools, the chat so far, plus what is open (so 'this ad' still makes sense)."""
+    mem = knowledge.learned()
+    extra = []
+    if project:
+        extra.append("For reference, the person has this open in Ghost Studio:\n" + describe(project))
+    if mem["means"] or mem["always"]:
+        extra.append("What the person taught you: " + "; ".join([f"'{m['when']}' = {m['means']}" for m in mem["means"]] +
+                                                                [f"always {a['text']}" for a in mem["always"]]))
+    if s.get("summary"):
+        extra.append("Earlier in this chat: " + " / ".join(s["summary"][-12:]))
+    system = CHAT + ("\n\n" + "\n\n".join(extra) if extra else "")
+    msgs = [m for m in s["messages"] if m["role"] in ("user", "assistant") and not m.get("tool_calls") and m.get("content")]
+    while len(msgs) > 1 and len(system) + sum(len(m["content"]) for m in msgs) > BUDGET:
+        msgs.pop(0)
+    return [{"role": "system", "content": system}, *[{"role": m["role"], "content": m["content"]} for m in msgs]]

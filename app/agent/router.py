@@ -20,6 +20,38 @@ N = r"(\d+|one|two|three|four|five|six|seven|eight|first|second|third|fourth|fif
 ITEM = r"(?:pic(?:ture)?|image|photo|img|shot|clip|scene|take|song)"
 
 
+VERB = re.compile(r"\b(make|create|generate|draw|change|edit|fix|retake|redo|redraw|undo|delete|remove|rename|open|show|pause|"
+                  r"continue|resume|replace|split|rewrite|upgrade|dub|translate the video|add|give me \d+|"
+                  r"banao|bana|badlo|badal|hatao|kholo)\b", re.I)
+MEDIA = re.compile(r"\b(pic(ture)?s?|images?|photos?|img|shots?|clips?|scenes?|songs?|takes?|music|lyrics|stems?|video|ad|ads|"
+                   r"project|projects|dub|voice ?over|narrat\w*|main look|chitra|gaana|gana|tasveer)\b", re.I)
+
+
+STRONG = re.compile(r"\b(pic(ture)?s?|images?|photos?|shots?|clips?|scenes?|songs?|takes?|music|stems?|video|dub|main look|project|"
+                    r"chitra|gaana|tasveer)\b", re.I)
+WRITE = re.compile(r"\b(taglines?|slogans?|captions?|lines|ideas?|poem|story|stories|email|message|post|hashtags?|tips|explain|meaning|"
+                   r"translate|summar\w+|what|why|how|who|when|where|which)\b", re.I)
+NUM = re.compile(r"\b(\d+|first|second|third|fourth|fifth|last|one|two|three|four)\b", re.I)
+MOD = re.compile(r"\b(again|different|another|instead|more|less|older|younger|bigger|smaller|brighter|darker|but|use|with)\b", re.I)
+PRON = re.compile(r"\b(this|that|it|her|him|them|his|she|he|one|ones)\b", re.I)
+
+
+def wants_action(text: str, project: dict | None) -> bool:
+    """Do something in Ghost (tools) or just talk (answered like ChatGPT)?
+    Action: something Ghost makes + an action word, a number or a change word ("make 3 pictures", "shot 3 again",
+    "take 1 but with a male voice"), or a short request about what is open ("make her older").
+    Talk: questions and writing help ("Give me 3 Onam ad taglines", "how do I make good thumbnails?")."""
+    t = text.strip()
+    if WRITE.search(t) and not STRONG.search(t):
+        return False
+    has_v, has_m = bool(VERB.search(t)), bool(MEDIA.search(t))
+    if has_m and (has_v or NUM.search(t) or MOD.search(t)):
+        return True
+    if project and (PRON.search(t) or NUM.search(t)) and (has_v or (MOD.search(t) and len(t.split()) <= 12)):
+        return True
+    return False
+
+
 @dataclass
 class Route:
     tier: int
@@ -123,6 +155,8 @@ def route(cfg: dict, text: str, project: dict | None, pending: bool) -> Route:
     fast, careful = pick_models(cfg)
     if not careful:
         return Route(-1, why="no script model installed")
+    if not wants_action(text, project):
+        return Route(3, model=careful, why="conversation")
     c = complexity(text)
     if c < 1.2 and fast and fast != careful:
         return Route(1, model=fast, why=f"simple request (score {c:.1f})")

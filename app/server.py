@@ -45,8 +45,8 @@ def _background_boost():
     _t.sleep(5)
     try:
         addons.ensure_fast_pictures(CFG)
-        if addons.memory_gb() >= 24 and not RUNNER.busy:
-            RUNNER.eng.warm()
+        if addons.memory_gb() >= 16 and not RUNNER.busy:
+            RUNNER.eng.warm()  # the picture model is ready before the first request
     except Exception as e:
         print("boost skipped:", e)
 
@@ -819,6 +819,16 @@ def agent_chat(body: Talk):
                 return
             yield json.dumps(ev, ensure_ascii=False) + "\n"
     return StreamingResponse(gen(), media_type="application/x-ndjson", headers={"Cache-Control": "no-store"})
+
+
+@app.post("/api/agent/warm")
+def agent_warm():
+    """The Talk drawer was opened: load the chat model now, so the first answer starts in about a second."""
+    from .agent import router
+    fast, careful = router.pick_models(CFG)
+    if careful:
+        _th.Thread(target=llm.warm, args=(careful,), daemon=True).start()
+    return {"ok": True, "model": careful}
 
 
 @app.get("/api/agent/history")

@@ -177,6 +177,27 @@ def test_music_tools():
     assert {"replace_song_part", "split_song_stems", "change_song"} <= names and "change_picture" not in names
 
 
+def test_chat_mode_streams_without_tools():
+    assert not router.wants_action("what is the capital of Kerala?", None)
+    assert not router.wants_action("write me a 2 line Onam wish in Malayalam", None)
+    assert router.wants_action("make 3 pictures of a desi dog", None)
+    assert router.wants_action("make her older", P)
+    assert not router.wants_action("Give me 3 short Onam ad taglines in Malayalam", None)
+    assert router.wants_action("delete this project", P) and router.wants_action("open my onam song", None)
+    pieces = []
+
+    def stream(model, msgs):
+        pieces.append(msgs)
+        yield "Thiruvana"
+        yield "nthapuram."
+    b = FakeBackend()
+    a = orchestrator.Agent({"models": {"llm": "qwen2.5:14b"}}, b, scripted(), stream)
+    ev = run(a, "what is the capital of Kerala?", pid=None, sid="t8")
+    assert [e["text"] for e in ev if e["t"] == "delta"] == ["Thiruvana", "nthapuram."]
+    assert any(e["t"] == "end" and e["text"] == "Thiruvananthapuram." for e in ev) and not b.done
+    assert pieces[0][0]["content"].startswith("You are Ghost, a friendly")  # chat persona, no tools
+
+
 def test_json_text_tool_call():
     m = {"content": 'Sure {"name": "pause", "arguments": {}}'}
     assert orchestrator._calls_from(m) == [("pause", {})]

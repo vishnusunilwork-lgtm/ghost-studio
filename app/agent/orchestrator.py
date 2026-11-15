@@ -49,9 +49,10 @@ def _calls_from(msg: dict) -> list[tuple[str, dict]]:
 
 
 class Agent:
-    def __init__(self, cfg: dict, backend, chat_fn: Callable | None = None):
+    def __init__(self, cfg: dict, backend, chat_fn: Callable | None = None, stream_fn: Callable | None = None):
         self.cfg, self.backend = cfg, backend
         self.chat = chat_fn or llm.chat  # injectable: tests use a scripted model
+        self.stream = stream_fn or llm.chat_stream
 
     # ------------------------------------------------------------ one turn
     def turn(self, sid: str, text: str, project_id: str | None, emit: Callable[[dict], None], confirm: bool | None = None):
@@ -76,6 +77,8 @@ class Agent:
             if r.tier == 0:
                 done = self._run_calls(s, r.calls, project_id, emit, trace)
                 self._say(s, emit, done or "Done.")
+            elif r.tier == 3:
+                self._chat(s, r, project, emit, trace)
             elif r.tier == -1:
                 self._say(s, emit, "I can do short commands like “retake 2”, “undo”, “pause” or “remember X means Y”. "
                                    "For anything else, install the free Script add-on (⚙ → Add-ons) and I’ll understand normal sentences.")
@@ -90,6 +93,21 @@ class Agent:
             trace["ms"] = int((time.time() - t0) * 1000)
             self._trace(trace)
             emit({"t": "done", "ms": trace["ms"]})
+
+    # ------------------------------------------------------------ conversation (like ChatGPT): streamed, no tools
+    def _chat(self, s, r, project, emit, trace):
+        st, first, out = time.time(), None, []
+        msgs = context.build_chat(s, project)
+        for piece in self.stream(r.model, msgs):
+            if first is None:
+                first = time.time() - st
+                emit({"t": "start"})
+            out.append(piece)
+            emit({"t": "delta", "text": piece})
+        text = re.sub(r"<think>.*?</think>", "", "".join(out), flags=re.S).strip() or "…"
+        trace["steps"].append({"model": r.model, "chat": True, "first_ms": int((first or 0) * 1000), "ms": int((time.time() - st) * 1000)})
+        s["messages"].append({"role": "assistant", "content": text})
+        emit({"t": "end", "text": text})
 
     # ------------------------------------------------------------ model loop
     def _loop(self, s, r, project_id, emit, trace):
@@ -131,6 +149,10 @@ class Agent:
                     s["messages"].append({"role": "tool", "content": f"{name}: ERROR {e}"})
                     continue
                 t = tools.BY_NAME[name]
+                asked = " ".join(m["content"] for m in s["messages"][-3:] if m["role"] == "user").lower()
+                if name == "remember" and not re.search(r"remember|always|means|yaad|ഓർക്ക|याद", asked):
+                    s["messages"].append({"role": "tool", "content": "remember: ERROR only save memories when the person asks you to remember something"})
+                    continue  # never store a memory the person didn't ask for
                 if t.needs_ok(a):
                     held.append((name, a))
                     s["messages"].append({"role": "tool", "content": f"{name}: waiting for the person's OK ({t.describe(a)})"})

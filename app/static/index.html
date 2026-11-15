@@ -323,6 +323,8 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
 .tk-log{flex:1;overflow:auto;padding:6px 14px 12px;display:flex;flex-direction:column;gap:10px}
 .tk-b{max-width:88%;padding:10px 13px;border-radius:18px;font-size:14px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;animation:enter .3s var(--ease) both}
 .tk-b.u{align-self:flex-end;background:var(--ink);color:#0a0a0b;border-bottom-right-radius:6px}
+.tk-b.a ul,.tk-b.a ol{margin:4px 0;padding-left:20px}.tk-b.a code{font:12.5px ui-monospace,Menlo,monospace;background:rgba(255,255,255,.08);padding:1px 5px;border-radius:6px}
+.tk-b.a.live{white-space:pre-wrap}.tk-b.a.live::after{content:"▍";opacity:.6;animation:blink 1s infinite}.tk-b.a{white-space:normal}
 .tk-b.a{align-self:flex-start;background:var(--glass-soft);border:1px solid var(--edge);border-bottom-left-radius:6px}
 .tk-act{align-self:flex-start;display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--mute);padding:2px 4px;max-width:92%}
 .tk-act i{flex:none;width:16px;height:16px;border-radius:50%;border:1.5px solid var(--edge-hi);border-top-color:var(--ink);animation:spin 1s linear infinite;margin-top:2px;font-style:normal;display:grid;place-items:center;font-size:10px}
@@ -487,7 +489,7 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
 <aside class="drawer right" id="talk" aria-label="Talk to Ghost">
   <div class="dhead"><h3>Talk to Ghost</h3><button class="icon" id="tkNew" title="New chat" aria-label="New chat"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button><button class="icon" data-close aria-label="Close">✕</button></div>
   <div class="tk-log" id="tkLog" aria-live="polite"></div>
-  <div class="tk-foot"><div class="tk-in"><textarea id="tkIn" rows="1" placeholder="Tell Ghost what to do…"></textarea><button id="tkSend" aria-label="Send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button></div>
+  <div class="tk-foot"><div class="tk-in"><textarea id="tkIn" rows="1" placeholder="Ask anything, or tell Ghost what to make…"></textarea><button id="tkSend" aria-label="Send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button></div>
   <p class="tk-hint">Runs on this computer. Every action Ghost takes is shown here, and big ones wait for your OK.</p></div>
 </aside>
 <aside class="drawer right" id="clipSheet" aria-label="Edit shot">
@@ -842,34 +844,45 @@ if(!TKS){TKS='c'+Math.random().toString(36).slice(2,10);try{localStorage.setItem
 let TKBUSY=false;
 const tkLog=()=>$('#tkLog');
 function tkAdd(html,cls){const d=document.createElement('div');d.className=cls;d.innerHTML=html;tkLog().appendChild(d);tkLog().scrollTop=1e9;return d}
-function tkEmpty(){if(tkLog().children.length)return;const ex=['Make 3 pictures of a desi dog','Make the hair in picture 2 shorter','Same as my last project, but for Diwali','Song take 1: more upbeat, male voice','Remember: our shop means a small kirana store in Kochi'];
-  const d=tkAdd(`<p class="note" style="padding:0 2px">Tell Ghost what to do in your own words. It can make, change, retake, undo, rewrite and remember.</p><div class="tk-sug">${ex.map(x=>`<button>${esc(x)}</button>`).join('')}</div>`,'tk-empty');
+function tkEmpty(){if(tkLog().children.length)return;const ex=['Write 3 catchy Onam ad lines in Malayalam','Make 3 pictures of a desi dog','Make the hair in picture 2 shorter','Same as my last project, but for Diwali','Song take 1: more upbeat, male voice','Remember: our shop means a small kirana store in Kochi'];
+  const d=tkAdd(`<p class="note" style="padding:0 2px">Ask Ghost anything, like ChatGPT, in any language. Or tell it what to make or change: it can make, change, retake, undo, rewrite, dub and remember.</p><div class="tk-sug">${ex.map(x=>`<button>${esc(x)}</button>`).join('')}</div>`,'tk-empty');
   d.querySelectorAll('button').forEach(b=>b.onclick=()=>{$('#tkIn').value=b.textContent;$('#tkIn').focus()})}
-async function tkHistory(){try{const h=await api('/api/agent/history?session='+TKS);tkLog().innerHTML='';h.messages.forEach(m=>tkAdd(esc(m.text),'tk-b '+(m.role==='user'?'u':'a')));tkEmpty()}catch(e){tkEmpty()}}
-const ROUTE={0:'⚡ instant command',1:'fast model',2:'careful model'};
+async function tkHistory(){try{const h=await api('/api/agent/history?session='+TKS);tkLog().innerHTML='';h.messages.forEach(m=>tkAdd(m.role==='user'?esc(m.text):md(m.text),'tk-b '+(m.role==='user'?'u':'a')));tkEmpty()}catch(e){tkEmpty()}}
+const ROUTE={0:'⚡ instant command',1:'fast model',2:'careful model',3:''};
+/* tiny, safe markdown: **bold**, `code`, - lists, 1. lists, ### headings */
+function md(t){const L=esc(t).split('\n');let h='',list='';const close=()=>{if(list){h+=`</${list}>`;list=''}};
+  for(const raw of L){let x=raw.replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/`([^`]+)`/g,'<code>$1</code>');
+    let m;if((m=x.match(/^\s*[-*•]\s+(.*)/))){if(list!=='ul'){close();h+='<ul>';list='ul'}h+=`<li>${m[1]}</li>`}
+    else if((m=x.match(/^\s*\d+[.)]\s+(.*)/))){if(list!=='ol'){close();h+='<ol>';list='ol'}h+=`<li>${m[1]}</li>`}
+    else if((m=x.match(/^#{1,4}\s+(.*)/))){close();h+=`<b class="h">${m[1]}</b><br>`}
+    else{close();h+=x?x+'<br>':'<br>'}}
+  close();return h.replace(/(<br>)+$/,'')}
 async function tkSend(text,confirm){if(TKBUSY)return;if(!text&&confirm==null)return;TKBUSY=true;$('#tkSend').disabled=true;
   tkLog().querySelector('.tk-empty')?.remove();$$('#tkLog .tk-ok .btn').forEach(b=>b.disabled=true);
-  if(text)tkAdd(esc(text),'tk-b u');let think=tkAdd('<i></i><i></i><i></i>','tk-think');let lastAct=null;
+  if(text)tkAdd(esc(text),'tk-b u');let think=tkAdd('<i></i><i></i><i></i>','tk-think');let lastAct=null,live=null,liveT='';
   const clear=()=>{if(think){think.remove();think=null}};
   try{const r=await fetch('/api/agent/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session:TKS,text:text||'',project:CUR||null,confirm})});
     if(!r.ok||!r.body)throw new Error('Ghost could not answer ('+r.status+')');
     const rd=r.body.getReader(),dec=new TextDecoder();let buf='';
     for(;;){const {value,done}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});let k;
       while((k=buf.indexOf('\n'))>=0){const line=buf.slice(0,k).trim();buf=buf.slice(k+1);if(!line)continue;let e;try{e=JSON.parse(line)}catch(x){continue}
-        if(e.t==='route'){tkAdd(esc(ROUTE[e.tier]||'')+(e.model?' · '+esc(e.model):''),'tk-route')}
+        if(e.t==='route'){if(ROUTE[e.tier])tkAdd(esc(ROUTE[e.tier])+(e.model?' · '+esc(e.model):''),'tk-route')}
+        else if(e.t==='start'){clear();liveT='';live=tkAdd('','tk-b a live')}
+        else if(e.t==='delta'){if(!live){clear();live=tkAdd('','tk-b a live')}liveT+=e.text;live.textContent=liveT;tkLog().scrollTop=1e9}
+        else if(e.t==='end'){if(live){live.classList.remove('live');live.innerHTML=md(e.text)}live=null}
         else if(e.t==='thinking'){if(!think)think=tkAdd('<i></i><i></i><i></i>','tk-think');tkLog().appendChild(think)}
         else if(e.t==='action'){clear();lastAct=tkAdd(`<i></i><span>${esc(e.label)}</span>`,'tk-act')}
         else if(e.t==='result'){const el=lastAct||tkAdd('<i></i><span></span>','tk-act');el.classList.add(e.ok?'ok':'bad');el.querySelector('i').textContent=e.ok?'✓':'!';if(!e.ok||e.name==='rewrite_text')el.querySelector('span').insertAdjacentHTML('beforeend',`<small>${esc(e.text)}</small>`);lastAct=null}
         else if(e.t==='confirm'){clear();const c=tkAdd(`<b>Ghost wants to:</b><ul>${e.plan.map(x=>`<li>${esc(x)}</li>`).join('')}</ul><div class="r"><button class="btn">Cancel</button><button class="btn solid">Go ahead</button></div>`,'tk-ok');
           const [no,go]=c.querySelectorAll('.btn');no.onclick=()=>tkSend('',false);go.onclick=()=>tkSend('',true)}
-        else if(e.t==='message'){clear();tkAdd(esc(e.text),'tk-b a')}
+        else if(e.t==='message'){clear();tkAdd(md(e.text),'tk-b a')}
         else if(e.t==='note'){tkAdd(esc(e.text),'tk-route')}
         else if(e.t==='open'){open(e.project)}
         else if(e.t==='refresh'){if(e.project===CUR)kick()}
         else if(e.t==='done'){clear()}}}
   }catch(e){clear();tkAdd(esc(e.message),'tk-b a')}
   finally{clear();TKBUSY=false;$('#tkSend').disabled=false;status()}}
-$('#talkBtn').onclick=()=>{drawer('talk');if(!tkLog().children.length)tkHistory();setTimeout(()=>$('#tkIn').focus(),300)};
+$('#talkBtn').onclick=()=>{drawer('talk');fetch('/api/agent/warm',{method:'POST'}).catch(()=>{});if(!tkLog().children.length)tkHistory();setTimeout(()=>$('#tkIn').focus(),300)};
 $('#tkSend').onclick=()=>{const t=$('#tkIn').value.trim();if(!t)return;$('#tkIn').value='';$('#tkIn').style.height='';tkSend(t)};
 $('#tkIn').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();$('#tkSend').click()}};
 $('#tkIn').oninput=e=>{const t=e.target;t.style.height='auto';t.style.height=Math.min(140,t.scrollHeight)+'px'};

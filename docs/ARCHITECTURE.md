@@ -42,6 +42,20 @@ ChatGPT. Its code is private, and none of it is used here.
 | Observability | Tracing and metrics. | `.ghost/agent.log` is one JSON line per turn: route, model, each step's time, tool calls, errors, fallbacks. |
 | Evaluation | Benchmarks. | `tests/test_agent.py` has 11 offline checks with a scripted model. `tests/eval_live.py` has 14 real requests in English and Hinglish, run against the real local models. |
 
+## Two modes in one box (v3.13)
+
+`router.wants_action` decides per message, with no model call:
+- **Conversation** (questions, writing help, ideas, translations): streamed word by word like ChatGPT. It uses no tools, so it can't change anything by accident.
+- **Action** (something Ghost makes + an action, a number or a change word, or a short request about what is open): the tool loop above.
+
+A memory is saved only when the person says remember / always / means, even if the model tries to save one.
+
+## Speed work (v3.13)
+
+- **Short answers from the script AI:** it returns only the subject, the place and one short action per shot. Ghost assembles the full prompt (framing + subject + action + place + quality). That is about 5× fewer words to generate, measured 205 s → 30–40 s on the CPU test machine, and the person looks identical in every shot.
+- **Fast mode uses the smallest current model** for prompts; Quality uses the larger one.
+- **Models stay in memory:** on computers with 32 GB or more, the script AI stays loaded while pictures are made. The picture model is pre-loaded at start on 16 GB+. The chat model loads when the Talk drawer opens.
+
 ## Media engines: the same ideas as Gemini, ElevenLabs and Suno, with free models
 
 The big services publish what they do, not their code or weights. Ghost uses the same published ideas with

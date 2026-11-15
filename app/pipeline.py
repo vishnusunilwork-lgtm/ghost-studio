@@ -219,7 +219,8 @@ class Runner:
         self._say(p, "plan", "Writing the script and every prompt", 10)
         pl = planner.plan(self.cfg, idea=p.get("idea", ""), dialogue=p.get("dialogue", ""), reference=ref,
                           seconds=int(p.get("seconds", 30)), voice_mode=p.get("voice_mode", "oncamera"),
-                          language=p.get("language"), aspect=p.get("aspect") or "9:16", style=self._style(p, ref))
+                          language=p.get("language"), aspect=p.get("aspect") or "9:16", style=self._style(p, ref),
+                          fast=p.get("quality") == "draft")
         p["plan"] = {k: v for k, v in pl.items() if k != "clips"}
         p["title"] = p.get("title") if p.get("title") not in (None, "", "New ad") else pl.get("title") or "New ad"
         p["clips"] = [{**c, "status": "waiting", "seed": random.randint(1, 10**6)} for c in pl.get("clips", [])]
@@ -566,7 +567,7 @@ class Runner:
         self._say(p, "plan", "Writing the image prompts", 8)
         pl = planner.plan_images(self.cfg, idea=p.get("idea", "") or p.get("dialogue", ""), reference=ref,
                                  count=int(p.get("count", 4)), aspect=p.get("aspect") or "9:16", language=p.get("language"),
-                                 style=self._style(p, ref))
+                                 style=self._style(p, ref), fast=p.get("quality") == "draft")
         if p.get("title") in (None, "", "New ad"):
             p["title"] = pl.get("title") or "Images"
         p.pop("anchor", None); p.pop("anchor_i", None)  # a new set starts a new main look

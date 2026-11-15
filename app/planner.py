@@ -11,6 +11,11 @@ RULES = ("No money, income, debt, loan, cure or guaranteed-result claims. No fea
          "No TV-news look, no channel names, no logos, no readable on-screen text. "
          "Every person is a fictional adult and must NOT resemble any real or famous person.")
 
+LITERAL = ("Make exactly what the person asked and nothing more. Do NOT add religion, prayer, gods, idols, temples, festivals, "
+           "garlands, blessings or a devotional mood unless the idea mentions them. When the idea is short (for example 'one man'), "
+           "fill in only ordinary, realistic, everyday details: a common Indian person of a believable age, everyday clothes, "
+           "an everyday Indian place (street, home, shop, office, market), natural light, a natural expression.")
+
 MOVES = ["none", "push_in", "pull_out", "pan_left", "pan_right", "tilt_up", "tilt_down"]
 
 # People are Indian unless the idea says otherwise; states/regions (even misspelled) set the look, clothes and place.
@@ -183,7 +188,7 @@ Describe it for remaking with new, fictional people. Return JSON only:
 
 
 def plan(cfg: dict, *, idea: str = "", dialogue: str = "", reference: dict | None = None, seconds: int = 30,
-         voice_mode: str = "oncamera", language: str | None = None, aspect: str = "9:16", style: str = "auto") -> dict:
+         voice_mode: str = "oncamera", language: str | None = None, aspect: str = "9:16", style: str = "auto", fast: bool = False) -> dict:
     lang = language or cfg.get("language", "Hindi")
     b = cfg["brand"]
     max_s = float(cfg["quality"]["clip_seconds"])
@@ -194,7 +199,8 @@ def plan(cfg: dict, *, idea: str = "", dialogue: str = "", reference: dict | Non
     if reference and not (reference.get("transcript") or "").strip():
         src += "\n(The reference's speech could not be heard: copy its look, people, framing and camera moves, and write a fresh script.)"
     prompt = f"""You are a film director and prompt engineer for an image-to-video model (it makes video AND the spoken audio with lip-sync from a first-frame image).
-Make a {seconds} s {aspect} ad for {b['name']} in {lang}. About the brand: {b['about']}
+Make a {seconds} s {aspect} ad for {b['name']} in {lang}. About the brand (background only; the ad's story comes from the idea): {b['about']}
+{LITERAL}
 {src}
 {'Write the script yourself: a strong 2-second hook, natural spoken ' + lang + ', a clear call to action to download ' + b['spoken'] + ' at the end.' if need_script else 'Use EXACTLY this dialogue, every word, in order:' + chr(10) + dialogue}
 Voice: {'people speak on camera' if voice_mode == 'oncamera' else 'a narrator speaks over the pictures (people do not talk)' if voice_mode == 'narrator' else 'mostly on camera, with a short narrator line at the end'}.
@@ -214,7 +220,8 @@ Return JSON only:
     try:
         if not llm.available():
             raise RuntimeError("Ollama is not running")
-        data = llm.ask_json(cfg["models"]["llm"], prompt)
+        model = llm.fast_model(cfg["models"]["llm"]) if fast else cfg["models"]["llm"]
+        data = llm.ask_json(model, prompt)
         if len(data.get("clips", [])) < max(1, int(n_clips * 0.7)):  # too short: ask once more, firmly
             more = llm.ask_json(cfg["models"]["llm"], prompt + f"\n\nIMPORTANT: your last answer had only {len(data.get('clips', []))} clip(s). "
                                 f"Return the full JSON again with EXACTLY {n_clips} clips.", temperature=0.4)
@@ -264,23 +271,22 @@ def _fallback(idea, dialogue, reference, seconds, lang, b, why, aspect="9:16"):
         lines = split_lines(dialogue)
     else:
         n = max(2, round(seconds / 6.5))
-        body = [f"{idea or 'इस दिवाली'}…", "अपनों के साथ हर पल ख़ास बनाइए।", "अपनी फ़ोटो और नाम के साथ शुभकामनाएँ भेजिए।",
-                "हर त्योहार, अपनी भाषा में।", "आज ही शुरू कीजिए।"] if lang == "Hindi" else \
-               [f"{idea or 'This festival'}…", "Make every moment with your family special.", "Send wishes with your own photo and name.",
-                "Every festival, in your language.", "Start today."]
+        body = [f"{idea}…" if idea else "यह देखिए…", "अपनी बात, अपनी भाषा में।", "अपनी फ़ोटो और नाम के साथ भेजिए।", "आज ही शुरू कीजिए।"] \
+            if lang == "Hindi" else [f"{idea}…" if idea else "Look at this…", "Say it your way, in your language.",
+                                     "Share it with your own photo and name.", "Start today."]
         lines = [{"speaker": "", "line": body[i % len(body)]} for i in range(n - 1)] + [{"speaker": "", "line": f"{b['spoken']} ऐप डाउनलोड करें।" if lang == "Hindi" else f"Download {b['spoken']} today."}]
-    look = "a fictional Indian adult in festive everyday clothes, warm smile, real skin texture"
+    look = "a fictional ordinary Indian adult in everyday clothes, natural expression, real skin texture"
     moves = ["push_in", "none", "pan_right", "push_in", "tilt_up", "none"]
     clips = []
     for i, l in enumerate(lines):
         secs = min(7.5, max(3.0, len(l["line"].split()) / 2.3 + 0.8))
-        shots = ["close-up, looking at camera", "medium shot, warm gesture", "detail of hands and diyas", "wide shot of the home",
-                 "close-up smiling", "medium shot holding a phone"]
+        shots = ["close-up, looking at camera", "medium shot, natural gesture", "detail of hands holding a phone",
+                 "wide shot of an everyday Indian street", "close-up smiling", "medium shot holding a phone"]
         clips.append({"speaker": l["speaker"] or "A", "line": l["line"], "seconds": round(secs, 1), "camera_move": moves[i % len(moves)], "shake": 0.6,
-                      "image_prompt": f"{aspect} real phone photo, {look}, {idea or 'festive home'}, {shots[i % len(shots)]}, natural light, no text.",
+                      "image_prompt": ground(f"{aspect} real phone photo, {idea + ', ' if idea else ''}{look}, {shots[i % len(shots)]}, everyday Indian place, natural light, no text.", idea),
                       "video_prompt": f"{look} speaks warmly to a phone camera, small natural gestures, blinks, breath before speaking. Says in {lang}: \"{l['line']}\". Natural pace. Soft ambient sound. No music, no subtitles, no text."})
     return {"title": (idea or "New ad")[:40], "character": {"look": look, "voice": "warm adult voice"}, "people": [],
-            "image_prompt": f"{aspect} real phone photo, {look}, {idea or 'festive home'}, natural light, no text.",
+            "image_prompt": ground(f"{aspect} real phone photo, {idea + ', ' if idea else ''}{look}, everyday Indian place, natural light, no text.", idea),
             "clips": clips, "note": "Written without the local language model (" + why + "). Start Ollama for real scripts."}
 
 
@@ -332,7 +338,7 @@ SHOTS = [s[1] for s in SHOT_SPECS]
 
 
 def plan_images(cfg: dict, *, idea: str = "", reference: dict | None = None, count: int = 4, aspect: str = "9:16",
-                language: str | None = None, style: str = "auto") -> dict:
+                language: str | None = None, style: str = "auto", fast: bool = False) -> dict:
     """Images only: a set of clearly different still images (close-up, detail, wide…) of the same people and place."""
     count = max(1, min(8, int(count or 4)))
     people = bool(reference) or has_people(idea)
@@ -342,7 +348,7 @@ def plan_images(cfg: dict, *, idea: str = "", reference: dict | None = None, cou
            if reference else f"IDEA: {idea}")
     shot_list = "\n".join(f"{i + 1}. {c}: {d}" for i, (c, d) in enumerate(shots))
     prompt = f"""You are an art director and prompt engineer for a photo-real image model.
-Make {count} still images for {cfg['brand']['name']} ({cfg['brand']['about']}), {aspect} frame.
+Make {count} still images, {aspect} frame. {LITERAL}
 {src}
 Rules: {RULES} {people_note(idea) if people else ''} {knowledge.hints(idea)}
 {('LOOK AND DIRECTION: ' + STYLES_DIR[style]['guide']) if style in STYLES_DIR else ''}
@@ -351,25 +357,28 @@ Rules: {RULES} {people_note(idea) if people else ''} {knowledge.hints(idea)}
  f"The MAIN SUBJECT is exactly what the idea names: '{idea}'. It is the star of every picture. Do NOT add any person, face, hands or body parts, "
  "and do not turn it into a statue, toy, drawing or deity unless the idea says so. Describe ONE specific subject precisely "
  "(for an animal: breed, fur colour and pattern, eye colour; for an object: material, colour, shape) and ONE place (time, light)."}
-Then write one prompt per shot below. Each prompt MUST start with that shot's framing text, then the {"character" if people else "main subject"} (same words every time),
-then a DIFFERENT action/pose/expression for that shot, then the place and light. Shots must look clearly different.
+Then, for each shot below, write only a short caption and a DIFFERENT action/pose/expression (max 18 words) that suits its framing.
+Ghost puts each prompt together itself (framing + your description + action + place + quality), so keep descriptions exact and short.
 Shots:
 {shot_list}
-End every prompt with: {quality}
-Return JSON only: {{"title":"short name","character":"","place":"","images":[{{"caption":"3-5 words","prompt":""}}]}}"""
+Describe looks only: no personal names (the picture model can't use them).
+Return JSON only: {{"title":"short name","subject":"<the {"character" if people else "main subject"}, max 45 words>","place":"<place, time, light, max 25 words>",
+"shots":[{{"caption":"3-5 words","action":"<max 18 words>"}}]}}"""
     try:
         if not llm.available():
             raise RuntimeError("Ollama is not running")
-        data = llm.ask_json(cfg["models"]["llm"], prompt, temperature=0.7)
-        imgs = [i for i in data.get("images", []) if i.get("prompt")][:count]
-        if len(imgs) < count:
-            raise RuntimeError("too few prompts")
-        for i, im in enumerate(imgs):
-            if quality[:30] not in im["prompt"]:
-                im["prompt"] = im["prompt"].rstrip(". ") + ". " + quality
-            if not people:
-                im["prompt"] = im["prompt"].rstrip(". ") + ". No people, no human faces or hands in the frame."
-        data["images"] = imgs
+        # Fast mode: the smallest up-to-date model writes the prompts (a few seconds); Quality: the bigger one
+        model = llm.fast_model(cfg["models"]["llm"]) if fast else cfg["models"]["llm"]
+        data = llm.ask_json(model, prompt, temperature=0.6)
+        subj, place = str(data.get("subject") or "").strip().rstrip(". "), str(data.get("place") or "").strip()
+        acts = [x for x in data.get("shots", []) if isinstance(x, dict) and x.get("action")][:count]
+        if not subj or len(acts) < count:
+            raise RuntimeError("the script AI answered incompletely")
+        tail = "" if people else " No people, no human faces or hands in the frame."
+        data["images"] = [{"caption": a.get("caption") or c,
+                           "prompt": f"{d}. {subj}, {a['action'].rstrip('. ')}. {place.rstrip('. ')}. {quality}{tail}"}
+                          for (c, d), a in zip(shots, acts)]
+        data["character"] = subj
         if people:
             ground_plan(data, idea)
     except Exception as e:
@@ -379,15 +388,13 @@ Return JSON only: {{"title":"short name","character":"","place":"","images":[{{"
                     "images": [{"caption": c, "prompt": f"{d}. Main subject: {subject}, photographed for real in a natural Indian setting, soft natural light. "
                                                         f"No people, no human faces or hands. {quality}"} for c, d in shots]}
         r = region_of(idea)
-        who = (f"a fictional young woman, {REGIONS[r].split(';')[0]}, oval face, long dark hair, {REGIONS[r].split(';')[1].strip()}" if r else
-               "a fictional Indian woman in her late twenties, oval face, warm brown skin, long dark hair, small red bindi, "
-               "gold jhumka earrings, deep red silk saree with a gold border")
-        where = idea or "a festive home"
-        actions = ["gently smiling as she looks at the flame", "lighting a brass diya with a matchstick", "holding a brass thali with three lit diyas",
-                   "standing at the balcony railing among rows of lit diyas", "watching the city lights", "laughing with family off-camera",
-                   "holding a sparkler", "arranged marigold flowers, diyas and sweets"]
+        who = (f"{idea}: {REGIONS[r].split(';')[0]}, an ordinary, real-looking adult in everyday clothes, natural expression" if r else
+               f"{idea}: an ordinary, real-looking Indian adult (South Asian features, brown skin) in everyday clothes, natural expression")
+        actions = ["looking at the camera", "walking and glancing to the side", "hands busy with something everyday",
+                   "standing in the place, small in the frame", "looking toward what they are doing", "laughing naturally",
+                   "standing confidently", "the everyday objects around them"]
         data = {"title": (idea or "Images")[:40], "note": "Written without the script AI (" + str(e)[:80] + "). Install Script AI in ⚙ → Add-ons for better prompts.",
-                "images": [{"caption": c, "prompt": f"{d}. Subject: {who}, {actions[i % len(actions)]}. Setting: {where}, warm practical light, bokeh of string lights, night. {QUALITY}"}
+                "images": [{"caption": c, "prompt": f"{d}. Subject: {who}, {actions[i % len(actions)]}. Setting: an everyday Indian place, natural daylight. {QUALITY}"}
                            for i, (c, d) in enumerate(shots)]}
     return data
 
