@@ -550,9 +550,12 @@ class Runner:
     def _shot_image(self, p, i, w, h, steps, refs, main):
         c = p["clips"][i]
         f = self.store.dir(p["id"]) / f"shot{i + 1:02d}_{c['seed']}.png"
-        prompt = c.get("image_prompt") or f"{p['plan']['image_prompt']} Moment: {c.get('line', '')}"
+        prompt = planner.still_prompt(c.get("image_prompt") or f"{p['plan']['image_prompt']} Moment: {c.get('line', '')}")
+        prompt = planner.with_look(prompt, planner.look_of(p.get("plan") or {}, c.get("speaker")))
         if i > 0:  # every shot gets a clearly different framing, so the ad cuts instead of repeating one picture
             prompt = f"{self.FRAMINGS[i % len(self.FRAMINGS)]}. {prompt}"
+        if main:  # the same person, outfit and place as the main picture: only framing and action change
+            prompt = self.LOCK + prompt
         self.eng.image(prompt, f, w, h, seed=int(c["seed"]), ref_images=[main, *refs][:2], steps=steps,
                        fallback=refs[i % len(refs)] if refs else None)
         c["image"] = str(f)
@@ -569,18 +572,22 @@ class Runner:
         if self.eng.plan()["video"] == "service" and only is None:  # cloud: every shot at the same time
             from concurrent.futures import ThreadPoolExecutor
             todo = [i for i in idx if not (resume and p["clips"][i].get("video") and p["clips"][i].get("status") == "done")]
+            many = len(p["clips"]) > 1
+            if many:  # character consistency: every shot starts from its own picture of the SAME person (made from the main one)
+                self._shot_stills(p, todo, gw, gh, draft)
             self._say(p, "videos", f"Making {len(todo)} shots at the same time in the cloud (about 1–2 min)", 40)
 
             def mk(i):
                 c = p["clips"][i]
                 start = c.get("image") or p.get("person_images", {}).get(c.get("speaker")) or p["image"]
                 out = d / f"clip{i + 1:02d}_{c['seed']}{'_r%d' % c['rev'] if c.get('rev') else ''}{'_draft' if draft else ''}.mp4"
-                self.eng.video(Path(start), c["video_prompt"], float(c["seconds"]), out, seed=c["seed"],
-                               width=gw, height=gh, steps=steps, aspect=p.get("aspect") or "9:16")
-                return i, out
+                self.eng.video(Path(start), self._clip_prompt(p, c), float(c["seconds"]), out, seed=c["seed"],
+                               width=gw, height=gh, steps=steps, aspect=p.get("aspect") or "9:16", keep_look=many)
+                return i, out, start
             with ThreadPoolExecutor(max_workers=4) as ex:
-                for i, out in ex.map(mk, todo):
+                for i, out, start in ex.map(mk, todo):
                     p["clips"][i]["video"], p["clips"][i]["status"] = str(out), "done"
+                    self._check_look(p, i, Path(start), out)
             self.store.save(p)
             self._done(p, "videos")
             return
@@ -593,12 +600,55 @@ class Runner:
             self._say(p, "videos", f"Clip {i + 1} of {n}: {c.get('line','')[:50]}", 25 + int(55 * i / n))
             start = c.get("image") or p.get("person_images", {}).get(c.get("speaker")) or p["image"]
             out = d / f"clip{i + 1:02d}_{c['seed']}{'_r%d' % c['rev'] if c.get('rev') else ''}{'_draft' if draft else ''}.mp4"
-            self.eng.video(Path(start), c["video_prompt"], float(c["seconds"]), out, seed=c["seed"],
-                           width=gw, height=gh, steps=steps, aspect=p.get("aspect") or "9:16")
+            self.eng.video(Path(start), self._clip_prompt(p, c), float(c["seconds"]), out, seed=c["seed"],
+                           width=gw, height=gh, steps=steps, aspect=p.get("aspect") or "9:16", keep_look=len(p["clips"]) > 1)
             c["video"], c["status"] = str(out), "done"
             self.store.save(p)
         if only is None:
             self._done(p, "videos")
+
+    @staticmethod
+    def _clip_prompt(p, c) -> str:
+        """The shot's video prompt with the full character look in it (never just "the woman")."""
+        return planner.with_look(c.get("video_prompt") or "", planner.look_of(p.get("plan") or {}, c.get("speaker")))
+
+    def _shot_stills(self, p, todo, gw, gh, draft):
+        """One first-frame picture per shot, all of the same person (main picture as reference + LOCK), made in parallel."""
+        from concurrent.futures import ThreadPoolExecutor
+        main = Path(p["image"]) if p.get("image") and Path(p["image"]).exists() else None
+        need = [i for i in todo if not (p["clips"][i].get("image") and Path(p["clips"][i]["image"]).exists())]
+        if not need or not main:
+            return
+        q = self.cfg["quality"]
+        refs = [Path(r) for r in p.get("refs") or []]
+        steps = int(q.get("image_steps_draft", 20)) if draft else int(q["image_steps"])
+        self._say(p, "videos", f"Same person in every shot: making {len(need)} first frames from the main picture", 35)
+
+        def one(i):
+            anchor = Path(p.get("person_images", {}).get(p["clips"][i].get("speaker")) or main)
+            try:
+                self._shot_image(p, i, gw * (1 if draft else 2), gh * (1 if draft else 2), steps, refs, anchor)
+            except Exception as e:  # the shot then starts from the main picture itself (still the same person)
+                p["log"].append(time.strftime("%H:%M:%S ") + f"Shot {i + 1} picture skipped ({str(e)[:80]}): starts from the main picture")
+        with ThreadPoolExecutor(max_workers=4) as ex:
+            list(ex.map(one, need))
+        self.store.save(p)
+
+    def _check_look(self, p, i, start: Path, clip: Path):
+        """Did the video model really start from the shot's picture? (If not, the person can drift.)"""
+        try:
+            from . import dna
+            from .editor import ffmpeg_bin
+            first = clip.with_name(clip.stem + "_f0.png")
+            subprocess.run([ffmpeg_bin(), "-y", "-v", "error", "-i", str(clip), "-frames:v", "1", str(first)], check=True, timeout=60)
+            score = dna.similarity(start, first)
+            first.unlink(missing_ok=True)
+            p["clips"][i]["match"] = score
+            if score < 70:
+                p["log"].append(time.strftime("%H:%M:%S ") + f"Shot {i + 1}: the video looks different from its picture ({score}% alike). "
+                                "Retake that shot if the person changed.")
+        except Exception:
+            pass
 
     MOTION_PROMPT = ("{shot}. {move} Realistic live-action footage shot on a phone camera, natural motion, real physics, "
                      "natural light, sharp focus, no text, no subtitles, no watermark.")
@@ -766,14 +816,19 @@ class Runner:
         photo = (p.get("engine_plan") or {}).get("video") == "photo_motion"
         if photo:
             mode = "narrator"
+        style = p.get("style_used") or p.get("style") or "auto"
         for c in p["clips"]:
             if not c.get("video"):
                 continue
             mv = c.get("camera_move", "none")
+            by_hand = bool(c.get("by_hand"))  # you set the move / shake on this shot yourself
             if photo and mv == "none":
                 mv = "push_in"  # a still photo always needs a little life
+            if not photo and not by_hand:
+                mv = "none"  # real video already has its own camera motion: no extra zoom or wobble on top
+            shake = float(c.get("shake") or 0) if (by_hand or style == "ugc") else 0.0
             clips.append({"video": c["video"], "duration": c["seconds"], "move": mv,
-                          "amount": c.get("amount", 1), "shake": c.get("shake", 0), "mute": mode == "narrator"})
+                          "amount": c.get("amount", 1) if photo or by_hand else 1, "shake": shake, "mute": mode == "narrator"})
             if c.get("narration_file"):
                 narr.append({"file": c["narration_file"], "at": t + 0.2})
             t += float(c["seconds"])

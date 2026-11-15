@@ -556,6 +556,8 @@ def edit_clip(pid: str, i: int, body: ClipEdit):
     if "line" in changed and changed["line"] != c.get("line") and "video_prompt" not in changed:
         old = c.get("line", "")
         c["video_prompt"] = c.get("video_prompt", "").replace(old, changed["line"]) if old and old in c.get("video_prompt", "") else c.get("video_prompt", "") + f' Says: "{changed["line"]}".'
+    if {"camera_move", "shake", "amount"} & set(changed) and any(changed.get(k) != c.get(k) for k in ("camera_move", "shake", "amount") if k in changed):
+        c["by_hand"] = True  # your own move / shake: the editor uses it even on real video
     c.update(changed)
     STORE.save(p)
     return {"ok": True, "needs_new_video": bool({"line", "video_prompt", "seconds"} & set(changed))}

@@ -1,7 +1,7 @@
 """Edit + export with ffmpeg in ONE encode (no generation loss).
 
 Camera moves (same set as the browser studio): none, push_in, pull_out,
-pan_left, pan_right, tilt_up, tilt_down, plus a natural handheld shake that
+pan_left, pan_right, tilt_up, tilt_down, plus an optional handheld shake that
 can be added on top of any move.
 """
 from __future__ import annotations
@@ -71,15 +71,16 @@ def camera_chain(move: str, dur: float, fps: int, amount: float = 1.0, shake: fl
             x, y = f"(iw-{W})/2", f"(ih-{H})*(1-{p})"
         parts += [f"scale={bw}:{bh}:flags=lanczos", f"crop={W}:{H}:x='{x}':y='{y}'"]
     if shake and shake > 0:
-        s = max(0.1, min(2.0, float(shake)))
-        k = 1 + 0.045 * s
+        # A person holding a phone: slow breathing sway (~0.25 Hz) plus a little hand drift, tiny and smooth.
+        # Small amplitudes (a few px) look real; big fast wobble looks like an effect.
+        s = max(0.1, min(1.5, float(shake)))
+        k = 1 + 0.02 * s
         bw, bh = int(W * k) // 2 * 2, int(H * k) // 2 * 2
         mx, my = f"(iw-{W})/2", f"(ih-{H})/2"
-        # three layered sine waves = organic hand sway, never mechanical
-        wob = "(0.55*sin(2*PI*0.53*t)+0.30*sin(2*PI*1.37*t+1.1)+0.15*sin(2*PI*3.10*t+2.3))"
-        wob2 = "(0.55*sin(2*PI*0.47*t+0.7)+0.30*sin(2*PI*1.21*t+2.0)+0.15*sin(2*PI*2.90*t+0.4))"
+        wob = "(0.62*sin(2*PI*0.23*t)+0.28*sin(2*PI*0.61*t+1.1)+0.10*sin(2*PI*1.30*t+2.3))"
+        wob2 = "(0.62*sin(2*PI*0.27*t+0.7)+0.28*sin(2*PI*0.53*t+2.0)+0.10*sin(2*PI*1.10*t+0.4))"
         parts += [f"scale={bw}:{bh}:flags=lanczos",
-                  f"crop={W}:{H}:x='{mx}+{mx}*0.85*{wob}':y='{my}+{my}*0.85*{wob2}'"]
+                  f"crop={W}:{H}:x='{mx}+{mx}*0.8*{wob}':y='{my}+{my}*0.8*{wob2}'"]
     parts += ["setsar=1", "format=yuv420p"]
     return ",".join(parts)
 

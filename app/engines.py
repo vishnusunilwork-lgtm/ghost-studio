@@ -438,7 +438,8 @@ class Google:
         why = ((r.get("candidates") or [{}])[0].get("finishReason") or (r.get("promptFeedback") or {}).get("blockReason") or "no picture")
         raise RuntimeError(f"Google made no picture ({why}). Try different words.")
 
-    def video(self, image: Path, prompt: str, seconds: float, out: Path, seed: int = 0, aspect: str = "9:16") -> Path:
+    def video(self, image: Path, prompt: str, seconds: float, out: Path, seed: int = 0, aspect: str = "9:16",
+              keep_look: bool = False) -> Path:
         dur = self.fixed_len or (4 if seconds <= 4 else 6 if seconds <= 6 else 8)
         res = self.resolution
         if self.tier == "lite" and res == "4k":
@@ -448,7 +449,9 @@ class Google:
         cost = dur * self.price * self.takes
         self.check_budget(cost)
         inst = {"prompt": prompt}
-        if self.mode != "text" and image and Path(image).exists():  # image-to-video keeps the same person and place in every shot
+        # image-to-video keeps the same person and place in every shot. "Text to video" is used only for single shots:
+        # in a multi-shot ad it would invent a different person each time.
+        if (self.mode != "text" or keep_look) and image and Path(image).exists():
             inst["image"] = {"bytesBase64Encoded": self._b64(image), "mimeType": "image/jpeg"}
         body = {"instances": [inst],
                 "parameters": {"aspectRatio": "16:9" if aspect == "16:9" else "9:16", "durationSeconds": dur, "generateAudio": self.audio,
@@ -722,11 +725,12 @@ class Engines:
 
     # ------------------------------------------------------------ video
     def video(self, image: Path, prompt: str, seconds: float, out: Path, seed: int = 0,
-              width: int | None = None, height: int | None = None, steps: int | None = None, aspect: str = "9:16") -> Path:
+              width: int | None = None, height: int | None = None, steps: int | None = None, aspect: str = "9:16",
+              keep_look: bool = False) -> Path:
         how = self.plan()["video"]
         if how == "service" and self.goog.on:
             try:
-                return self.goog.video(image, prompt, seconds, out, seed, aspect)
+                return self.goog.video(image, prompt, seconds, out, seed, aspect, keep_look=keep_look)
             except GoogleSetup:
                 return self.video(image, prompt, seconds, out, seed, width, height, steps, aspect)
         if how == "service":

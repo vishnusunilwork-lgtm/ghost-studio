@@ -121,20 +121,20 @@ STYLES_DIR = {
                   "Camera A = medium close-up of A in the left third, looking screen-right just past the lens. Camera B = medium close-up of B in "
                   "the right third, looking screen-left. 85mm look, f/2, background softly out of focus. Cut on every line: the speaker alternates "
                   "A, B, A, B; reactions are allowed. Cameras are locked off with only a tiny drift."),
-        "moves": ["push_in", "none"], "amount": 0.35, "shake": 0.15},
+        "moves": ["push_in", "none"], "amount": 0.35, "shake": 0},
     "cinematic": {"name": "Cinematic film", "grade": "cinematic",
         "guide": ("Feature-film scene. Motivated practical lights, warm amber highlights with teal shadows, deep sets with real background "
                   "action, people walking in depth. Mix wide establishing shots (24mm) with movement toward camera, mediums (35mm) and close-up "
                   "reactions (85mm). Slow, steady push-ins; composed frames; film grain; no handheld wobble."),
-        "moves": ["push_in", "pull_out", "pan_right", "push_in", "tilt_up"], "amount": 0.7, "shake": 0.1},
+        "moves": ["push_in", "pull_out", "pan_right", "push_in", "tilt_up"], "amount": 0.7, "shake": 0},
     "news": {"name": "Newsroom explainer", "grade": "news",
         "guide": ("Newsroom explainer: one fictional presenter in a modern studio with soft screens behind (no logos, no readable text), "
                   "crisp bright key light, medium shots to camera intercut with detail cutaways that illustrate each point."),
-        "moves": ["push_in", "none", "pan_left"], "amount": 0.5, "shake": 0.05},
+        "moves": ["push_in", "none", "pan_left"], "amount": 0.5, "shake": 0},
     "ugc": {"name": "Phone UGC", "grade": "",
         "guide": ("Phone selfie video at arm's length, vertical, natural window light in a real home, casual and authentic, "
                   "small handheld movement, eye contact with the lens."),
-        "moves": ["none", "push_in"], "amount": 0.5, "shake": 0.9},
+        "moves": ["none", "push_in"], "amount": 0.5, "shake": 0.5},
 }
 
 
@@ -216,14 +216,15 @@ Write every spoken line in {lang}'s own script (Hindi in Devanagari, Malayalam i
 Split the speech into clips of at most {max_s} s each (about 15 {lang} words), at natural pauses, never mid-phrase.
 Make EXACTLY {n_clips} clips so the ad really lasts about {seconds} seconds. Give each clip a different shot (close-up, medium, detail, wide…) and a different camera move.
 The title must be a real 2-5 word name for this ad (never "short name").
-For every clip write a video prompt as one rich paragraph: who (same character description every time), exact action and micro-expressions second by second, where, light, camera framing and move, then the speech as: He/She says in {lang}: "<line>" (spoken once, natural pace, ends before the clip ends), then ambient sound. No music, no subtitles, no text.
-Pick a camera_move per clip from {MOVES} and a handheld shake 0-1.5 (0 = tripod).
+CHARACTER CONSISTENCY (most important): describe the main character once in "character.look" in full — age, face shape, skin tone, hair style and colour, the exact outfit with its colours, jewellery — and copy that SAME description word for word into every clip's image_prompt and video_prompt. Never write just "the woman" / "the man" and never "same as above": always the full look. The outfit never changes between clips.
+For every clip write a video prompt as one rich paragraph: who (the full character look, word for word), exact action and micro-expressions second by second, where, light, camera framing and move, then the speech as: He/She says in {lang}: "<line>" (spoken once, natural pace, ends before the clip ends), then ambient sound. No music, no subtitles, no text.
+Pick a camera_move per clip from {MOVES} (steady camera; no handheld shake). Keep camera directions out of image_prompt (a photo has no camera move).
 Return JSON only:
 {{"title":"short name","character":{{"look":"full description of the main fictional character","voice":"voice description"}},
 "people":[{{"key":"A","look":"","voice":"","single_prompt":"photo prompt of this person alone in their own camera framing, same place and light"}}],
 "image_prompt":"first-frame photo prompt, {aspect}, real phone photo, every visible detail",
 "music_style":"background music for this ad: genre, instruments, mood, tempo (no vocals)",
-"clips":[{{"speaker":"A","line":"","seconds":7,"image_prompt":"photo prompt for THIS moment: same people and place, the action of this line, framing","video_prompt":"","camera_move":"none","shake":0.6,"narration":""}}]}}"""
+"clips":[{{"speaker":"A","line":"","seconds":7,"image_prompt":"photo prompt for THIS moment: same people and place, the action of this line, framing","video_prompt":"","camera_move":"none","narration":""}}]}}"""
     try:
         if not llm.available():
             raise RuntimeError("Ollama is not running")
@@ -271,7 +272,58 @@ Return JSON only:
         c["seconds"] = max(2.0, min(max_s + 0.5, float(c.get("seconds") or max_s)))
         if c.get("camera_move") not in MOVES:
             c["camera_move"] = "none"
-        c["shake"] = max(0.0, min(1.5, float(c.get("shake") if c.get("shake") is not None else 0)))
+        # camera shake only when the style asks for it (Phone UGC); real video already has its own camera motion
+        c["shake"] = float(sd["shake"]) if sd else 0.0
+        c["image_prompt"] = still_prompt(c.get("image_prompt") or "")
+    lock_looks(data)
+    return data
+
+
+VAGUE = re.compile(r"^\s*(same|as above|same as|see |refer)", re.I)
+CAMERA_TXT = re.compile(r"\bcamera\s+(?:\w+\s+)?(?:push|pull|pan|tilt|zoom|move|track|dolly|shak|sway|orbit)\w*|\bhandheld\b|\bshake\b|"
+                        r"\bcamera[_ ]move\b|\b(?:pushes|pulls) (?:in|out)\b|\bdolly\b", re.I)
+
+
+def still_prompt(text: str) -> str:
+    """A photo prompt has no camera move or shake in it (the planner sometimes copies them in)."""
+    parts = re.split(r"([.;,])(?=\s|$)", text or "")
+    keep, out = [], ""
+    for k in range(0, len(parts), 2):
+        piece, sep = parts[k], parts[k + 1] if k + 1 < len(parts) else ""
+        if piece.strip() and not CAMERA_TXT.search(piece):
+            out += piece + sep
+    return re.sub(r"\s{2,}", " ", out).strip(" ,;")
+
+
+def look_of(data: dict, speaker: str | None = None) -> str:
+    """The full look of this shot's person (their own look in a 2-person ad, else the main character)."""
+    for pp in data.get("people") or []:
+        if speaker and pp.get("key") == speaker and pp.get("look") and not VAGUE.match(pp["look"]) and len(pp["look"]) > 25:
+            return pp["look"].strip()
+    return ((data.get("character") or {}).get("look") or "").strip()
+
+
+def with_look(prompt: str, look: str) -> str:
+    """Put the same character description in front of a prompt (once)."""
+    look = (look or "").strip().rstrip(".")
+    if not look or look[:40].lower() in (prompt or "").lower():
+        return prompt or ""
+    return f"Same character in every shot: {look}. {prompt or ''}".strip()
+
+
+def lock_looks(data: dict) -> dict:
+    """Character consistency: vague people looks get the real one, and every shot prompt carries the full look."""
+    main = ((data.get("character") or {}).get("look") or "").strip()
+    for pp in data.get("people") or []:
+        if main and (not pp.get("look") or VAGUE.match(pp["look"]) or len(pp["look"]) < 25):
+            pp["look"] = main
+        if pp.get("single_prompt"):
+            pp["single_prompt"] = with_look(pp["single_prompt"], pp.get("look") or main)
+    for c in data.get("clips") or []:
+        lk = look_of(data, c.get("speaker"))
+        for k in ("image_prompt", "video_prompt"):
+            if c.get(k):
+                c[k] = with_look(c[k], lk)
     return data
 
 
@@ -291,7 +343,7 @@ def _fallback(idea, dialogue, reference, seconds, lang, b, why, aspect="9:16"):
         secs = min(7.5, max(3.0, len(l["line"].split()) / 2.3 + 0.8))
         shots = ["close-up, looking at camera", "medium shot, natural gesture", "detail of hands holding a phone",
                  "wide shot of an everyday Indian street", "close-up smiling", "medium shot holding a phone"]
-        clips.append({"speaker": l["speaker"] or "A", "line": l["line"], "seconds": round(secs, 1), "camera_move": moves[i % len(moves)], "shake": 0.6,
+        clips.append({"speaker": l["speaker"] or "A", "line": l["line"], "seconds": round(secs, 1), "camera_move": moves[i % len(moves)], "shake": 0,
                       "image_prompt": ground(f"{aspect} real phone photo, {idea + ', ' if idea else ''}{look}, {shots[i % len(shots)]}, everyday Indian place, natural light, no text.", idea),
                       "video_prompt": f"{look} speaks warmly to a phone camera, small natural gestures, blinks, breath before speaking. Says in {lang}: \"{l['line']}\". Natural pace. Soft ambient sound. No music, no subtitles, no text."})
     return {"title": (idea or "New ad")[:40], "character": {"look": look, "voice": "warm adult voice"}, "people": [],

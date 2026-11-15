@@ -181,6 +181,20 @@ How Ghost uses it (`addons.make_motion` → `workers/motion_worker.py`, its own 
 Limits: text-to-video only in the released Mac build (no starting picture), so the same character can differ a little
 between shots; no lip-sync. Wan2.2 on a Mac without this distilled model took over an hour for 2 seconds.
 
+## Same person in every shot, steady camera (v3.29)
+
+Character consistency. The script AI writes the main character's full look once (age, face, skin tone, hair, the exact
+outfit and colours, jewellery) and `planner.lock_looks` copies it word for word into every shot's picture and video prompt
+(vague looks such as "Same as character description" are replaced; camera words are stripped from picture prompts).
+With cloud video, a multi-shot ad always uses image-to-video: each shot first gets its own picture made from the main
+picture as reference plus the LOCK instruction (`_shot_stills`, in parallel), and Veo starts from that picture, even when
+the console setting "Task" is text-to-video (that would invent a different person in each shot). After each clip,
+`_check_look` compares its first frame with its picture and logs a retake hint below 70 % alike.
+
+Camera. Real video (Veo, AI motion, hand-off) already has its own camera motion, so the editor adds no zoom and no shake
+on top. Photo motion keeps a gentle move. Handheld shake is optional: the Phone UGC style, or a shot where you set the
+move/shake yourself (`by_hand`); it is now a slow breathing sway of a few pixels instead of a fast wobble.
+
 ## Sign in with Google, no key (v3.27)
 
 ⚙ → Google Cloud → **Sign in with Google**: Ghost installs Google's own Google Cloud CLI privately (`.ghost/engines/gcloud`,
