@@ -1,3 +1,4 @@
+3.22.1: Fix: clicking a picture now shows the whole picture, fitted to the window (it was cut off at the bottom).
 3.22.0: 🧬 Ghost DNA — shrink old projects. ⚙ → Storage shows the space each project uses. Shrink keeps each picture’s recipe (prompt + seed) and a small preview instead of the big file; 🧬 Regrow makes the full pictures and shots again and shows how close they came. Finished videos, songs and your uploads are always kept.
 3.21.1: Clearer "Not enough free disk space" message: it now shows the full space an add-on needs (its size plus room to work).
 3.21.0: Real moving video on your Mac, free: install ⚙ → Add-ons → AI motion (on this Mac). A dog really walks through the market, people move, the camera travels. Made on the Mac itself (no cloud, no cost per video), about 1–3 minutes per shot on recent Macs. Ghost uses Google Cloud first when it is connected, then AI motion, then photo motion.

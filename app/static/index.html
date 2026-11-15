@@ -250,7 +250,7 @@ details.log pre{font:11.5px/1.6 ui-monospace,Menlo,monospace;color:var(--mute);w
 .tile .im.wait::after{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 30%,rgba(255,255,255,.07) 50%,transparent 70%);background-size:250% 100%;animation:sheen 1.8s linear infinite}
 .tile .cap{font-size:13px;color:var(--mute);padding:0 4px;min-height:20px}.tile .row2{display:flex;gap:6px}.tile .row2 .btn{flex:1;height:36px;font-size:13px;padding:0 10px}
 .zoom{position:fixed;inset:0;z-index:85;display:grid;place-items:center;background:rgba(6,6,8,.72);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);cursor:zoom-out;animation:enter .3s var(--ease) both;padding:24px}
-.zoom img{max-width:100%;max-height:100%;border-radius:16px;box-shadow:0 30px 90px -20px rgba(0,0,0,.9)}
+.zoom img,.zoom video{display:block;width:auto;height:auto;max-width:calc(100vw - 48px);max-height:calc(100vh - 48px);max-height:calc(100dvh - 48px);object-fit:contain;border-radius:16px;box-shadow:0 30px 90px -20px rgba(0,0,0,.9)}
 .prog{margin-top:6px;padding:12px 14px;border-radius:16px;background:var(--glass-soft);border:1px solid var(--edge);box-shadow:var(--hi)}
 .prog .ptop2{display:flex;justify-content:space-between;align-items:baseline;font-size:13.5px}.prog .ptop2 span{font:500 13px ui-monospace,Menlo,monospace;color:var(--ink)}
 .ptrack{height:6px;border-radius:99px;background:rgba(255,255,255,.08);overflow:hidden;margin:9px 0 2px;position:relative}
