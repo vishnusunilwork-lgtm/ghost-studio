@@ -517,29 +517,65 @@ class Runner:
         return True
 
     def _best_of_two(self, p, main: Path, w: int, h: int):
-        """The main picture decides the whole ad's look: make it with both Google picture models and keep the better one."""
+        """The main picture decides the whole ad's look: Gemini's, Imagen's and (with an OpenAI key) ChatGPT's are made,
+        Gemini looks at them side by side and the best one is kept."""
+        from . import llm
         g = self.eng.goog
-        alt = main.with_name("frame_main_imagen.png")
+        prompt = knowledge_apply(p["plan"]["image_prompt"])
+        cands = [("Gemini", main)]
+        alts = []
+        self._say(p, "images", "Second opinions: the same picture by Imagen" + (" and ChatGPT" if self._openai() else "") +
+                  ", then the best one is kept", 21)
+
+        def imagen():
+            f = main.with_name("frame_main_imagen.png")
+            alts.append(f)
+            g.imagen(prompt, f, w, h, seed=int(p.get("image_seed", 7)))
+            return "Imagen", f
+
+        def chatgpt():
+            f = main.with_name("frame_main_chatgpt.png")
+            alts.append(f)
+            E.openai_image(self._openai(), prompt, f, w, h)
+            return "ChatGPT", f
+        from concurrent.futures import ThreadPoolExecutor
+        jobs = [imagen] + ([chatgpt] if self._openai() else [])
         try:
-            self._say(p, "images", "Second opinion: the same picture with Imagen, then Gemini picks the better one", 21)
-            g.imagen(knowledge_apply(p["plan"]["image_prompt"]), alt, w, h, seed=int(p.get("image_seed", 7)))
-            ans = g.ask("Two candidate pictures for the first frame of an ad. The brief: " + p["plan"]["image_prompt"][:1200] +
-                        "\nPick the better one: matches the brief, looks like a real photo, natural faces, hands and eyes, believable "
-                        "place, no text or logos. Answer JSON {\"best\": 1 or 2, \"why\": \"one short sentence\"}.", [main, alt], json_out=True)
-            from . import llm
+            with ThreadPoolExecutor(max_workers=2) as ex:
+                futs = [ex.submit(j) for j in jobs]
+                for fu in futs:
+                    try:
+                        cands.append(fu.result())
+                    except E.Cancelled:
+                        raise
+                    except Exception as e:
+                        p["log"].append(time.strftime("%H:%M:%S ") + f"A second picture was skipped ({str(e)[:90]})")
+            if len(cands) < 2:
+                return
+            names = ", ".join(f"{i + 1} = {n}" for i, (n, _) in enumerate(cands))
+            ans = g.ask(f"{len(cands)} candidate pictures ({names}, in that order) for the first frame of an ad. The brief: " +
+                        p["plan"]["image_prompt"][:1200] + "\nPick the best: matches the brief, looks like a real photo, natural faces, "
+                        "hands and eyes, believable place, no text or logos. Answer JSON {\"best\": <number>, \"why\": \"one short sentence\"}.",
+                        [f for _, f in cands], json_out=True)
             pick = llm._json_from(ans) or {}
-            if int(pick.get("best") or 1) == 2:
-                shutil.copyfile(alt, main)
-                who = "Imagen"
-            else:
-                who = "Gemini"
-            p["log"].append(time.strftime("%H:%M:%S ") + f"Main picture: {who}'s was better — {str(pick.get('why') or '')[:140]}")
+            k = max(1, min(len(cands), int(pick.get("best") or 1))) - 1
+            who, f = cands[k]
+            if k:
+                shutil.copyfile(f, main)
+            p["log"].append(time.strftime("%H:%M:%S ") + f"Main picture: {who}'s was the best of {len(cands)} — {str(pick.get('why') or '')[:140]}")
         except E.Cancelled:
             raise
         except Exception as e:
-            p["log"].append(time.strftime("%H:%M:%S ") + f"Second picture skipped ({str(e)[:100]}): using Gemini's")
+            p["log"].append(time.strftime("%H:%M:%S ") + f"Picture comparison skipped ({str(e)[:100]}): using Gemini's")
         finally:
-            alt.unlink(missing_ok=True)
+            for f in alts:
+                f.unlink(missing_ok=True)
+
+    @staticmethod
+    def _openai():
+        """Your OpenAI (ChatGPT) brain, if one is in the chain and ready: its key also makes ChatGPT pictures."""
+        from . import llm
+        return next((e for e in llm.ready() if e.get("provider") == "openai" or "api.openai.com" in (e.get("base") or "")), None)
 
     def _cast_from_picture(self, p, main: Path):
         """Character sheet from what is really in the main picture (script + picture + reference), used in every shot."""

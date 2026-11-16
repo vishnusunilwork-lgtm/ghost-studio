@@ -534,6 +534,31 @@ class Google:
         raise RuntimeError("Google video took more than 15 minutes")
 
 
+def openai_image(e: dict, prompt: str, out: Path, width: int, height: int) -> Path:
+    """ChatGPT's picture model with your OpenAI key (the same key as the ChatGPT brain): a third opinion for the main picture."""
+    from PIL import Image, ImageOps
+    from . import llm
+    size = "1024x1536" if height > width * 1.15 else "1536x1024" if width > height * 1.15 else "1024x1024"
+    last = None
+    for model in ("gpt-image-1.5", "gpt-image-1"):
+        try:
+            r = llm._req(e, "/images/generations", {"model": model, "prompt": prompt + " Photorealistic photograph, no text, no watermark.",
+                                                    "size": size, "quality": "medium", "n": 1}, timeout=240)
+            data = (r.get("data") or [{}])[0].get("b64_json")
+            if data:
+                raw = out.with_name(out.stem + "_o.png")
+                raw.write_bytes(base64.b64decode(data))
+                ImageOps.fit(Image.open(raw).convert("RGB"), (width, height), Image.LANCZOS).save(out)
+                raw.unlink(missing_ok=True)
+                Spend.add(0.06)
+                return out
+        except urllib.error.HTTPError as err:
+            last = err
+            if err.code not in (400, 404):
+                break
+    raise RuntimeError(f"ChatGPT picture failed ({getattr(last, 'code', '?')})")
+
+
 class GoogleSetup(RuntimeError):
     """The key or project isn't set up for Vertex AI (not a one-off failure)."""
 

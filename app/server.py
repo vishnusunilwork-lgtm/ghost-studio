@@ -319,6 +319,7 @@ def _load_brain():
                          "base": old.get("base", ""), "key": old["key"], "model": old.get("model", "")})
     llm.CHAIN[:] = chain
     llm.PRIVATE["on"] = bool(loc.get("brain_private"))
+    llm.COMPARE["on"] = loc.get("brain_compare", True) is not False
     live.BRAVE["key"] = (CFG.get("search") or {}).get("brave_key", "")
 
 
@@ -338,6 +339,7 @@ def _save_chain():
     loc["brains"] = [dict(e) for e in llm.CHAIN]
     loc.pop("brain", None)
     loc["brain_private"] = llm.PRIVATE["on"]
+    loc["brain_compare"] = llm.COMPARE["on"]
     _save_local(loc)
     CFG["brains"], CFG["brain_private"] = loc["brains"], loc["brain_private"]
     CFG.pop("brain", None)
@@ -355,7 +357,10 @@ def _brains_view():
                     "key_end": "" if e.get("auth") else (e.get("key") or "")[-4:], "signin": bool(e.get("auth")), "today": st["n"], "ms": st["ms"],
                     "ready": st["cool_until"] <= now, "why": st["why"] if st["cool_until"] > now else "",
                     "back_in": max(0, int(st["cool_until"] - now))})
-    return {"private": llm.PRIVATE["on"], "chain": out, "last": llm.CLOUD.get("name") or "",
+    g = RUNNER.eng.goog
+    pr = [e.get("name") for e in llm.pair()]
+    return {"private": llm.PRIVATE["on"], "compare": llm.COMPARE["on"], "pair": pr if len(pr) == 2 else [],
+            "google_can_add": bool(g.configured and g.project and not any(e.get("auth") == "google" for e in llm.CHAIN)), "chain": out, "last": llm.CLOUD.get("name") or "",
             "providers": {k: {kk: v[kk] for kk in ("name", "free", "keys")} for k, v in PROVIDERS.items()}}
 
 
@@ -457,6 +462,25 @@ def brain_private(body: Private):
     """Keep everything on this computer: no cloud brain is used at all, whatever keys are saved."""
     llm.PRIVATE["on"] = body.on
     _save_chain()
+    return _brains_view()
+
+
+@app.post("/api/settings/brains/compare")
+def brain_compare(body: Private):
+    """Compare two brains: both write every script / picture prompt / idea, the better one is used."""
+    llm.COMPARE["on"] = body.on
+    _save_chain()
+    return _brains_view()
+
+
+@app.post("/api/settings/brains/google")
+def brain_google():
+    """Put "Google Gemini (your sign-in)" back in the chain (no key)."""
+    loc = _local()
+    loc.setdefault("api", {}).pop("google_brain_off", None)
+    _save_local(loc)
+    CFG.setdefault("api", {}).pop("google_brain_off", None)
+    _google_brain_sync()
     return _brains_view()
 
 
@@ -902,6 +926,9 @@ def delete_project(pid: str):
     if d.parent != STORE.root.resolve():
         raise HTTPException(400, "Not a project folder")
     shutil.rmtree(d, ignore_errors=True)
+    from . import links
+    agent_context._file("p-" + pid).unlink(missing_ok=True)  # the project's own chat goes with it
+    shutil.rmtree(links.FILES / ("p-" + pid)[:40], ignore_errors=True)
     return {"ok": True}
 
 
@@ -1268,6 +1295,17 @@ class GhostBackend:
 
 
 AGENT = Agent(CFG, GhostBackend())
+AGENT.media = lambda: (RUNNER.eng, RUNNER.eng.goog)
+
+
+@app.post("/api/agent/upload")
+async def agent_upload(session: str = Form("default"), file: UploadFile = File(...)):
+    """📎 A picture, video or PDF for Talk to Ghost: kept with that chat; the message carries a ghost-file:// reference."""
+    from . import links
+    data = await file.read(links.MAX_MEDIA + 1)
+    if len(data) > links.MAX_MEDIA:
+        raise HTTPException(400, f"That file is over {links.MAX_MEDIA // 1_000_000} MB")
+    return {"ref": links.save_upload(session, file.filename or "file", data), "name": file.filename}
 
 
 class Talk(BaseModel):
@@ -1354,11 +1392,11 @@ Return JSON only: {{"need": "one sentence: what you understood they need",
         fast, careful = router.pick_models(CFG)
         if not (llm.cloud_on() or careful):
             raise RuntimeError("no brain")
-        d = llm.ask_json(fast or careful or "cloud:x", prompt, temperature=0.8)
+        d, compared = llm.ask_best(fast or careful or "cloud:x", prompt, "idea", temperature=0.8)
         ideas = [i for i in (d.get("ideas") or []) if isinstance(i, dict) and i.get("idea")][:3]
         if not ideas:
             raise RuntimeError("no ideas")
-        need = str(d.get("need") or "")
+        need = str(d.get("need") or "") + (f" ({compared})" if compared else "")
     except Exception:
         ideas, need = _fallback_ideas(body.text, lang), ""
     for i in ideas:

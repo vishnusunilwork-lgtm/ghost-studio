@@ -181,6 +181,28 @@ How Ghost uses it (`addons.make_motion` → `workers/motion_worker.py`, its own 
 Limits: text-to-video only in the released Mac build (no starting picture), so the same character can differ a little
 between shots; no lip-sync. Wan2.2 on a Mac without this distilled model took over an hour for 2 seconds.
 
+## Reading links and files, project chats, comparing brains (v3.31)
+
+**Links and files in Talk to Ghost** (`app/links.py`). Any http(s) link in a message, or a file added with 📎 (kept in
+`.ghost/chat_files/<chat>/`, referenced as `ghost-file://…`), is read before the brain answers:
+web page -> readable text (title, description, headings, body; scripts and menus removed); YouTube -> Gemini watches it
+(`fileData` with the YouTube address) when signed in with Google, else title / channel / description; picture -> Gemini
+or the local vision model; video -> Gemini inline (up to ~18 MB) or key frames + speech-to-text on this computer;
+PDF -> Gemini. Only public internet addresses are fetched (no localhost / private / link-local, also after redirects),
+sizes are capped, and the content goes to the brain inside `<untrusted_links>` as data, never instructions.
+A message with a link always gets a (deep) answer rather than tool actions.
+
+**One chat per project.** Talk to Ghost uses the chat `p-<project id>` while a project is open and the general chat on
+Home; each is saved (`.ghost/chats/`) and comes back when you reopen the project. Deleting a project deletes its chat
+and its attached files.
+
+**Compare two brains** (⚙ → Smarter brain, on by default; `llm.ask_best`). With two different services ready (for
+example Google Gemini on your sign-in + an OpenAI key = ChatGPT's models), both write the script, the picture prompts
+and the ✨ Agent ideas at the same time; the first brain judges the two drafts blind (A/B in random order) and the
+better one is used; the log says who won and why. The main picture is likewise compared across Gemini, Imagen and
+(with the OpenAI key) ChatGPT's picture model (`engines.openai_image`). A ChatGPT Plus/Pro membership is not an API
+key: OpenAI bills API use separately at platform.openai.com.
+
 ## Ghost V3 flow: idea → script → best picture → character sheet → consistent video (v3.30)
 
 1. **Script brain.** Signed in to Google Cloud, Ghost adds "Google Gemini (your sign-in)" at the top of the brain chain

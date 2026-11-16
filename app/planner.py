@@ -229,7 +229,9 @@ Return JSON only:
         if not llm.available():
             raise RuntimeError("Ollama is not running")
         model = llm.fast_model(cfg["models"]["llm"]) if fast else cfg["models"]["llm"]
-        data = llm.ask_json(model, prompt)
+        data, compared = llm.ask_best(model, prompt, "script")
+        if compared:
+            data["note"] = compared
         if len(data.get("clips", [])) < max(1, int(n_clips * 0.7)):  # too short: ask once more, firmly
             more = llm.ask_json(cfg["models"]["llm"], prompt + f"\n\nIMPORTANT: your last answer had only {len(data.get('clips', []))} clip(s). "
                                 f"Return the full JSON again with EXACTLY {n_clips} clips.", temperature=0.4)
@@ -466,7 +468,9 @@ Return JSON only: {{"title":"short name","subject":"<the {"character" if people 
             raise RuntimeError("Ollama is not running")
         # Fast mode: the smallest up-to-date model writes the prompts (a few seconds); Quality: the bigger one
         model = llm.fast_model(cfg["models"]["llm"]) if fast else cfg["models"]["llm"]
-        data = llm.ask_json(model, prompt, temperature=0.6)
+        data, compared = llm.ask_best(model, prompt, "picture prompt", temperature=0.6)
+        if compared:
+            data["note"] = compared
         subj, place = str(data.get("subject") or "").strip().rstrip(". "), str(data.get("place") or "").strip()
         acts = [x for x in data.get("shots", []) if isinstance(x, dict) and x.get("action")][:count]
         if not subj or len(acts) < count:

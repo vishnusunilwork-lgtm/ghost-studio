@@ -364,6 +364,10 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
 .tk-ok ul{margin:0;padding-left:18px}.tk-ok .r{display:flex;gap:8px;justify-content:flex-end}.tk-ok .btn{height:36px;font-size:13px}
 .tk-sug{display:flex;flex-direction:column;gap:6px;margin-top:6px}.tk-sug button{text-align:left;padding:10px 12px;border-radius:14px;border:1px solid var(--edge);background:var(--glass-soft);color:var(--mute);font-size:13.5px}.tk-sug button:hover{color:var(--ink);border-color:var(--edge-hi)}
 .tk-foot{padding:10px 12px 14px;border-top:1px solid var(--line)}
+.tk-for{display:block;font-size:11.5px;font-weight:400;color:var(--mute);margin-top:2px}
+.tk-files{display:flex;flex-wrap:wrap;gap:6px}.tk-files:not(:empty){margin-bottom:8px}
+.tk-att{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;padding:3px 6px 3px 10px;border-radius:99px;background:var(--surface2);color:var(--ink);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tk-att button{width:20px;height:20px;border-radius:50%;color:var(--mute)}.tk-b .tk-att{padding:2px 10px;margin:2px 0}
 .tk-in{display:flex;gap:8px;align-items:flex-end;padding:6px 6px 6px 14px;border-radius:22px;border:1px solid var(--edge);background:var(--glass-soft)}
 .tk-in:focus-within{border-color:var(--edge-hi)}
 .tk-in textarea{flex:1;background:none;border:0;outline:0;resize:none;max-height:140px;font:14.5px/1.5 var(--font);color:var(--ink);padding:6px 0}
@@ -519,6 +523,8 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
     <div class="sect" id="brainBox"><h4>Smarter brain <span class="tag">free keys, auto-switch</span></h4>
       <p class="note">Free by default: Talk to Ghost, scripts and prompts run on this computer. Add free keys from these services and Ghost uses the first one that is ready; when one reaches its free limit it switches to the next straight away (the conversation carries over), and finally back to this computer. Pictures, video, music and voices always stay on this computer.</p>
       <label class="row2" style="align-items:center;gap:8px;margin:4px 0 8px"><input type="checkbox" id="brPriv"><span class="note" style="padding:0"><b>Keep everything on this computer</b> (private: no cloud brain, for confidential work)</span></label>
+      <label class="row2" style="align-items:center;gap:8px;margin:0 0 8px"><input type="checkbox" id="brCmp"><span class="note" style="padding:0"><b>Compare two brains</b> <span id="brCmpWho">(e.g. Gemini + ChatGPT)</span>: both write every script, picture prompt and idea at the same time; one judges them blind and the better one is used. Needs two different services below.</span></label>
+      <button class="btn hidden" id="brGoogle" style="margin:0 0 8px">+ Add Google Gemini (your Google sign-in, no key)</button>
       <div id="brList" class="mem"></div>
       <div style="display:grid;grid-template-columns:1fr;gap:6px;margin-top:8px">
         <select id="brProv" class="inp"></select>
@@ -579,9 +585,9 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
 </aside>
 <div class="va hidden" id="va" role="status"><span class="va-wave"><i></i><i></i><i></i><i></i></span><span class="va-t"><b id="vaState">Listening…</b><small id="vaTxt">Speak now</small></span><button class="va-x" id="vaStop" aria-label="Stop voice assistant">Stop</button></div>
 <aside class="drawer right" id="talk" aria-label="Talk to Ghost">
-  <div class="dhead"><h3>Talk to Ghost</h3><button class="icon" id="tkNew" title="New chat" aria-label="New chat"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button><button class="icon" data-close aria-label="Close">✕</button></div>
+  <div class="dhead"><h3>Talk to Ghost<small id="tkFor" class="tk-for">General chat</small></h3><button class="icon" id="tkNew" title="New chat" aria-label="New chat"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button><button class="icon" data-close aria-label="Close">✕</button></div>
   <div class="tk-log" id="tkLog" aria-live="polite"></div>
-  <div class="tk-foot"><div class="tk-in"><button id="tkDeep" class="tk-deep" title="Deep thinking: slower, smarter answers for hard questions (auto for plans, strategy, analysis)" aria-pressed="false">🧠</button><textarea id="tkIn" rows="1" placeholder="Ask anything, or tell Ghost what to make…"></textarea><button id="tkMic" class="tk-deep" title="Speak instead of typing; Ghost answers aloud" aria-label="Voice"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button><button id="tkSend" aria-label="Send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button></div>
+  <div class="tk-foot"><div class="tk-files" id="tkFiles"></div><input type="file" id="tkFile" accept="image/*,video/*,application/pdf" multiple hidden><div class="tk-in"><button id="tkClip" class="tk-deep" title="Add a picture, video or PDF for Ghost to look at (or paste any link)" aria-label="Attach a file"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5 12.6 19.9a5 5 0 0 1-7.1-7.1l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.8-7.8"/></svg></button><button id="tkDeep" class="tk-deep" title="Deep thinking: slower, smarter answers for hard questions (auto for plans, strategy, analysis)" aria-pressed="false">🧠</button><textarea id="tkIn" rows="1" placeholder="Ask anything, or tell Ghost what to make…"></textarea><button id="tkMic" class="tk-deep" title="Speak instead of typing; Ghost answers aloud" aria-label="Voice"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button><button id="tkSend" aria-label="Send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button></div>
   <p class="tk-hint">Runs on this computer. Every action Ghost takes is shown here, and big ones wait for your OK.</p></div>
 </aside>
 <aside class="drawer right" id="clipSheet" aria-label="Edit shot">
@@ -659,7 +665,7 @@ let BR=null;
 async function brainUI(){$('#brvKey').placeholder=ST&&ST.web_search?'Brave key saved ✓ (paste a new one to change, empty to remove)':'Brave Search API key (optional)';
   try{BR=await api('/api/settings/brains')}catch(e){return}
   if(!$('#brProv').options.length){$('#brProv').innerHTML=Object.entries(BR.providers).map(([k,v])=>`<option value="${k}">${esc(v.name)}</option>`).join('')+'<option value="custom">Other (OpenAI-compatible address)</option>';brProvUI()}
-  $('#brPriv').checked=!!BR.private;
+  $('#brPriv').checked=!!BR.private;$('#brCmp').checked=!!BR.compare;$('#brCmpWho').textContent=BR.pair&&BR.pair.length===2?`(now: ${BR.pair[0]} + ${BR.pair[1]})`:'(e.g. Gemini + ChatGPT)';$('#brGoogle').classList.toggle('hidden',!BR.google_can_add);
   $('#brList').innerHTML=BR.chain.length?BR.chain.map((e,i)=>`<div style="display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--line)"><b style="min-width:18px">${i+1}.</b><span style="flex:1;min-width:0"><b>${esc(e.name)}</b> · <span class="note" style="padding:0">${esc(e.model)} · ${e.signin?'Google sign-in, no key':'key …'+esc(e.key_end)} · ${e.today} today${e.ms?' · '+(e.ms/1000).toFixed(1)+' s':''}</span><br>${BR.private?'<span class="note" style="padding:0">off (private)</span>':e.ready?'<span class="ok">ready</span>':`<span class="bad">${esc(e.why)}${e.back_in?' · back in '+(e.back_in>3600?Math.round(e.back_in/3600)+' h':Math.ceil(e.back_in/60)+' min'):''}</span>`}</span>
     <span style="display:flex;gap:4px;flex:none">${i?`<button class="btn ic" data-bmv="${e.id}" data-d="-1" title="Try this one earlier" style="width:30px;height:30px;padding:0">↑</button>`:''}<button class="btn ic" data-bmdl="${e.id}" title="Change model" style="width:30px;height:30px;padding:0">⚙</button><button class="btn ic" data-brm="${e.id}" title="Remove this key" style="width:30px;height:30px;padding:0">✕</button></span></div>`).join('')+`<p class="note">Then: the free brain on this computer.${BR.last?' Last answer from: <b>'+esc(BR.last)+'</b>':''}</p>`:'<p class="note">No keys yet: everything runs on this computer.</p>';
   $$('#brList [data-bmv]').forEach(b=>b.onclick=()=>brEdit({id:b.dataset.bmv,move:+b.dataset.d}));
@@ -669,6 +675,8 @@ async function brEdit(body){try{await api('/api/settings/brains/edit',{method:'P
 function brProvUI(){const k=$('#brProv').value,p=(BR&&BR.providers[k])||{};$('#brBase').classList.toggle('hidden',k!=='custom');$('#brFree').innerHTML=p.name?`${esc(p.free)} · <a href="${esc(p.keys)}" target="_blank" rel="noopener">get a key</a>`:'Any OpenAI-compatible service: paste its /v1 address.'}
 $('#brProv').onchange=brProvUI;
 $('#brAdd').onclick=async()=>{const b=$('#brAdd');b.disabled=true;try{const r=await api('/api/settings/brains/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:$('#brProv').value,base:$('#brBase').value.trim(),key:$('#brKey').value.trim()})});$('#brKey').value='';const e=r.chain.find(x=>x.id===r.added);toast(`Added ${e.name} · ${e.model}`);await status();brainUI()}catch(e){toast(e.message)}finally{b.disabled=false}};
+$('#brCmp').onchange=async()=>{await api('/api/settings/brains/compare',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({on:$('#brCmp').checked})});brainUI();toast($('#brCmp').checked?'Two brains will write and compare':'One brain at a time')};
+$('#brGoogle').onclick=async()=>{try{await api('/api/settings/brains/google',{method:'POST'});await status();brainUI();toast('Google Gemini added (your sign-in)')}catch(e){toast(e.message)}};
 $('#brPriv').onchange=async()=>{await api('/api/settings/brains/private',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({on:$('#brPriv').checked})});await status();brainUI();toast($('#brPriv').checked?'Private: everything stays on this computer':'Cloud brains on')};
 $('#sHealth').onclick=async()=>{const o=$('#healthOut');o.innerHTML='<p class="note" style="padding:0">Checking…</p>';
   try{const r=await api('/api/health');o.innerHTML=r.checks.map(c=>`<div class="mi"><span>${c.ok?'✓':'!'} <b>${esc(c.name)}</b>: ${esc(c.detail)} <small style="color:var(--mute)">${c.ms} ms</small></span></div>`).join('')}catch(e){o.innerHTML=esc(e.message)}};
@@ -681,7 +689,7 @@ async function loadMem(){try{memRender(await api('/api/learned'))}catch(e){}}
 async function memAdd(kind,text,means){memRender(await api('/api/learned',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,text,means})}))}
 $('#memAddMeans').onclick=async()=>{try{await memAdd('means',$('#memWhen').value,$('#memMeans').value);$('#memWhen').value=$('#memMeans').value='';toast('Remembered. Ghost uses it from now on.')}catch(e){toast(e.message)}};
 $('#memAddAlways').onclick=async()=>{try{await memAdd('always',$('#memAlways').value);$('#memAlways').value='';toast('Remembered. Ghost does this from now on.')}catch(e){toast(e.message)}};
-function goHome(){CUR=null;clearInterval(TIMER);show('home');F.set(.18);$('#pline').style.width='0';headline();history.replaceState(null,'','/');setTimeout(()=>$('#prompt').focus(),200)}
+function goHome(){CUR=null;clearInterval(TIMER);tkSwitch();show('home');F.set(.18);$('#pline').style.width='0';headline();history.replaceState(null,'','/');setTimeout(()=>$('#prompt').focus(),200)}
 
 /* ---------- composer ---------- */
 const prompt_=$('#prompt');
@@ -852,9 +860,9 @@ $('#pbSave').onclick=async()=>{try{await planSave();toast('Saved');refresh(true)
 $('#pbMake').onclick=async()=>{try{await planSave();await api(`/api/projects/${CUR}/resume`,{method:'POST'});$('#planBox').classList.add('hidden');toast('Making it now');kick()}catch(e){toast(e.message)}};
 
 /* ---------- project ---------- */
-async function open(id){CUR=id;LAST='';show('proj');history.replaceState(null,'','#'+id);clearInterval(TIMER);await refresh(true);TIMER=setInterval(refresh,2000)}
+async function open(id){CUR=id;LAST='';show('proj');tkSwitch();history.replaceState(null,'','#'+id);clearInterval(TIMER);await refresh(true);TIMER=setInterval(refresh,2000)}
 let LAST='',LASTNOW='',LASTFIN='';
-async function refresh(force){if(!CUR)return;let p;try{p=await api('/api/projects/'+CUR)}catch(e){return}P=p;
+async function refresh(force){if(!CUR)return;let p;try{p=await api('/api/projects/'+CUR)}catch(e){return}P=p;{const tf=$('#tkFor');if(tf&&p.title)tf.textContent='This project: '+p.title}
   const busy=p.status==='running'||p.status==='queued',ar=(p.aspect||'9:16').replace(':','/');
   $('#pTag').textContent=[(p.aspect||'9:16'),(p.quality==='draft'?'Fast':'Quality'),(p.language||'')].filter(Boolean).join(' · ');
   const scr=$('#screen');scr.style.setProperty('--ar',ar);scr.classList.toggle('wide',p.aspect==='16:9');$('#shots').style.setProperty('--ar',ar);
@@ -999,13 +1007,18 @@ $('#gUndo').onclick=$('#pUndo').onclick=async()=>{try{await undoIt('all');toast(
 /* ---------- Talk to Ghost: streamed agent events ---------- */
 let TKS=(()=>{try{return localStorage.getItem('gs-talk')||''}catch(e){return''}})();
 if(!TKS){TKS='c'+Math.random().toString(36).slice(2,10);try{localStorage.setItem('gs-talk',TKS)}catch(e){}}
+var TK_FILES=[];
+function tkSid(){return CUR?'p-'+CUR:TKS}  // every project has its own chat, saved with it; Home has the general chat
+let TK_SHOWN='';
+function tkSwitch(){const sid=tkSid();const f=$('#tkFor');if(f)f.textContent=CUR?('This project: '+((typeof P!=='undefined'&&P&&P.id===CUR&&P.title)||'chat')):'General chat';
+  if(TK_SHOWN===sid)return;TK_SHOWN=sid;TK_FILES=[];tkFilesDraw();if($('#talk').classList.contains('open')&&!TKBUSY)tkHistory();else tkLog().innerHTML=''}
 let TKBUSY=false,TKDEEP=false,TK_LAST='',TK_CONFIRM=null,TK_ACTS=[];
 const tkLog=()=>$('#tkLog');
 function tkAdd(html,cls){const d=document.createElement('div');d.className=cls;d.innerHTML=html;tkLog().appendChild(d);tkLog().scrollTop=1e9;return d}
 function tkEmpty(){if(tkLog().children.length)return;const ex=['Write 3 catchy Onam ad lines in Malayalam','Make 3 pictures of a desi dog','Make the hair in picture 2 shorter','Same as my last project, but for Diwali','Song take 1: more upbeat, male voice','Remember: our shop means a small kirana store in Kochi'];
-  const d=tkAdd(`<p class="note" style="padding:0 2px">Ask Ghost anything, like ChatGPT, in any language. Or tell it what to make or change: it can make, change, retake, undo, rewrite, dub and remember.</p><div class="tk-sug">${ex.map(x=>`<button>${esc(x)}</button>`).join('')}</div>`,'tk-empty');
+  const d=tkAdd(`<p class="note" style="padding:0 2px">Ask Ghost anything, like ChatGPT, in any language. Or tell it what to make or change: it can make, change, retake, undo, rewrite, dub and remember. Paste any link (web page, YouTube, picture, video) or add a file with 📎 and Ghost reads it in depth. Each project keeps its own chat.</p><div class="tk-sug">${ex.map(x=>`<button>${esc(x)}</button>`).join('')}</div>`,'tk-empty');
   d.querySelectorAll('button').forEach(b=>b.onclick=()=>{$('#tkIn').value=b.textContent;$('#tkIn').focus()})}
-async function tkHistory(){try{const h=await api('/api/agent/history?session='+TKS);tkLog().innerHTML='';h.messages.forEach(m=>tkAdd(m.role==='user'?esc(m.text):md(m.text),'tk-b '+(m.role==='user'?'u':'a')));tkEmpty()}catch(e){tkEmpty()}}
+async function tkHistory(){TK_SHOWN=tkSid();try{const h=await api('/api/agent/history?session='+tkSid());tkLog().innerHTML='';h.messages.forEach(m=>tkAdd(m.role==='user'?tkUserHtml(m.text):md(m.text),'tk-b '+(m.role==='user'?'u':'a')));tkEmpty()}catch(e){tkEmpty()}}
 const ROUTE={0:'⚡ instant command',1:'fast model',2:'careful model',3:''};
 /* tiny, safe markdown: **bold**, `code`, - lists, 1. lists, ### headings */
 function md(t){const L=esc(t).split('\n');let h='',list='';const close=()=>{if(list){h+=`</${list}>`;list=''}};
@@ -1025,9 +1038,9 @@ async function tkSend(text,confirm,redo,keepBubble){if(TKBUSY)return;TK_LAST='';
   if(!redo&&TKEDIT&&text){redo='edit';TKEDIT=false;const us=[...$$('#tkLog .tk-b.u')],u=us.pop();if(u){let n=u;while(n){const x=n.nextElementSibling;n.remove();n=x}}}
   let gotDone=false;
   tkLog().querySelector('.tk-empty')?.remove();$$('#tkLog .tk-ok .btn').forEach(b=>b.disabled=true);
-  if(text&&!keepBubble)tkAdd(esc(text),'tk-b u');let think=tkAdd('<i></i><i></i><i></i>','tk-think');let lastAct=null,live=null,liveT='';
+  if(text&&!keepBubble)tkAdd(tkUserHtml(text),'tk-b u');let think=tkAdd('<i></i><i></i><i></i>','tk-think');let lastAct=null,live=null,liveT='';
   const clear=()=>{if(think){think.remove();think=null}};
-  try{const r=await fetch('/api/agent/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session:TKS,text:text||'',project:CUR||null,confirm,deep:TKDEEP?true:null,redo:redo||null})});
+  try{const r=await fetch('/api/agent/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session:tkSid(),text:text||'',project:CUR||null,confirm,deep:TKDEEP?true:null,redo:redo||null})});
     if(!r.ok||!r.body)throw new Error('Ghost could not answer ('+r.status+')');
     const rd=r.body.getReader(),dec=new TextDecoder();let buf='';
     for(;;){const {value,done}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});let k;
@@ -1053,7 +1066,7 @@ async function tkSend(text,confirm,redo,keepBubble){if(TKBUSY)return;TK_LAST='';
     if(!gotDone)tkAdd('The connection was cut before Ghost finished. Press ↻ Regenerate to try again.','tk-route')
   }catch(e){clear();tkAdd(esc(e.message),'tk-b a')}
   finally{clear();TKBUSY=false;$('#tkSend').disabled=false;tkRedoBar();status()}}
-$('#talkBtn').onclick=()=>{drawer('talk');fetch('/api/agent/warm',{method:'POST'}).catch(()=>{});if(!tkLog().children.length)tkHistory();setTimeout(()=>$('#tkIn').focus(),300)};
+$('#talkBtn').onclick=()=>{drawer('talk');tkSwitch();fetch('/api/agent/warm',{method:'POST'}).catch(()=>{});if(!tkLog().children.length||TK_SHOWN!==tkSid())tkHistory();setTimeout(()=>$('#tkIn').focus(),300)};
 
 /* ---------- simple composer: the few settings that matter; More shows the rest ---------- */
 const OPTS=$('#opts');
@@ -1167,11 +1180,20 @@ function vaSay(text){return new Promise(done=>{const t=vaClean(text);if(!t||!VA.
   fetch('/api/voice/say',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t,language:LNAME[code]})})
     .then(r=>r.ok?r.blob():Promise.reject()).then(b=>{const a=new Audio(URL.createObjectURL(b));VA.audio=a;a.onended=a.onerror=()=>{VA.audio=null;done()};a.play().catch(()=>done())}).catch(()=>done())})}
 try{speechSynthesis.getVoices();speechSynthesis.onvoiceschanged=()=>speechSynthesis.getVoices()}catch(e){}
-$('#tkSend').onclick=()=>{const t=$('#tkIn').value.trim();if(!t)return;$('#tkIn').value='';$('#tkIn').style.height='';tkSend(t)};
+$('#tkSend').onclick=()=>{let t=$('#tkIn').value.trim();if(TK_FILES.some(f=>!f.ref)){toast('Still adding your file…');return}
+  if(TK_FILES.length)t=(t||'Look at this in detail.')+'\n'+TK_FILES.map(f=>f.ref).join('\n');if(!t)return;$('#tkIn').value='';$('#tkIn').style.height='';TK_FILES=[];tkFilesDraw();tkSend(t)};
+function tkUserHtml(t){return esc(t).replace(/ghost-file:\/\/\d+_([A-Za-z0-9_.-]+)/g,(m,n)=>`<span class="tk-att">📎 ${n}</span>`).replace(/\n/g,'<br>')}
+function tkFilesDraw(){const b=$('#tkFiles');if(!b)return;b.innerHTML=TK_FILES.map((f,i)=>`<span class="tk-att">${f.ref?'📎':'⏳'} ${esc(f.name)}<button data-i="${i}" aria-label="Remove">✕</button></span>`).join('');
+  b.querySelectorAll('button').forEach(x=>x.onclick=()=>{TK_FILES.splice(+x.dataset.i,1);tkFilesDraw()})}
+async function tkAttach(files){for(const f of files){if(f.size>60e6){toast(f.name+' is over 60 MB');continue}const it={name:f.name,ref:''};TK_FILES.push(it);tkFilesDraw();
+  try{const fd=new FormData();fd.append('session',tkSid());fd.append('file',f);const r=await api('/api/agent/upload',{method:'POST',body:fd});it.ref=r.ref}catch(e){TK_FILES.splice(TK_FILES.indexOf(it),1);toast(e.message)}tkFilesDraw()}}
+$('#tkClip').onclick=()=>$('#tkFile').click();$('#tkFile').onchange=e=>{tkAttach([...e.target.files]);e.target.value=''};
+$('#talk').addEventListener('dragover',e=>e.preventDefault());$('#talk').addEventListener('drop',e=>{e.preventDefault();tkAttach([...e.dataTransfer.files])});
+$('#tkIn').addEventListener('paste',e=>{const fs=[...(e.clipboardData&&e.clipboardData.files||[])];if(fs.length){e.preventDefault();tkAttach(fs)}});
 $('#tkIn').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();$('#tkSend').click()}};
 $('#tkIn').oninput=e=>{const t=e.target;t.style.height='auto';t.style.height=Math.min(140,t.scrollHeight)+'px'};
 $('#tkDeep').onclick=()=>{TKDEEP=!TKDEEP;$('#tkDeep').classList.toggle('on',TKDEEP);$('#tkDeep').setAttribute('aria-pressed',TKDEEP);toast(TKDEEP?'Deep thinking on: slower, smarter answers':'Deep thinking: automatic')};
-$('#tkNew').onclick=async()=>{try{await api('/api/agent/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session:TKS})})}catch(e){}tkLog().innerHTML='';tkEmpty()};
+$('#tkNew').onclick=async()=>{try{await api('/api/agent/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session:tkSid()})})}catch(e){}tkLog().innerHTML='';tkEmpty()};
 
 function kick(){clearInterval(TIMER);TIMER=setInterval(refresh,2000);refresh(true)}
 $('#pReedit').onclick=async()=>{await api(`/api/projects/${CUR}/reedit`,{method:'POST'});toast('Re-exporting');kick()};

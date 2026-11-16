@@ -18,7 +18,7 @@ import uuid
 from pathlib import Path
 from typing import Callable
 
-from .. import llm
+from .. import links, llm
 from . import context, router, tools
 
 MAX_STEPS = 6
@@ -53,6 +53,7 @@ class Agent:
         self.cfg, self.backend = cfg, backend
         self.chat = chat_fn or llm.chat  # injectable: tests use a scripted model
         self.stream = stream_fn or llm.chat_stream
+        self.media = lambda: (None, None)  # (engines, google) for reading shared pictures and videos; set by the server
 
     # ------------------------------------------------------------ one turn
     def turn(self, sid: str, text: str, project_id: str | None, emit: Callable[[dict], None], confirm: bool | None = None,
@@ -83,6 +84,9 @@ class Agent:
                 return
             s["messages"].append({"role": "user", "content": text})
             r = router.route(self.cfg, text, project, False)
+            if links.find(text) and r.tier in (1, 2):  # a shared link or file: read it and talk about it
+                fast, careful = router.pick_models(self.cfg)
+                r = router.Route(3, model=careful or r.model, why="reading what you shared")
             trace["route"] = {"tier": r.tier, "model": r.model, "why": r.why}
             emit({"t": "route", "tier": r.tier, "model": r.model, "why": r.why})
             if r.tier == 0:
@@ -113,7 +117,21 @@ class Agent:
         from .. import live
         text = s["messages"][-1]["content"]
         ctx, items = "", []
-        if live.needs_live(text):
+        shared = links.find(text)
+        if shared:
+            emit({"t": "searching", "what": "what you shared (" + str(len(shared)) + ")"})
+            st = time.time()
+            eng, goog = self.media()
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=3) as ex:
+                got = list(ex.map(lambda u: links.read(u, eng, goog), shared))
+            trace["links"] = {"n": len(got), "ms": int((time.time() - st) * 1000)}
+            emit({"t": "sources", "items": [{"n": f"L{i + 1}", "title": f"{g['kind']}: {g['title'] or g['url']}"[:160], "source": "",
+                                             "url": g["url"] if g["url"].startswith("http") else ""} for i, g in enumerate(got)]})
+            ctx = links.as_context(got)
+            if deep is None:
+                deep = True
+        if live.needs_live(text) and not shared:
             emit({"t": "searching", "what": live.topic(text) or "today's news"})
             st = time.time()
             try:

@@ -18,6 +18,7 @@ import urllib.error
 CHAIN: list[dict] = []           # [{id, provider, name, base, key, model}] in the order they are tried
 STATE: dict[str, dict] = {}      # id -> {cool_until, why, day, n, ms}
 PRIVATE = {"on": False}
+COMPARE = {"on": True}  # two different brains (e.g. Gemini + ChatGPT) both write scripts / prompts / ideas; the better one is used
 CLOUD = {"base": "", "key": "", "model": ""}  # the brain that answered last (shown in the app)
 # Brains that sign in instead of using a key (e.g. "google" = your Google Cloud sign-in): name -> (is_on(), headers())
 AUTH: dict = {}
@@ -314,6 +315,70 @@ def ask_json(model: str, prompt: str, images: list[bytes] | None = None, tempera
         body["think"] = False
     r = _post("/api/chat", body)
     return _json_from(r.get("message", {}).get("content", ""))
+
+
+def _ask_one(e: dict, prompt: str, temperature: float = 0.6) -> dict:
+    """One JSON answer from one particular brain."""
+    body = {"model": e["model"], "messages": [{"role": "user", "content": prompt}], "temperature": temperature,
+            "response_format": {"type": "json_object"}}
+    t0 = _time.time()
+    try:
+        m = _req(e, "/chat/completions", body, timeout=300)["choices"][0]["message"]
+    except urllib.error.HTTPError as h:
+        if h.code != 400:
+            raise
+        body.pop("response_format", None)
+        m = _req(e, "/chat/completions", body, timeout=300)["choices"][0]["message"]
+    st = _st(e)
+    st.update(n=st["n"] + 1, ms=int((_time.time() - t0) * 1000), why="")
+    return _json_from(m.get("content") or "")
+
+
+def pair() -> list[dict]:
+    """Two ready brains from different services, the strongest kinds first (Google Gemini, OpenAI / ChatGPT)."""
+    out, seen = [], set()
+    for e in sorted(ready(), key=lambda e: 0 if e.get("provider") in ("google", "openai") else 1):
+        if e.get("provider") not in seen:
+            seen.add(e.get("provider"))
+            out.append(e)
+    return out[:2]
+
+
+def ask_best(model: str, prompt: str, what: str = "answer", temperature: float = 0.6) -> tuple[dict, str]:
+    """Like ask_json, but with two different brains ready (and Compare on) both write it at the same time and one of them
+    judges the two drafts blind (shown as A / B in random order). Returns (answer, a note for the log)."""
+    p = pair() if COMPARE["on"] else []
+    if len(p) < 2:
+        return ask_json(model, prompt, temperature=temperature), ""
+    from concurrent.futures import ThreadPoolExecutor
+    import random as _r
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        futs = [(e, ex.submit(_ask_one, e, prompt, temperature)) for e in p]
+    got = []
+    for e, f in futs:
+        try:
+            d = f.result()
+            if isinstance(d, dict) and d:
+                got.append((e, d))
+        except Exception as err:
+            _why(e, err)
+    if not got:
+        return ask_json(model, prompt, temperature=temperature), ""
+    if len(got) == 1:
+        return got[0][1], f"{got[0][0].get('name')} wrote the {what} (the other brain didn't answer)"
+    _r.shuffle(got)
+    jp = (f"Two drafts, A and B, written for the same brief. Judge them blind.\nBRIEF:\n{prompt[:3500]}\n\n"
+          f"A:\n{json.dumps(got[0][1], ensure_ascii=False)[:9000]}\n\nB:\n{json.dumps(got[1][1], ensure_ascii=False)[:9000]}\n\n"
+          "Which is better? Follows the brief and all its rules exactly, complete, specific and vivid, natural in its language, "
+          "creative but believable, easy to film. Return JSON only: {\"best\": \"A\" or \"B\", \"why\": \"one short sentence\"}")
+    try:
+        j = _ask_one(p[0], jp, 0.0)
+        best = 1 if str(j.get("best", "A")).strip().upper().startswith("B") else 0
+    except Exception:
+        j, best = {}, 0
+    win, lose = got[best][0], got[1 - best][0]
+    CLOUD.update(base=win["base"], key="", model=win["model"], name=win.get("name", ""))
+    return got[best][1], f"Compared {what}s: {win.get('name')}'s was better than {lose.get('name')}'s — {str(j.get('why') or '')[:160]}"
 
 
 def size_of(name: str) -> float:
