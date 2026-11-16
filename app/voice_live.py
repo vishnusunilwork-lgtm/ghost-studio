@@ -28,8 +28,10 @@ open, pause or delete projects, rewrite text, remember preferences, look up thei
 the person's own words into `request` (include length, language, mood, place and music if they said them).
 Before anything big (making a new video, deleting, anything that costs money) say in one line what you'll do and wait
 for a clear yes. While a tool runs, say you're on it; afterwards tell them the result in a sentence.
-For facts that may have changed (news, prices, today's events) say what you know may be out of date unless the tool
-looked it up. Never invent results of actions."""
+For anything current or local (weather, news, prices, scores, today's events, opening times, facts you're unsure of)
+call look_up first (or Google Search when you have it) and answer from what it found, briefly, in the person's language;
+never say you have no access to real-time information. If a link was shared, look_up reads it.
+Never invent results of actions."""
 
 TOOL = {"functionDeclarations": [{
     "name": "ghost_do",
@@ -38,20 +40,27 @@ TOOL = {"functionDeclarations": [{
     "parameters": {"type": "OBJECT", "properties": {
         "request": {"type": "STRING", "description": "What to do, in the person's words, with every detail they gave."},
         "confirmed": {"type": "BOOLEAN", "description": "True when the person already said yes to this exact plan."}},
-        "required": ["request"]}}]}
+        "required": ["request"]}},
+    {"name": "look_up",
+     "description": "Look up live information right now: weather and forecast for a place, today's news and headlines, prices, "
+                    "facts, or read a web link / YouTube link. Returns short results with sources.",
+     "parameters": {"type": "OBJECT", "properties": {
+         "query": {"type": "STRING", "description": "What to look up, e.g. 'weather in Kochi today', 'latest news Kerala', or a URL."}},
+         "required": ["query"]}}]}
+SEARCH = {"googleSearch": {}}
 
 
 def url() -> str:
     return f"wss://{LOCATION}-aiplatform.googleapis.com/ws/google.cloud.aiplatform.v1.LlmBidiService/BidiGenerateContent"
 
 
-def setup_msg(project: str, model: str, voice: str = "female", extra: str = "") -> dict:
+def setup_msg(project: str, model: str, voice: str = "female", extra: str = "", search: bool = True) -> dict:
     return {"setup": {
         "model": f"projects/{project}/locations/{LOCATION}/publishers/google/models/{model}",
         "generationConfig": {"responseModalities": ["AUDIO"],
                              "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": VOICES.get(voice, VOICES["female"])}}}},
         "systemInstruction": {"parts": [{"text": SYSTEM + ("\n\n" + extra if extra else "")}]},
-        "tools": [TOOL],
+        "tools": [TOOL, SEARCH] if search else [TOOL],
         "inputAudioTranscription": {},
         "outputAudioTranscription": {},
         "realtimeInputConfig": {"automaticActivityDetection": {"disabled": False, "silenceDurationMs": 600}},
@@ -69,26 +78,27 @@ async def open_live(goog, voice: str, extra: str, connect=None):
     headers = await asyncio.to_thread(goog._headers)
     last = ""
     for m in MODELS:
-        up = None
-        try:
-            up = await connect(headers)
-            await up.send(json.dumps(setup_msg(goog.project, m, voice, extra)))
-            first = json.loads(await asyncio.wait_for(up.recv(), 20))
-            if "setupComplete" in first:
-                return up, m
-            last = json.dumps(first)[:200]
-        except Exception as e:
-            last = str(e)[:200]
-        if up is not None:
+        for search in (True, False):  # Google Search grounding when the model takes it; Ghost's own look_up either way
+            up = None
             try:
-                await up.close()
-            except Exception:
-                pass
+                up = await connect(headers)
+                await up.send(json.dumps(setup_msg(goog.project, m, voice, extra, search)))
+                first = json.loads(await asyncio.wait_for(up.recv(), 20))
+                if "setupComplete" in first:
+                    return up, m
+                last = json.dumps(first)[:200]
+            except Exception as e:
+                last = str(e)[:200]
+            if up is not None:
+                try:
+                    await up.close()
+                except Exception:
+                    pass
     raise RuntimeError("Gemini Live didn't start (" + last + "). Check that Vertex AI is on for your project, then try again.")
 
 
 async def bridge(client, goog, run_tool, save_turn, voice: str = "female", extra: str = "", connect=None, spend=None):
-    """client: the browser's WebSocket (FastAPI). run_tool(request, confirmed) -> (text, events) runs in a thread.
+    """client: the browser's WebSocket (FastAPI). run_tool(name, args) -> (text, events) runs in a thread.
     save_turn(you, ghost) stores what was said. Ends when either side closes."""
     up, model = await open_live(goog, voice, extra, connect)
     await client.send_text(json.dumps({"type": "ready", "model": model}))
@@ -137,9 +147,11 @@ async def bridge(client, goog, run_tool, save_turn, voice: str = "female", extra
                 answers = []
                 for c in calls:
                     a = c.get("args") or {}
-                    await client.send_text(json.dumps({"type": "working", "text": str(a.get("request", ""))[:200]}))
+                    name = c.get("name") or "ghost_do"
+                    label = ("🔎 " + str(a.get("query", ""))) if name == "look_up" else str(a.get("request", ""))
+                    await client.send_text(json.dumps({"type": "working", "text": label[:200]}))
                     try:
-                        text, events = await asyncio.to_thread(run_tool, str(a.get("request", "")), bool(a.get("confirmed")))
+                        text, events = await asyncio.to_thread(run_tool, name, a)
                     except Exception as e:
                         text, events = f"It didn't work: {str(e)[:200]}", []
                     for ev in events:

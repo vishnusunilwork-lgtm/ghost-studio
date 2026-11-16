@@ -219,7 +219,9 @@ with your sign-in token, which never reaches the browser. Model: `gemini-3.8-liv
 handles turn-taking, so you can interrupt; the page stops playback on `interrupted`, and while Ghost speaks only a
 clearly louder voice than its echo is sent. Doing things: one tool, `ghost_do(request, confirmed)`, runs Ghost's
 own agent (same as Talk to Ghost); plans that need a yes are returned to Gemini to ask aloud first. What both of
-you say (transcriptions) is saved in the open chat (the project's chat when one is open). Only Ghost's own page on
+you say (transcriptions) is saved in the open chat (the project's chat when one is open). Live facts: a second tool, `look_up(query)`, answers
+weather / news / facts / shared links with the same free sources as Talk to Ghost (`server._live_lookup`), and Google
+Search grounding is switched on when the model accepts it (setup retried without it otherwise). Only Ghost's own page on
 this computer may open the socket. About $0.03 a minute, counted in the monthly limit. Without the Google sign-in
 the mic falls back to the browser's speech recognition and voice.
 

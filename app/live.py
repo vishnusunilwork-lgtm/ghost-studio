@@ -71,7 +71,20 @@ def news(query: str, n: int = 8) -> list[dict]:
     return out
 
 
+STATES = {"kerala": "Thiruvananthapuram", "keralam": "Thiruvananthapuram", "tamil nadu": "Chennai", "karnataka": "Bengaluru",
+          "maharashtra": "Mumbai", "telangana": "Hyderabad", "andhra pradesh": "Vijayawada", "gujarat": "Ahmedabad",
+          "rajasthan": "Jaipur", "punjab": "Chandigarh", "haryana": "Gurugram", "uttar pradesh": "Lucknow", "bihar": "Patna",
+          "west bengal": "Kolkata", "odisha": "Bhubaneswar", "madhya pradesh": "Bhopal", "goa": "Panaji", "assam": "Guwahati",
+          "jharkhand": "Ranchi", "chhattisgarh": "Raipur", "uttarakhand": "Dehradun", "himachal pradesh": "Shimla",
+          "jammu and kashmir": "Srinagar", "kashmir": "Srinagar", "delhi": "New Delhi", "india": "New Delhi"}
+
+
 def weather(place: str) -> list[dict]:
+    low = (place or "").lower().strip()
+    for st, city in STATES.items():  # a state isn't a place on the map: use its main city
+        if re.search(r"\b" + st + r"\b", low):
+            place = re.sub(r"(?i)\b" + st + r"\b", city, place)
+            break
     words = (place or "").split() or ["Thiruvananthapuram"]
     loc = None
     for k in range(len(words)):  # "kochi tomorrow" -> try "kochi tomorrow", then "kochi", ...

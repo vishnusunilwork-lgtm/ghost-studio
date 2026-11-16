@@ -42,6 +42,7 @@ def test_live_bridge():
     async def gemini(ws):
         setup = json.loads(await ws.recv())["setup"]
         got["setups"].append(setup["model"].rsplit("/", 1)[-1])
+        got.setdefault("tools", []).append([list(t)[0] for t in setup["tools"]])
         if setup["model"].endswith("gemini-3.8-live"):  # pretend the project doesn't have the newest model yet
             await ws.close(1008, "model not found")
             return
@@ -73,12 +74,13 @@ def test_live_bridge():
                 return await connect(f"ws://127.0.0.1:{port}")
             b = Browser([{"type": "websocket.receive", "bytes": b"\x00\x00" * 640}] * 3)
             saved, ran, spent = [], [], []
-            await VL.bridge(b, Goog(), lambda req, ok: (ran.append((req, ok)) or ("done: Making “Diwali”", [{"t": "open", "project": "p1"}])),
+            await VL.bridge(b, Goog(), lambda name, a: (ran.append((a.get("request"), a.get("confirmed"))) or ("done: Making “Diwali”", [{"t": "open", "project": "p1"}])),
                             lambda you, ghost: saved.append((you, ghost)), extra="OPEN PROJECT title=\"Diwali\"", connect=conn,
                             spend=spent.append)
             return b, saved, ran, spent
     b, saved, ran, spent = asyncio.run(main())
-    assert got["setups"] == ["gemini-3.8-live", "gemini-live-2.5-flash-native-audio"]  # falls back to the model the project has
+    assert got["setups"] == ["gemini-3.8-live", "gemini-3.8-live", "gemini-live-2.5-flash-native-audio"]  # falls back to the model the project has
+    assert got["tools"][0] == ["functionDeclarations", "googleSearch"] and got["tools"][1] == ["functionDeclarations"]
     assert b.text[0] == {"type": "ready", "model": "gemini-live-2.5-flash-native-audio"}
     assert got["audio"] == 3 and ran == [("15 second Diwali video", True)]
     assert got["tool_response"] == {"id": "c1", "name": "ghost_do", "response": {"result": "done: Making “Diwali”"}}
