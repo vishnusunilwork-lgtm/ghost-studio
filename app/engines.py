@@ -438,6 +438,41 @@ class Google:
         why = ((r.get("candidates") or [{}])[0].get("finishReason") or (r.get("promptFeedback") or {}).get("blockReason") or "no picture")
         raise RuntimeError(f"Google made no picture ({why}). Try different words.")
 
+    IMAGEN = ["imagen-4.0-generate-001", "imagen-4.0-fast-generate-001"]
+    TEXT = ["gemini-2.5-flash", "gemini-2.5-pro"]
+    IMAGEN_ASPECTS = {"1:1": 1, "3:4": 0.75, "4:3": 1.333, "9:16": 0.5625, "16:9": 1.778}
+
+    def imagen(self, prompt: str, out: Path, width: int, height: int, seed: int = 0) -> Path:
+        """Imagen 4 (the console's other picture model): a second opinion for the main picture."""
+        from PIL import Image, ImageOps
+        self.check_budget(self.image_price)
+        ratio = width / max(1, height)
+        aspect = min(self.IMAGEN_ASPECTS, key=lambda k: abs(self.IMAGEN_ASPECTS[k] - ratio))
+        body = {"instances": [{"prompt": prompt + " Photorealistic photograph, no text, no watermark."}],
+                "parameters": {"sampleCount": 1, "aspectRatio": aspect, "personGeneration": "allow_adult", "addWatermark": False,
+                               "seed": int(seed) % 2**31}}
+        r, _ = self._call("imagen", self.IMAGEN, [self.location], "predict", body)
+        for pr in r.get("predictions") or []:
+            if pr.get("bytesBase64Encoded"):
+                raw = out.with_name(out.stem + "_i.png")
+                raw.write_bytes(base64.b64decode(pr["bytesBase64Encoded"]))
+                ImageOps.fit(Image.open(raw).convert("RGB"), (width, height), Image.LANCZOS).save(out)
+                raw.unlink(missing_ok=True)
+                Spend.add(self.image_price)
+                return out
+        raise RuntimeError("Imagen made no picture")
+
+    def ask(self, text: str, images: list[Path] | None = None, json_out: bool = False) -> str:
+        """Gemini looks and answers (character sheets, picking the better picture)."""
+        parts = [{"inlineData": {"mimeType": "image/jpeg", "data": self._b64(p, 1024)}} for p in (images or [])[:4]]
+        parts.append({"text": text})
+        body = {"contents": [{"role": "user", "parts": parts}], "generationConfig": {"temperature": 0.2}}
+        if json_out:
+            body["generationConfig"]["responseMimeType"] = "application/json"
+        r, _ = self._call("text", self.TEXT, ["global", self.location], "generateContent", body, timeout=120)
+        Spend.add(0.002)
+        return "".join(p.get("text", "") for c in r.get("candidates") or [] for p in (c.get("content") or {}).get("parts") or []).strip()
+
     def video(self, image: Path, prompt: str, seconds: float, out: Path, seed: int = 0, aspect: str = "9:16",
               keep_look: bool = False) -> Path:
         dur = self.fixed_len or (4 if seconds <= 4 else 6 if seconds <= 6 else 8)

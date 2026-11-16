@@ -181,6 +181,32 @@ How Ghost uses it (`addons.make_motion` → `workers/motion_worker.py`, its own 
 Limits: text-to-video only in the released Mac build (no starting picture), so the same character can differ a little
 between shots; no lip-sync. Wan2.2 on a Mac without this distilled model took over an hour for 2 seconds.
 
+## Ghost V3 flow: idea → script → best picture → character sheet → consistent video (v3.30)
+
+1. **Script brain.** Signed in to Google Cloud, Ghost adds "Google Gemini (your sign-in)" at the top of the brain chain
+   (`server._google_brain_sync`): Vertex AI's OpenAI-compatible endpoint (`…/locations/global/endpoints/openapi`,
+   model `google/gemini-2.5-flash`) with the sign-in's access token (`llm.AUTH["google"]`), no key. It is an ordinary
+   chain entry: move it, change its model or remove it (removing sets `google_brain_off`). Other brains (Groq, an
+   OpenAI key for ChatGPT models…) follow it and take over at limits. ChatGPT memberships have no sign-in for other
+   apps, so ChatGPT stays with an API key or the hand-off.
+2. **Best of two pictures.** The main picture decides the whole ad's look: Gemini image and Imagen 4 both make it,
+   Gemini looks at both and keeps the better one (`_best_of_two`; ⚙ → Google Cloud → "Main picture: best of …").
+   Skipped when you added your own photos.
+3. **Character sheet from the picture.** Gemini reads the script, the reference summary and the chosen picture and
+   writes what the person really looks like (age, face, skin, hair, exact outfit, jewellery) (`_cast_from_picture`).
+   That sheet replaces the planner's guess in every shot prompt, so the words and the picture agree.
+4. **Consistent video** (v3.29): per-shot first frames from the main picture + Veo image-to-video + the check.
+
+Composer: only the settings that change the result are shown (what, length, language, mood, place, music; count or
+song options when they apply); "More" holds shape, style, cast, voice, maker, exact words and check prompts.
+Typing sets them (`autoSet`: "15 sec Malayalam video with music, outdoor, excited"); a setting you change yourself
+afterwards is not overwritten. Mood and place go into the brief (`pipeline.brief`) and the voice follows the mood.
+✨ Agent (`/api/agent/suggest`): one word -> what you need + 3 ideas with their settings; a click fills both.
+🎙 Voice assistant: the browser's own speech recognition (Chrome / Safari / Edge; Ghost's speech-to-text on this
+computer otherwise, `/api/voice/hear`) -> Talk to Ghost -> the answer is spoken (browser voice for that script, or
+Ghost's voice via `/api/voice/say`) -> it listens again. "Yes"/"No" answer Ghost's confirmations; "bye" stops.
+It listens only after you press the mic (no always-on wake word).
+
 ## Same person in every shot, steady camera (v3.29)
 
 Character consistency. The script AI writes the main character's full look once (age, face, skin tone, hair, the exact

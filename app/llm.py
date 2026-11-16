@@ -19,6 +19,8 @@ CHAIN: list[dict] = []           # [{id, provider, name, base, key, model}] in t
 STATE: dict[str, dict] = {}      # id -> {cool_until, why, day, n, ms}
 PRIVATE = {"on": False}
 CLOUD = {"base": "", "key": "", "model": ""}  # the brain that answered last (shown in the app)
+# Brains that sign in instead of using a key (e.g. "google" = your Google Cloud sign-in): name -> (is_on(), headers())
+AUTH: dict = {}
 
 
 # Some services (Groq, behind Cloudflare) refuse Python's default "Python-urllib" User-Agent with 403 / error 1010
@@ -41,7 +43,8 @@ def ready() -> list[dict]:
     if PRIVATE["on"]:
         return []
     now = _time.time()
-    return [e for e in CHAIN if e.get("key") and e.get("model") and e.get("base") and _st(e)["cool_until"] <= now]
+    return [e for e in CHAIN if e.get("key") and e.get("model") and e.get("base") and _st(e)["cool_until"] <= now
+            and (not e.get("auth") or (e["auth"] in AUTH and AUTH[e["auth"]][0]()))]
 
 
 def cloud_on() -> bool:
@@ -54,8 +57,9 @@ def _midnight_utc() -> float:
 
 
 def _req(e: dict, path: str, body: dict | None = None, timeout: int = 120, stream: bool = False):
+    auth = AUTH[e["auth"]][1]() if e.get("auth") in AUTH else {"Authorization": "Bearer " + e["key"]}
     req = urllib.request.Request(e["base"].rstrip("/") + path, data=json.dumps(body).encode() if body is not None else None,
-                                 headers={"Authorization": "Bearer " + e["key"], "Content-Type": "application/json", "User-Agent": UA,
+                                 headers={**auth, "Content-Type": "application/json", "User-Agent": UA,
                                           **({"HTTP-Referer": "https://github.com/vishnusunilwork-lgtm/ghost-studio", "X-Title": "Ghost Studio"}
                                              if "openrouter" in e["base"] else {})},
                                  method="POST" if body is not None else "GET")

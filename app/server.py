@@ -40,6 +40,24 @@ STORE = Store(ROOT / CFG["paths"]["projects"])
 RUNNER = Runner(CFG, STORE)
 app = FastAPI(title="Ghost Studio")
 
+GEMINI_TEXT = "google/gemini-2.5-flash"  # the script brain on your Google Cloud sign-in (OpenAI-compatible Vertex endpoint)
+
+
+def _google_brain_sync():
+    """Signed in to Google Cloud: Gemini writes scripts and answers Talk to Ghost first (no key), billed to your project.
+    It is an ordinary entry in the brain chain: move it, change its model or remove it like any other."""
+    g = RUNNER.eng.goog
+    llm.AUTH["google"] = (lambda: RUNNER.eng.goog.on and bool(RUNNER.eng.goog.project), lambda: RUNNER.eng.goog._headers())
+    have = next((e for e in llm.CHAIN if e.get("auth") == "google"), None)
+    if have and g.project:
+        have["base"] = f"https://aiplatform.googleapis.com/v1/projects/{g.project}/locations/global/endpoints/openapi"
+    if have or not (g.configured and g.project) or (CFG.get("api") or {}).get("google_brain_off"):
+        return
+    llm.CHAIN.insert(0, {"id": "google", "provider": "google", "name": "Google Gemini (your sign-in)", "key": "signed-in",
+                         "base": f"https://aiplatform.googleapis.com/v1/projects/{g.project}/locations/global/endpoints/openapi",
+                         "model": GEMINI_TEXT, "auth": "google"})
+    _save_chain()
+
 # ---------------------------------------------------------------- local-only guard
 # Ghost listens only on this computer, but any website open in the browser could still try to send requests to
 # localhost (cross-site request forgery) or reach it through a renamed address (DNS rebinding). So:
@@ -128,6 +146,7 @@ def status():
                     "price": f.price, "model": f.video_model},
             "google": {"on": RUNNER.eng.goog.on, "problem": RUNNER.eng.goog.broken, "signin": RUNNER.eng.goog.auth == "gcloud",
                        "tier": RUNNER.eng.goog.tier, "resolution": RUNNER.eng.goog.resolution, "audio": RUNNER.eng.goog.audio,
+                       "best2": (CFG.get("api") or {}).get("google_best_of_two", True) is not False,
                        "takes": RUNNER.eng.goog.takes, "mode": RUNNER.eng.goog.mode, "seconds": RUNNER.eng.goog.fixed_len, "project": RUNNER.eng.goog.project, "key": bool(RUNNER.eng.goog.key),
                        "key_end": RUNNER.eng.goog.key[-4:] if RUNNER.eng.goog.key else "", "model": RUNNER.eng.goog.model,
                        "price": RUNNER.eng.goog.price, "limit": RUNNER.eng.goog.limit, "spent": m["usd"]},
@@ -144,12 +163,16 @@ def projects():
     return STORE.list()
 
 
+MOOD_VOICE = {"warm": "warm", "excited": "excited", "emotional": "calm", "funny": "excited", "calm": "calm", "angry": "news",
+              "serious": "news", "devotional": "devotional"}
+
+
 @app.post("/api/projects")
 async def create(idea: str = Form(""), dialogue: str = Form(""), seconds: int = Form(30),
                  voice_mode: str = Form("oncamera"), language: str = Form(""), title: str = Form(""),
                  aspect: str = Form("9:16"), quality: str = Form("final"), kind: str = Form("video"), count: int = Form(4),
                  review: str = Form(""), same_look: str = Form("1"), style: str = Form("auto"), voice_gender: str = Form("female"), voice_style: str = Form("warm"), cast: str = Form("auto"), music_style: str = Form("bollywood"), vocals: str = Form("ai"), music_seconds: int = Form(60), ai_music: str = Form(""),
-                 make_with: str = Form(""),
+                 make_with: str = Form(""), mood: str = Form(""), place: str = Form(""),
                  reference: UploadFile | None = File(None), music: UploadFile | None = File(None),
                  refs: list[UploadFile] | None = File(None)):
     if kind == "music" and not idea.strip() and not dialogue.strip():
@@ -166,7 +189,10 @@ async def create(idea: str = Form(""), dialogue: str = Form(""), seconds: int = 
                   music_style=music_style, vocals=vocals if vocals in ("ai", "mine", "instrumental") else "ai",
                   music_seconds=max(10, min(600, music_seconds)), ai_music=ai_music == "1", review=review == "1", same_look=same_look != "0", voice_gender="male" if voice_gender == "male" else "female",
                   voice_style=voice_style if voice_style in ("warm", "excited", "calm", "news", "devotional") else "warm",
-                  cast=cast if cast in ("auto", "people", "animals", "cartoon") else "auto", style=style if style in ("auto", "interview2", "cinematic", "news", "ugc") else "auto")
+                  cast=cast if cast in ("auto", "people", "animals", "cartoon") else "auto", style=style if style in ("auto", "interview2", "cinematic", "news", "ugc") else "auto",
+                  mood=mood if mood in MOOD_VOICE else "", place=place if place in ("indoor", "outdoor") else "")
+    if p["mood"]:  # the voice follows the mood
+        p["voice_style"] = MOOD_VOICE[p["mood"]]
     d = STORE.dir(p["id"])
     for up, key in ((reference, "reference"), (music, "music")):
         if up and up.filename:
@@ -317,13 +343,16 @@ def _save_chain():
     CFG.pop("brain", None)
 
 
+_google_brain_sync()
+
+
 def _brains_view():
     now = time.time()
     out = []
     for e in llm.CHAIN:
         st = llm._st(e)
         out.append({"id": e["id"], "name": e.get("name"), "provider": e.get("provider"), "model": e.get("model"),
-                    "key_end": (e.get("key") or "")[-4:], "today": st["n"], "ms": st["ms"],
+                    "key_end": "" if e.get("auth") else (e.get("key") or "")[-4:], "signin": bool(e.get("auth")), "today": st["n"], "ms": st["ms"],
                     "ready": st["cool_until"] <= now, "why": st["why"] if st["cool_until"] > now else "",
                     "back_in": max(0, int(st["cool_until"] - now))})
     return {"private": llm.PRIVATE["on"], "chain": out, "last": llm.CLOUD.get("name") or "",
@@ -391,7 +420,12 @@ def brain_edit(body: BrainEdit):
     if i is None:
         raise HTTPException(404, "Not found")
     if body.remove:
-        llm.CHAIN.pop(i)
+        gone = llm.CHAIN.pop(i)
+        if gone.get("auth") == "google":  # you removed it: Ghost doesn't add it back by itself
+            loc = _local()
+            loc.setdefault("api", {})["google_brain_off"] = True
+            _save_local(loc)
+            CFG.setdefault("api", {})["google_brain_off"] = True
     else:
         if body.model.strip():
             llm.CHAIN[i]["model"] = body.model.strip()
@@ -448,6 +482,7 @@ class ApiSettings(BaseModel):
     google_tier: str | None = None
     google_resolution: str | None = None
     google_audio: bool | None = None
+    google_best_of_two: bool | None = None
     google_takes: int | None = None
     google_mode: str | None = None
     google_seconds: int | None = None
@@ -495,6 +530,8 @@ def set_api(body: ApiSettings):
             a[k] = val
     if body.google_audio is not None:
         a["google_audio"] = bool(body.google_audio)
+    if body.google_best_of_two is not None:
+        a["google_best_of_two"] = bool(body.google_best_of_two)
     if body.google_takes is not None:
         a["google_takes"] = max(1, min(4, int(body.google_takes)))
     if body.google_seconds is not None:
@@ -514,6 +551,7 @@ def set_api(body: ApiSettings):
             CFG["api"].pop(k, None)
     RUNNER.eng.fal = E.Fal(CFG)
     RUNNER.eng.goog = E.Google(CFG)  # a new key or project starts with a clean slate
+    _google_brain_sync()
     return {"ok": True}
 
 
@@ -889,6 +927,7 @@ def google_signin(body: SignIn):
     CFG.setdefault("api", {}).update(google_project=pr, google_auth="gcloud")
     CFG["api"].pop("google_key", None)
     RUNNER.eng.goog = E.Google(CFG)
+    _google_brain_sync()
     _th.Thread(target=addons.gcloud_signin, args=(pr,), daemon=True).start()
     time.sleep(0.3)
     return addons._st("gcloud")
@@ -913,6 +952,7 @@ def google_signout():
         CFG.get("api", {}).pop(k, None)
     _save_local(loc)
     RUNNER.eng.goog = E.Google(CFG)
+    _google_brain_sync()
     return {"ok": True}
 
 
@@ -1260,6 +1300,108 @@ def agent_chat(body: Talk):
                 return
             yield json.dumps(ev, ensure_ascii=False) + "\n"
     return StreamingResponse(gen(), media_type="application/x-ndjson", headers={"Cache-Control": "no-store"})
+
+
+class Suggest(BaseModel):
+    text: str = ""
+    language: str = ""
+
+
+SUGGEST_KEYS = {"kind": ("video", "images", "music"), "mood": tuple(MOOD_VOICE), "place": ("", "indoor", "outdoor"),
+                "aspect": ("9:16", "4:5", "1:1", "16:9"), "style": ("auto", "interview2", "cinematic", "news", "ugc")}
+
+
+SETTING_WORDS = re.compile(r"\b(\d+(\.\d+)?\s*(s|sec|secs|seconds?|mins?|minutes?)|hindi|hinglish|english|marathi|tamil|telugu|bengali|bangla|"
+                           r"gujarati|kannada|malayalam|manglish|punjabi|with|without|no|background|bg|music|bgm|indoors?|outdoors?|inside|outside|"
+                           r"excited|emotional|funny|angry|calm|serious|warm|devotional|square|vertical|horizontal|landscape|youtube|reels?|shorts|"
+                           r"video|videos|ad|ads|images?|pictures?|photos?|posters?|make|create|generate|need|want|a|an|the|for|me|please|i)\b", re.I)
+
+
+def _topic(text: str) -> str:
+    t = re.sub(r"\s{2,}", " ", SETTING_WORDS.sub(" ", text or "")).strip(" ,.;:-")
+    t = re.sub(r"^(,\s*)+|(\s*,)+$", "", re.sub(r"(\s*,\s*)+", ", ", t)).strip(" ,")
+    return t[:60] or "your product"
+
+
+def _fallback_ideas(text: str, lang: str) -> list[dict]:
+    t = _topic(text)
+    return [
+        {"title": f"{t}: a small moment", "idea": f"A real everyday Indian family moment around {t}, ending with a warm line that makes people smile",
+         "kind": "video", "seconds": 15, "mood": "warm", "place": "indoor", "music": True, "aspect": "9:16", "style": "auto",
+         "why": "Short, warm and real: the safest choice for Reels."},
+        {"title": f"{t}: street energy", "idea": f"A lively outdoor street scene about {t}, quick cuts, a young person speaking straight to the phone camera",
+         "kind": "video", "seconds": 15, "mood": "excited", "place": "outdoor", "music": True, "aspect": "9:16", "style": "ugc",
+         "why": "Feels like a real creator video: high energy, made for scrolling."},
+        {"title": f"{t}: posters", "idea": f"Four clean, eye-catching poster photos for {t}, the same person and place in each, space for text",
+         "kind": "images", "count": 4, "mood": "warm", "place": "", "aspect": "4:5", "style": "auto",
+         "why": "Pictures for feed posts and WhatsApp status."}]
+
+
+@app.post("/api/agent/suggest")
+def agent_suggest(body: Suggest):
+    """✨ Agent: one word or a rough line -> three ready ideas, each with the settings it needs."""
+    from .agent import router
+    lang = body.language or CFG.get("language", "Hindi")
+    today = time.strftime("%d %B %Y")
+    prompt = f"""You are Ghost, an ad and content director for India (general purpose, not devotional unless asked). Today is {today}.
+The user typed: "{body.text[:600] or '(nothing: suggest what is timely this week)'}". Language: {lang}.
+Understand what they need (occasion, product, audience, where it will be posted) and suggest exactly 3 different, concrete ideas Ghost can make now.
+Return JSON only: {{"need": "one sentence: what you understood they need",
+"ideas": [{{"title": "2-5 words", "idea": "one vivid sentence Ghost will film (who, where, what happens, the closing line)",
+"kind": "video|images|music", "seconds": 15|30|45|60, "count": 4, "mood": "{'|'.join(MOOD_VOICE)}", "place": "indoor|outdoor|",
+"music": true, "aspect": "9:16|4:5|1:1|16:9", "style": "auto|cinematic|ugc|interview2|news", "why": "why this works, one short sentence"}}]}}"""
+    try:
+        fast, careful = router.pick_models(CFG)
+        if not (llm.cloud_on() or careful):
+            raise RuntimeError("no brain")
+        d = llm.ask_json(fast or careful or "cloud:x", prompt, temperature=0.8)
+        ideas = [i for i in (d.get("ideas") or []) if isinstance(i, dict) and i.get("idea")][:3]
+        if not ideas:
+            raise RuntimeError("no ideas")
+        need = str(d.get("need") or "")
+    except Exception:
+        ideas, need = _fallback_ideas(body.text, lang), ""
+    for i in ideas:
+        for k, ok in SUGGEST_KEYS.items():
+            if i.get(k) not in ok:
+                i[k] = ok[0] if k != "place" else ""
+        try:
+            i["seconds"] = min((15, 30, 45, 60), key=lambda v: abs(v - int(i.get("seconds") or 15)))
+        except Exception:
+            i["seconds"] = 15
+        i["music"] = bool(i.get("music", True))
+        i["language"] = lang
+    return {"need": need, "ideas": ideas}
+
+
+class Say(BaseModel):
+    text: str
+    language: str = ""
+    voice: str = "female"
+
+
+@app.post("/api/voice/say")
+def voice_say(body: Say):
+    """The voice assistant answers aloud with Ghost's own voice (used when the browser has no voice for the language)."""
+    import tempfile
+    txt = re.sub(r"[*_`#>\[\]]", "", body.text)[:900].strip()
+    if not txt:
+        raise HTTPException(400, "Nothing to say")
+    out = Path(tempfile.mkdtemp()) / "say.wav"
+    RUNNER.eng.speech(txt, out, body.language or CFG.get("language", "Hindi"), "male" if body.voice == "male" else "female", "warm")
+    return FileResponse(out, media_type="audio/wav")
+
+
+@app.post("/api/voice/hear")
+async def voice_hear(audio: UploadFile = File(...)):
+    """Speech to text on this computer (for browsers without built-in speech recognition)."""
+    import tempfile
+    if not E._has("faster_whisper"):
+        raise HTTPException(400, "Voice input in this browser needs the Script AI add-on (it includes speech-to-text), or open Ghost in Chrome or Safari, which listen by themselves.")
+    f = Path(tempfile.mkdtemp()) / ("in" + (Path(audio.filename or "a.webm").suffix or ".webm"))
+    with f.open("wb") as w:
+        shutil.copyfileobj(audio.file, w)
+    return {"text": RUNNER.eng.transcribe(f).strip()}
 
 
 @app.post("/api/agent/warm")

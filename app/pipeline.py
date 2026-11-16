@@ -56,6 +56,28 @@ def downloads_dir() -> Path:
     return Path.home() / "Downloads"
 
 
+MOODS = {"warm": "warm and heartfelt", "excited": "excited, high energy", "emotional": "emotional, touching",
+         "funny": "funny, light and playful", "calm": "calm and soothing", "angry": "angry, intense, frustrated",
+         "serious": "serious and trustworthy", "devotional": "devotional"}
+PLACES = {"indoor": "indoors (a real home, shop or office)", "outdoor": "outdoors (street, garden, terrace or nature)"}
+
+
+def brief(p: dict) -> str:
+    """The idea plus the few settings that shape the story: mood and indoor / outdoor."""
+    idea = p.get("idea", "") or ""
+    extra = []
+    if p.get("mood") in MOODS:
+        extra.append("Mood: " + MOODS[p["mood"]] + ".")
+    if p.get("place") in PLACES:
+        extra.append("Place: " + PLACES[p["place"]] + ".")
+    return (idea + (" " if idea and extra else "") + " ".join(extra)).strip()
+
+
+def knowledge_apply(t: str) -> str:
+    from . import knowledge
+    return knowledge.apply(t)
+
+
 class Store:
     def __init__(self, root: Path):
         self.root = root
@@ -304,7 +326,7 @@ class Runner:
             return
         # 2 plan
         self._say(p, "plan", "Writing the script and every prompt", 10)
-        pl = planner.plan(self.cfg, idea=p.get("idea", ""), dialogue=p.get("dialogue", ""), reference=ref,
+        pl = planner.plan(self.cfg, idea=brief(p), dialogue=p.get("dialogue", ""), reference=ref,
                           seconds=int(p.get("seconds", 30)), voice_mode=p.get("voice_mode", "oncamera"),
                           language=p.get("language"), aspect=p.get("aspect") or "9:16", style=self._style(p, ref),
                           fast=p.get("quality") == "draft", cast=p.get("cast", "auto"),
@@ -494,6 +516,63 @@ class Runner:
         self.store.save(p)
         return True
 
+    def _best_of_two(self, p, main: Path, w: int, h: int):
+        """The main picture decides the whole ad's look: make it with both Google picture models and keep the better one."""
+        g = self.eng.goog
+        alt = main.with_name("frame_main_imagen.png")
+        try:
+            self._say(p, "images", "Second opinion: the same picture with Imagen, then Gemini picks the better one", 21)
+            g.imagen(knowledge_apply(p["plan"]["image_prompt"]), alt, w, h, seed=int(p.get("image_seed", 7)))
+            ans = g.ask("Two candidate pictures for the first frame of an ad. The brief: " + p["plan"]["image_prompt"][:1200] +
+                        "\nPick the better one: matches the brief, looks like a real photo, natural faces, hands and eyes, believable "
+                        "place, no text or logos. Answer JSON {\"best\": 1 or 2, \"why\": \"one short sentence\"}.", [main, alt], json_out=True)
+            from . import llm
+            pick = llm._json_from(ans) or {}
+            if int(pick.get("best") or 1) == 2:
+                shutil.copyfile(alt, main)
+                who = "Imagen"
+            else:
+                who = "Gemini"
+            p["log"].append(time.strftime("%H:%M:%S ") + f"Main picture: {who}'s was better — {str(pick.get('why') or '')[:140]}")
+        except E.Cancelled:
+            raise
+        except Exception as e:
+            p["log"].append(time.strftime("%H:%M:%S ") + f"Second picture skipped ({str(e)[:100]}): using Gemini's")
+        finally:
+            alt.unlink(missing_ok=True)
+
+    def _cast_from_picture(self, p, main: Path):
+        """Character sheet from what is really in the main picture (script + picture + reference), used in every shot."""
+        pl = p.get("plan") or {}
+        old = ((pl.get("character") or {}).get("look") or "").strip()
+        lines = " / ".join(c.get("line", "") for c in p.get("clips") or [])[:800]
+        ref = (p.get("ref_analysis") or {}).get("summary", "") if isinstance(p.get("ref_analysis"), dict) else ""
+        try:
+            ans = self.eng.goog.ask(
+                "This is the main character of an ad, in its first picture. Script: " + lines + (" Reference ad: " + ref[:400] if ref else "") +
+                "\nWrite the character sheet so a video model draws the SAME person in every shot: apparent age, gender, face shape, "
+                "skin tone, hair (style, length, colour), the exact outfit with colours and patterns, jewellery and accessories. "
+                "Only what is visible in the picture. One line, under 70 words, no names. If there is no person or animal, answer NONE.", [main])
+        except E.Cancelled:
+            raise
+        except Exception as e:
+            p["log"].append(time.strftime("%H:%M:%S ") + f"Character sheet skipped ({str(e)[:100]})")
+            return
+        new = ans.strip().strip('"').splitlines()[0].strip() if ans else ""
+        if not new or new.upper().startswith("NONE") or len(new) < 25:
+            return
+        pl.setdefault("character", {})["look"] = new
+        for pp in pl.get("people") or []:
+            if not pp.get("look") or pp["look"].strip() == old:
+                pp["look"] = new
+        for c in p.get("clips") or []:
+            for key in ("image_prompt", "video_prompt"):
+                if c.get(key) and old and old in c[key]:
+                    c[key] = c[key].replace(old, new)
+        planner.lock_looks({"character": pl["character"], "people": pl.get("people") or [], "clips": p.get("clips") or []})
+        p["log"].append(time.strftime("%H:%M:%S ") + "Character sheet from the picture: " + new[:160])
+        self.store.save(p)
+
     def _style(self, p, ref=None) -> str:
         st = p.get("style") or "auto"
         if st == "auto" and ref:
@@ -520,6 +599,10 @@ class Runner:
                        ref_images=refs or None, steps=steps, fallback=refs[0] if refs else None, best=False)
         p["image"] = str(main)
         p["engine_plan"] = self.eng.plan()
+        if self.eng.goog.on and not self.eng.mock:
+            if not refs and self.cfg.get("api", {}).get("google_best_of_two", True) is not False:
+                self._best_of_two(p, main, gw * k, gh * k)
+            self._cast_from_picture(p, main)
         if self.eng.goog.broken and self.eng.goog.broken not in "".join(p["log"][-20:]):
             p["log"].append(time.strftime("%H:%M:%S ") + self.eng.goog.broken)
         style = p.get("style_used") or "auto"
@@ -926,7 +1009,7 @@ class Runner:
         for st in ("analyse", "images", "videos", "voice", "edit"):
             p["steps"][st] = "skipped"
         self._say(p, "plan", "Writing the song" if p.get("vocals") != "instrumental" else "Planning the music", 8)
-        pl = planner.plan_music(self.cfg, idea=p.get("idea", ""), style=p.get("music_style", "bollywood"), vocals=p.get("vocals", "ai"),
+        pl = planner.plan_music(self.cfg, idea=brief(p), style=p.get("music_style", "bollywood"), vocals=p.get("vocals", "ai"),
                                 lyrics=p.get("dialogue", ""), seconds=int(p.get("music_seconds", 60)), language=p.get("language"))
         if p.get("title") in (None, "", "New ad"):
             p["title"] = pl.get("title") or "Song"
@@ -1016,7 +1099,7 @@ class Runner:
     def _images_only(self, pid, ref=None):
         p = self.store.load(pid)
         self._say(p, "plan", "Writing the image prompts", 8)
-        pl = planner.plan_images(self.cfg, idea=p.get("idea", "") or p.get("dialogue", ""), reference=ref,
+        pl = planner.plan_images(self.cfg, idea=brief(p) or p.get("dialogue", ""), reference=ref,
                                  count=int(p.get("count", 4)), aspect=p.get("aspect") or "9:16", language=p.get("language"),
                                  style=self._style(p, ref), fast=p.get("quality") == "draft", cast=p.get("cast", "auto"))
         if p.get("title") in (None, "", "New ad"):

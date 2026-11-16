@@ -83,6 +83,30 @@ h1.ask span{display:inline-block;animation:word .9s var(--ease) both}
 .att .x{position:absolute;top:-7px;right:-7px;width:20px;height:20px;border-radius:50%;background:var(--ink);color:#000;font-size:12px;display:grid;place-items:center;opacity:0;transition:opacity .2s}
 .att:hover .x{opacity:1}
 .opts{display:flex;gap:4px;flex-wrap:wrap;padding:0 10px 10px 58px}
+.opts:not(.more) .adv{display:none}
+.more-btn{color:var(--faint)}.more-btn::before{content:"+";margin-right:5px}.opts.more .more-btn::before{content:"−"}
+.opt.flash{background:rgba(255,255,255,.1);color:var(--ink)}
+.autonote{min-height:0;padding:0 10px 0 69px;font-size:12px;color:var(--mute);opacity:0;max-height:0;overflow:hidden;transition:opacity .3s,max-height .3s,padding .3s}
+.autonote.on{opacity:1;max-height:40px;padding-bottom:10px}
+.cbtn{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;color:var(--mute);flex:none;transition:background .2s,color .2s}
+.cbtn:hover{background:var(--hover);color:var(--ink)}.cbtn.on{color:#0a0a0b;background:#e9e9ea}
+.cbtn.busy svg{animation:spin 1.2s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+.ideas{margin-top:14px;display:grid;gap:8px}
+.ideas .need{font-size:13px;color:var(--mute);padding:0 4px 2px}
+.idea{display:block;width:100%;text-align:left;padding:14px 16px;border:1px solid var(--line);border-radius:14px;transition:border-color .2s,background .2s}
+.idea:hover,.idea:focus-visible{border-color:var(--line2);background:var(--hover)}
+.idea b{display:block;font-weight:500;margin-bottom:4px}.idea p{margin:0;color:var(--ink);opacity:.85;font-size:14px;line-height:1.45}
+.idea small{display:block;color:var(--mute);font-size:12px;margin-top:8px}
+.va{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:12px;padding:10px 12px 10px 16px;max-width:min(560px,calc(100vw - 32px));border:1px solid var(--line2);border-radius:99px;background:#141416;box-shadow:0 10px 40px rgba(0,0,0,.5)}
+.va-t{min-width:0;display:flex;flex-direction:column}.va-t b{font-weight:500;font-size:13px}.va-t small{color:var(--mute);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:380px}
+.va-x{height:30px;padding:0 12px;border-radius:99px;background:var(--surface2);color:var(--ink);font-size:13px;flex:none}
+.va-wave{display:flex;gap:3px;align-items:center;height:18px}.va-wave i{width:3px;height:6px;border-radius:2px;background:var(--ink);opacity:.8}
+.va.listen .va-wave i{animation:wv 1s ease-in-out infinite}.va.listen .va-wave i:nth-child(2){animation-delay:.15s}.va.listen .va-wave i:nth-child(3){animation-delay:.3s}.va.listen .va-wave i:nth-child(4){animation-delay:.45s}
+.va.speak .va-wave i{animation:wv .6s ease-in-out infinite}.va.speak .va-wave i:nth-child(odd){animation-delay:.2s}
+@keyframes wv{0%,100%{height:5px}50%{height:18px}}
+@media (prefers-reduced-motion:reduce){.va-wave i,.cbtn.busy svg{animation:none!important}}
+@media (max-width:560px){.crow{flex-wrap:wrap;row-gap:4px}#prompt{flex:1 1 100%;order:-1;padding:7px 6px}.crow .plus{margin-right:auto}
+  .opts{padding-left:6px}.autonote{padding-left:17px}.va-t small{max-width:52vw}}
 .opt{position:relative;display:flex;align-items:center;height:30px;border-radius:99px;color:var(--mute);font-size:13px;transition:background .2s,color .2s}
 .opt:hover{background:var(--hover);color:var(--ink)}
 .opt select{field-sizing:content;appearance:none;-webkit-appearance:none;background:transparent;border:0;outline:0;padding:0 24px 0 11px;height:30px;cursor:pointer;color:inherit}
@@ -385,34 +409,41 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
           </button>
           <textarea id="prompt" rows="1" placeholder="Describe the ad, or drop a reference video…" aria-label="Describe your ad"></textarea>
+          <button class="cbtn" id="agentBtn" title="Ghost Agent: type one word (e.g. Diwali) and get 3 ready ideas with settings" aria-label="Ghost Agent: suggest ideas"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg></button>
+          <button class="cbtn" id="micBtn" title="Voice assistant: speak to Ghost, it answers back" aria-label="Voice assistant"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
           <button class="mode" id="modeBtn" aria-haspopup="true"><span id="modeTxt">Quality</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></button>
           <button class="send" id="send" aria-label="Make my ad" title="Make my ad (Enter)">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
           </button>
         </div>
-        <div class="opts">
+        <div class="opts" id="opts">
           <label class="opt" title="What to make"><select id="kind"><option value="video">Video ad</option><option value="images">Images only</option><option value="music">Music / song</option><option value="dub">Dub a video</option></select></label>
-          <label class="opt" id="styleOpt" title="Direction style"><select id="style"><option value="auto">Style: Auto</option><option value="interview2">Interview · 2 cameras</option><option value="cinematic">Cinematic film</option><option value="news">Newsroom explainer</option><option value="ugc">Phone UGC</option></select></label>
-          <label class="opt hidden" id="lockOpt" title="Keep the same person and place in every image"><select id="lock"><option value="1">Same person & place</option><option value="0">Different each time</option></select></label>
           <label class="opt hidden" id="countOpt" title="How many images"><select id="count"><option value="1">1 image</option><option value="2">2 images</option><option value="4" selected>4 images</option><option value="6">6 images</option><option value="8">8 images</option></select></label>
           <label class="opt hidden" id="mstyleOpt" title="Music style"><select id="mstyle"><option value="bollywood">Bollywood pop</option><option value="bhajan">Devotional bhajan</option><option value="festive">Festive celebration</option><option value="sufi">Sufi</option><option value="bhangra">Punjabi bhangra</option><option value="ghazal">Ghazal</option><option value="classical">Indian classical fusion</option><option value="acoustic">Indie acoustic</option><option value="lofi">Lo-fi chill</option><option value="cinematic">Cinematic score</option><option value="edm">EDM / dance</option><option value="hiphop">Hip-hop / rap</option></select></label>
           <label class="opt hidden" id="mvocalOpt" title="Vocals"><select id="mvocal"><option value="ai">Song · AI writes lyrics</option><option value="mine">Song · my lyrics</option><option value="instrumental">Instrumental</option></select></label>
           <label class="opt hidden" id="mlenOpt" title="Song length"><select id="mlen"><option value="30">30 s</option><option value="60" selected>1 min</option><option value="90">1.5 min</option><option value="120">2 min</option><option value="180">3 min</option></select></label>
           <label class="opt" id="lenOpt" title="Length"><select id="len"><option value="15">15 s</option><option value="30" selected>30 s</option><option value="45">45 s</option><option value="60">60 s</option><option value="90">90 s</option><option value="120">2 min</option></select></label>
-          <label class="opt" id="aspectOpt" title="Shape"><select id="aspect"><option value="9:16">9:16 Reels</option><option value="4:5">4:5 Feed</option><option value="1:1">1:1 Square</option><option value="16:9">16:9 YouTube</option></select></label>
-          <label class="opt" id="castOpt" title="Who is on screen"><select id="cast"><option value="auto">Cast: Auto</option><option value="people">People</option><option value="animals">Talking animals</option><option value="cartoon">3D cartoon</option></select></label>
-          <label class="opt hidden" id="vgenderOpt" title="Narrator voice"><select id="vgender"><option value="female">First voice: female</option><option value="male">First voice: male</option></select></label>
-          <label class="opt hidden" id="vstyleOpt" title="How the voice sounds"><select id="vstyle"><option value="warm">Warm</option><option value="excited">Excited</option><option value="calm">Calm</option><option value="news">Announcer</option><option value="devotional">Devotional</option></select></label>
-          <label class="opt" id="withOpt" title="Who makes the pictures / video"><select id="makeWith"><option value="">Made by Ghost</option><option value="flow">Make in Google Flow (my plan)</option><option value="gemini">Make in Gemini app (my plan)</option><option value="chatgpt">Make in ChatGPT (my plan)</option></select></label>
-          <label class="opt" id="vmusicOpt" title="Background music"><select id="vmusic"><option value="">No AI music</option><option value="1">AI background music</option></select></label>
-          <label class="opt" id="voiceOpt" title="Voice"><select id="voice"><option value="oncamera">People talk</option><option value="narrator">Narrator</option><option value="both">Both</option></select></label>
-          <label class="opt" title="Language"><select id="lang"><option>Hindi</option><option>English</option><option>Marathi</option><option>Tamil</option><option>Telugu</option><option>Bengali</option><option>Gujarati</option><option>Kannada</option><option>Malayalam</option><option>Punjabi</option></select></label>
-          <button class="opt tog" id="exact" title="Use my words exactly, as the dialogue"><span class="tg"></span>Exact words</button>
-          <button class="opt tog" id="review" title="Ghost writes everything, then waits so you can edit it before making"><span class="tg"></span>Check prompts first</button>
+          <label class="opt" id="langOpt" title="Language"><select id="lang"><option>Hindi</option><option>English</option><option>Marathi</option><option>Tamil</option><option>Telugu</option><option>Bengali</option><option>Gujarati</option><option>Kannada</option><option>Malayalam</option><option>Punjabi</option></select></label>
+          <label class="opt" id="moodOpt" title="Mood: the story and the voice follow it"><select id="mood"><option value="warm">Warm</option><option value="excited">Excited</option><option value="emotional">Emotional</option><option value="funny">Funny</option><option value="calm">Calm</option><option value="angry">Angry</option><option value="serious">Serious</option><option value="devotional">Devotional</option></select></label>
+          <label class="opt" id="placeOpt" title="Where it happens"><select id="place"><option value="">Place: Auto</option><option value="indoor">Indoor</option><option value="outdoor">Outdoor</option></select></label>
+          <label class="opt" id="vmusicOpt" title="Background music"><select id="vmusic"><option value="">No music</option><option value="1">Music</option></select></label>
+          <button class="opt tog more-btn" id="moreBtn" type="button" aria-expanded="false" title="Shape, style, cast, voice and more">More</button>
+          <label class="opt adv" id="styleOpt" title="Direction style"><select id="style"><option value="auto">Style: Auto</option><option value="interview2">Interview · 2 cameras</option><option value="cinematic">Cinematic film</option><option value="news">Newsroom explainer</option><option value="ugc">Phone UGC</option></select></label>
+          <label class="opt adv" id="aspectOpt" title="Shape"><select id="aspect"><option value="9:16">9:16 Reels</option><option value="4:5">4:5 Feed</option><option value="1:1">1:1 Square</option><option value="16:9">16:9 YouTube</option></select></label>
+          <label class="opt adv" id="castOpt" title="Who is on screen"><select id="cast"><option value="auto">Cast: Auto</option><option value="people">People</option><option value="animals">Talking animals</option><option value="cartoon">3D cartoon</option></select></label>
+          <label class="opt adv hidden" id="lockOpt" title="Keep the same person and place in every image"><select id="lock"><option value="1">Same person & place</option><option value="0">Different each time</option></select></label>
+          <label class="opt adv hidden" id="vgenderOpt" title="Narrator voice"><select id="vgender"><option value="female">First voice: female</option><option value="male">First voice: male</option></select></label>
+          <label class="opt adv hidden" id="vstyleOpt" title="How the voice sounds"><select id="vstyle"><option value="warm">Warm</option><option value="excited">Excited</option><option value="calm">Calm</option><option value="news">Announcer</option><option value="devotional">Devotional</option></select></label>
+          <label class="opt adv" id="voiceOpt" title="Voice"><select id="voice"><option value="oncamera">People talk</option><option value="narrator">Narrator</option><option value="both">Both</option></select></label>
+          <label class="opt adv" id="withOpt" title="Who makes the pictures / video"><select id="makeWith"><option value="">Made by Ghost</option><option value="flow">Make in Google Flow (my plan)</option><option value="gemini">Make in Gemini app (my plan)</option><option value="chatgpt">Make in ChatGPT (my plan)</option></select></label>
+          <button class="opt tog adv" id="exact" title="Use my words exactly, as the dialogue"><span class="tg"></span>Exact words</button>
+          <button class="opt tog adv" id="review" title="Ghost writes everything, then waits so you can edit it before making"><span class="tg"></span>Check prompts first</button>
         </div>
+        <div class="autonote" id="autoNote" aria-live="polite"></div>
       </div>
       <p class="note hidden" id="songTip" style="text-align:center;margin:8px 0 0">Tip: singing in Hindi and other Indian languages is the hardest part for free music AI. For the clearest words, paste your own lyrics (Song · my lyrics) and use Quality. Instrumental is always clean.</p>
       <p class="err" id="goErr"></p>
+      <div class="ideas hidden" id="ideas" aria-live="polite"></div>
       <div class="sugs" id="sugs">
         <button class="sug" data-s="ref"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="5" width="13" height="14" rx="2"/><path d="m16 10 5-3v10l-5-3"/></svg>Copy a reference ad with new faces</button>
         <button class="sug" data-s="dlg"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg>Turn my exact dialogue into an ad</button>
@@ -524,6 +555,7 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
           <label class="note" style="padding:0">Video length<select class="inp" id="gvLen"><option value="0">Fit each line (4, 6 or 8 s)</option><option value="4">4 seconds</option><option value="6">6 seconds</option><option value="8">8 seconds</option></select></label>
           <label class="note" style="padding:0">Results per shot<select class="inp" id="gvTakes"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></label>
           <label class="note" style="padding:0;display:flex;align-items:center;gap:8px;margin-top:18px"><input type="checkbox" id="gvAudio"> Generate audio</label>
+          <label class="note" style="padding:0;display:flex;align-items:center;gap:8px;margin-top:10px" title="The main picture decides the look of the whole ad: Ghost makes it with Gemini and Imagen and keeps the better one (about $0.04 more per ad)"><input type="checkbox" id="gvBest"> Main picture: best of Gemini and Imagen</label>
           <p class="note" id="gvCost" style="grid-column:1/-1;margin:0;padding:0"></p>
         </div>
         <button class="btn" id="gTest" style="width:100%">Test again</button>
@@ -545,10 +577,11 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
     <p class="note"><b>Draft</b> makes a quick preview; <b>Make it final</b> re-makes the same takes at full quality. Label AI-made videos as AI-generated.</p>
   </div>
 </aside>
+<div class="va hidden" id="va" role="status"><span class="va-wave"><i></i><i></i><i></i><i></i></span><span class="va-t"><b id="vaState">Listening…</b><small id="vaTxt">Speak now</small></span><button class="va-x" id="vaStop" aria-label="Stop voice assistant">Stop</button></div>
 <aside class="drawer right" id="talk" aria-label="Talk to Ghost">
   <div class="dhead"><h3>Talk to Ghost</h3><button class="icon" id="tkNew" title="New chat" aria-label="New chat"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button><button class="icon" data-close aria-label="Close">✕</button></div>
   <div class="tk-log" id="tkLog" aria-live="polite"></div>
-  <div class="tk-foot"><div class="tk-in"><button id="tkDeep" class="tk-deep" title="Deep thinking: slower, smarter answers for hard questions (auto for plans, strategy, analysis)" aria-pressed="false">🧠</button><textarea id="tkIn" rows="1" placeholder="Ask anything, or tell Ghost what to make…"></textarea><button id="tkSend" aria-label="Send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button></div>
+  <div class="tk-foot"><div class="tk-in"><button id="tkDeep" class="tk-deep" title="Deep thinking: slower, smarter answers for hard questions (auto for plans, strategy, analysis)" aria-pressed="false">🧠</button><textarea id="tkIn" rows="1" placeholder="Ask anything, or tell Ghost what to make…"></textarea><button id="tkMic" class="tk-deep" title="Speak instead of typing; Ghost answers aloud" aria-label="Voice"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button><button id="tkSend" aria-label="Send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button></div>
   <p class="tk-hint">Runs on this computer. Every action Ghost takes is shown here, and big ones wait for your OK.</p></div>
 </aside>
 <aside class="drawer right" id="clipSheet" aria-label="Edit shot">
@@ -627,7 +660,7 @@ async function brainUI(){$('#brvKey').placeholder=ST&&ST.web_search?'Brave key s
   try{BR=await api('/api/settings/brains')}catch(e){return}
   if(!$('#brProv').options.length){$('#brProv').innerHTML=Object.entries(BR.providers).map(([k,v])=>`<option value="${k}">${esc(v.name)}</option>`).join('')+'<option value="custom">Other (OpenAI-compatible address)</option>';brProvUI()}
   $('#brPriv').checked=!!BR.private;
-  $('#brList').innerHTML=BR.chain.length?BR.chain.map((e,i)=>`<div style="display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--line)"><b style="min-width:18px">${i+1}.</b><span style="flex:1;min-width:0"><b>${esc(e.name)}</b> · <span class="note" style="padding:0">${esc(e.model)} · key …${esc(e.key_end)} · ${e.today} today${e.ms?' · '+(e.ms/1000).toFixed(1)+' s':''}</span><br>${BR.private?'<span class="note" style="padding:0">off (private)</span>':e.ready?'<span class="ok">ready</span>':`<span class="bad">${esc(e.why)}${e.back_in?' · back in '+(e.back_in>3600?Math.round(e.back_in/3600)+' h':Math.ceil(e.back_in/60)+' min'):''}</span>`}</span>
+  $('#brList').innerHTML=BR.chain.length?BR.chain.map((e,i)=>`<div style="display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--line)"><b style="min-width:18px">${i+1}.</b><span style="flex:1;min-width:0"><b>${esc(e.name)}</b> · <span class="note" style="padding:0">${esc(e.model)} · ${e.signin?'Google sign-in, no key':'key …'+esc(e.key_end)} · ${e.today} today${e.ms?' · '+(e.ms/1000).toFixed(1)+' s':''}</span><br>${BR.private?'<span class="note" style="padding:0">off (private)</span>':e.ready?'<span class="ok">ready</span>':`<span class="bad">${esc(e.why)}${e.back_in?' · back in '+(e.back_in>3600?Math.round(e.back_in/3600)+' h':Math.ceil(e.back_in/60)+' min'):''}</span>`}</span>
     <span style="display:flex;gap:4px;flex:none">${i?`<button class="btn ic" data-bmv="${e.id}" data-d="-1" title="Try this one earlier" style="width:30px;height:30px;padding:0">↑</button>`:''}<button class="btn ic" data-bmdl="${e.id}" title="Change model" style="width:30px;height:30px;padding:0">⚙</button><button class="btn ic" data-brm="${e.id}" title="Remove this key" style="width:30px;height:30px;padding:0">✕</button></span></div>`).join('')+`<p class="note">Then: the free brain on this computer.${BR.last?' Last answer from: <b>'+esc(BR.last)+'</b>':''}</p>`:'<p class="note">No keys yet: everything runs on this computer.</p>';
   $$('#brList [data-bmv]').forEach(b=>b.onclick=()=>brEdit({id:b.dataset.bmv,move:+b.dataset.d}));
   $$('#brList [data-brm]').forEach(b=>b.onclick=()=>{if(confirm('Remove this key from Ghost?'))brEdit({id:b.dataset.brm,remove:true})});
@@ -658,7 +691,7 @@ prompt_.addEventListener('input',grow);
 prompt_.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();go()}});
 function kindUI(){const k=$('#kind').value,im=k==='images',mu=k==='music',vi=k==='video',du=k==='dub';
   const show=(id,on)=>$('#'+id).classList.toggle('hidden',!on);
-  show('countOpt',im);show('withOpt',vi||im);show('castOpt',vi||im);show('vgenderOpt',vi||du);show('vstyleOpt',vi||du);show('styleOpt',!mu&&!du);show('songTip',mu&&$('#lang').value!=='English'&&$('#mvocal').value!=='instrumental');show('lockOpt',im);show('lenOpt',vi);show('voiceOpt',vi);show('vmusicOpt',vi);show('exact',vi);show('aspectOpt',!mu&&!du);show('mstyleOpt',mu);show('mvocalOpt',mu);show('mlenOpt',mu);
+  show('countOpt',im);show('withOpt',vi||im);show('castOpt',vi||im);show('vgenderOpt',vi||du);show('vstyleOpt',false);show('styleOpt',!mu&&!du);show('songTip',mu&&$('#lang').value!=='English'&&$('#mvocal').value!=='instrumental');show('lockOpt',im);show('lenOpt',vi);show('voiceOpt',vi);show('vmusicOpt',vi);show('exact',vi);show('aspectOpt',!mu&&!du);show('mstyleOpt',mu);show('mvocalOpt',mu);show('mlenOpt',mu);show('moodOpt',!du);show('placeOpt',vi||im);
   prompt_.placeholder=du?'Add the video with + (or drop it here), choose the language to dub into below. Optional: a note about the video…':mu?($('#mvocal').value==='mine'?'Paste your lyrics (you can add [Verse] and [Chorus] lines)…':'Describe the song: mood, story, occasion… e.g. a warm Diwali song about family'):im?'Describe the images, or drop a reference ad to copy its look…':(EXACT?'Paste the exact dialogue. Two people? Start lines with “Name: …”':'Describe the ad, or drop a reference video…')}
 let REVIEW=false;$('#review').onclick=()=>{REVIEW=!REVIEW;$('#review').classList.toggle('on',REVIEW)};
 $('#mvocal').onchange=kindUI;$('#vmusic').addEventListener('change',()=>{VM_TOUCHED=true});$('#lang').addEventListener('change',kindUI);
@@ -708,6 +741,7 @@ async function go(){const text=prompt_.value.trim();$('#goErr').textContent='';
   if(imgs&&ST&&ST.makers&&ST.makers.image==='photos'&&!A.pics.length){$('#goErr').innerHTML='Images only needs AI pictures. <button class="linkbtn" id="goSet">Open ⚙ to install the free image AI</button> (or add your own photos with +).';$('#goSet').onclick=()=>{kv();drawer('settings')};return}
   const fd=new FormData();fd.append('kind',$('#kind').value);fd.append('review',REVIEW?'1':'');fd.append('voice_gender',$('#vgender').value);fd.append('cast',$('#cast').value);fd.append('voice_style',$('#vstyle').value);fd.append('style',$('#style').value);fd.append('count',$('#count').value);fd.append('same_look',$('#lock').value);fd.append('music_style',$('#mstyle').value);fd.append('vocals',$('#mvocal').value);fd.append('music_seconds',$('#mlen').value);fd.append('ai_music',$('#kind').value==='video'?$('#vmusic').value:'');if(['video','images'].includes($('#kind').value))fd.append('make_with',$('#makeWith').value);
   fd.append(mus?($('#mvocal').value==='mine'?'dialogue':'idea'):imgs?'idea':(EXACT?'dialogue':'idea'),text);fd.append('seconds',$('#len').value);fd.append('aspect',$('#aspect').value);fd.append('voice_mode',$('#voice').value);fd.append('language',$('#lang').value);fd.append('quality',QUAL);
+  fd.append('mood',$('#kind').value==='dub'?'':$('#mood').value);fd.append('place',['video','images'].includes($('#kind').value)?$('#place').value:'');closeIdeas();
   if(A.ref)fd.append('reference',A.ref);if(A.music)fd.append('music',A.music);A.pics.forEach(f=>fd.append('refs',f));
   $('#send').classList.remove('ready');const r0=comp.getBoundingClientRect();F.impulse(r0.left+r0.width/2,r0.top+r0.height/2,9);F.set(.9);
   try{const r=await api('/api/projects',{method:'POST',body:fd});comp.classList.add('sent');setTimeout(()=>{comp.classList.remove('sent');prompt_.value='';A.ref=null;A.pics=[];A.music=null;chips();grow();saveDraft();open(r.id)},380)}
@@ -728,12 +762,12 @@ function kv(){if(!ST)return;const m=ST.models||{},mk=ST.makers||{},a=ST.api||{};
   addPoll();
   $('#apiOff').classList.toggle('hidden',!!a.on);$('#apiOn').classList.toggle('hidden',!a.on);
   if(a.on){$('#apiInfo').textContent=`Connected (key …${a.key_end}) · this month: $${(a.spent||0).toFixed(2)} of $${a.limit} · about $${(a.price*30).toFixed(2)} per 30-second ad`;$('#apiLimit').value=a.limit}
-  const g=ST.google||{};const gset=g.on||!!g.problem;$('#gVeo').classList.toggle('hidden',!g.on);if(g.on){$('#gvTier').value=g.tier||'lite';$('#gvRes').value=g.resolution||'720p';$('#gvMode').value=g.mode||'image';$('#gvLen').value=String(g.seconds||0);$('#gvTakes').value=String(g.takes||1);$('#gvAudio').checked=g.audio!==false;$('#gvCost').textContent=`≈ $${(g.price||0).toFixed(2)} per second of video${(g.takes||1)>1?` × ${g.takes} results`:''} · a 30-second ad ≈ $${((g.price||0)*30*(g.takes||1)).toFixed(2)}`+((g.resolution||'720p')!=='720p'?' · 1080p/4K shots are made as 8-second clips':'')}$('#gSignin2').classList.toggle('hidden',!!g.signin);$('#gOff').classList.toggle('hidden',gset);$('#gOn').classList.toggle('hidden',!gset);
+  const g=ST.google||{};const gset=g.on||!!g.problem;$('#gVeo').classList.toggle('hidden',!g.on);if(g.on){$('#gvTier').value=g.tier||'lite';$('#gvRes').value=g.resolution||'720p';$('#gvMode').value=g.mode||'image';$('#gvLen').value=String(g.seconds||0);$('#gvTakes').value=String(g.takes||1);$('#gvAudio').checked=g.audio!==false;$('#gvBest').checked=g.best2!==false;$('#gvCost').textContent=`≈ $${(g.price||0).toFixed(2)} per second of video${(g.takes||1)>1?` × ${g.takes} results`:''} · a 30-second ad ≈ $${((g.price||0)*30*(g.takes||1)).toFixed(2)}`+((g.resolution||'720p')!=='720p'?' · 1080p/4K shots are made as 8-second clips':'')}$('#gSignin2').classList.toggle('hidden',!!g.signin);$('#gOff').classList.toggle('hidden',gset);$('#gOn').classList.toggle('hidden',!gset);
   if(g.signin&&!g.problem&&g.on){api('/api/google/signin').then(st=>{$('#gInfo').innerHTML=`Signed in with Google${st.account?' as <b>'+esc(st.account)+'</b>':''} (no key) · project ${esc(g.project||'')} · ${esc(g.model)} · this month: $${(g.spent||0).toFixed(2)} of $${g.limit}`}).catch(()=>{})}
   else if(g.problem){$('#gInfo').innerHTML='<b style="color:#ff8a8a">Not ready.</b> '+esc(g.problem).replace(/(https:\/\/[^\s—]+)/,'<a href="$1" target="_blank" rel="noopener">open the switch</a>')+' Then press Test again.'}
   else if(g.on){$('#gInfo').textContent=`Connected · project ${g.project||'(key only)'}${g.key?' · key …'+g.key_end:' · CLI sign-in'} · ${g.model} · this month: $${(g.spent||0).toFixed(2)} of $${g.limit} · about $${(g.price*20).toFixed(2)} per 20-second ad`}}
 let GST=null;
-['gvTier','gvRes','gvMode','gvLen','gvTakes','gvAudio'].forEach(id=>$('#'+id).onchange=async()=>{const b={google_tier:$('#gvTier').value,google_resolution:$('#gvRes').value,google_mode:$('#gvMode').value,google_seconds:+$('#gvLen').value,google_takes:+$('#gvTakes').value,google_audio:$('#gvAudio').checked};
+['gvTier','gvRes','gvMode','gvLen','gvTakes','gvAudio','gvBest'].forEach(id=>$('#'+id).onchange=async()=>{const b={google_tier:$('#gvTier').value,google_resolution:$('#gvRes').value,google_mode:$('#gvMode').value,google_seconds:+$('#gvLen').value,google_takes:+$('#gvTakes').value,google_audio:$('#gvAudio').checked,google_best_of_two:$('#gvBest').checked};
   if(b.google_tier==='lite'&&b.google_resolution==='4k'){b.google_resolution='1080p';toast('Veo 3.1 Lite goes up to 1080p')}
   try{await api('/api/settings/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});await status();kv();toast('Video settings saved')}catch(e){toast(e.message)}});
 $('#gSignin2').onclick=()=>{const g=(ST&&ST.google)||{};const pr=prompt('Your Google Cloud project id (where the Veo page works for you):',/^[a-z][a-z0-9-]{4,61}[a-z0-9]$/.test(g.project||'')&&!/^projects\d/.test(g.project||'')?g.project:'prj-mt-p-ads-genai-services');
@@ -965,7 +999,7 @@ $('#gUndo').onclick=$('#pUndo').onclick=async()=>{try{await undoIt('all');toast(
 /* ---------- Talk to Ghost: streamed agent events ---------- */
 let TKS=(()=>{try{return localStorage.getItem('gs-talk')||''}catch(e){return''}})();
 if(!TKS){TKS='c'+Math.random().toString(36).slice(2,10);try{localStorage.setItem('gs-talk',TKS)}catch(e){}}
-let TKBUSY=false,TKDEEP=false;
+let TKBUSY=false,TKDEEP=false,TK_LAST='',TK_CONFIRM=null,TK_ACTS=[];
 const tkLog=()=>$('#tkLog');
 function tkAdd(html,cls){const d=document.createElement('div');d.className=cls;d.innerHTML=html;tkLog().appendChild(d);tkLog().scrollTop=1e9;return d}
 function tkEmpty(){if(tkLog().children.length)return;const ex=['Write 3 catchy Onam ad lines in Malayalam','Make 3 pictures of a desi dog','Make the hair in picture 2 shorter','Same as my last project, but for Diwali','Song take 1: more upbeat, male voice','Remember: our shop means a small kirana store in Kochi'];
@@ -987,7 +1021,7 @@ function tkRedoBar(){$$('#tkLog .tk-redo').forEach(x=>x.remove());const bub=[...
     if(b.dataset.r==='regenerate'){if(!u)return;let n=u.nextElementSibling;while(n){const x=n.nextElementSibling;n.remove();n=x}tkSend(u.textContent,null,'regenerate',true)}
     else{if(!u)return;$('#tkIn').value=u.textContent;$('#tkIn').focus();TKEDIT=true;toast('Change your message, then press send')}})}
 let TKEDIT=false;
-async function tkSend(text,confirm,redo,keepBubble){if(TKBUSY)return;if(!text&&confirm==null)return;TKBUSY=true;$('#tkSend').disabled=true;
+async function tkSend(text,confirm,redo,keepBubble){if(TKBUSY)return;TK_LAST='';TK_CONFIRM=null;TK_ACTS=[];if(!text&&confirm==null)return;TKBUSY=true;$('#tkSend').disabled=true;
   if(!redo&&TKEDIT&&text){redo='edit';TKEDIT=false;const us=[...$$('#tkLog .tk-b.u')],u=us.pop();if(u){let n=u;while(n){const x=n.nextElementSibling;n.remove();n=x}}}
   let gotDone=false;
   tkLog().querySelector('.tk-empty')?.remove();$$('#tkLog .tk-ok .btn').forEach(b=>b.disabled=true);
@@ -1005,13 +1039,13 @@ async function tkSend(text,confirm,redo,keepBubble){if(TKBUSY)return;if(!text&&c
         else if(e.t==='thinking_live'){}
         else if(e.t==='start'){clear();liveT='';live=tkAdd('','tk-b a live')}
         else if(e.t==='delta'){if(!live){clear();live=tkAdd('','tk-b a live')}liveT+=e.text;live.textContent=liveT;tkLog().scrollTop=1e9}
-        else if(e.t==='end'){if(live){live.classList.remove('live');live.innerHTML=md(e.text)}live=null}
+        else if(e.t==='end'){TK_LAST=e.text;if(live){live.classList.remove('live');live.innerHTML=md(e.text)}live=null}
         else if(e.t==='thinking'){if(!think)think=tkAdd('<i></i><i></i><i></i>','tk-think');tkLog().appendChild(think)}
         else if(e.t==='action'){clear();lastAct=tkAdd(`<i></i><span>${esc(e.label)}</span>`,'tk-act')}
-        else if(e.t==='result'){const el=lastAct||tkAdd('<i></i><span></span>','tk-act');el.classList.add(e.ok?'ok':'bad');el.querySelector('i').textContent=e.ok?'✓':'!';if(!e.ok||e.name==='rewrite_text')el.querySelector('span').insertAdjacentHTML('beforeend',`<small>${esc(e.text)}</small>`);lastAct=null}
-        else if(e.t==='confirm'){clear();const c=tkAdd(`<b>Ghost wants to:</b><ul>${e.plan.map(x=>`<li>${esc(x)}</li>`).join('')}</ul><div class="r"><button class="btn">Cancel</button><button class="btn solid">Go ahead</button></div>`,'tk-ok');
+        else if(e.t==='result'){TK_ACTS.push((e.ok?'':'Problem: ')+(e.text||e.name||''));const el=lastAct||tkAdd('<i></i><span></span>','tk-act');el.classList.add(e.ok?'ok':'bad');el.querySelector('i').textContent=e.ok?'✓':'!';if(!e.ok||e.name==='rewrite_text')el.querySelector('span').insertAdjacentHTML('beforeend',`<small>${esc(e.text)}</small>`);lastAct=null}
+        else if(e.t==='confirm'){TK_CONFIRM=e.plan;clear();const c=tkAdd(`<b>Ghost wants to:</b><ul>${e.plan.map(x=>`<li>${esc(x)}</li>`).join('')}</ul><div class="r"><button class="btn">Cancel</button><button class="btn solid">Go ahead</button></div>`,'tk-ok');
           const [no,go]=c.querySelectorAll('.btn');no.onclick=()=>tkSend('',false);go.onclick=()=>tkSend('',true)}
-        else if(e.t==='message'){clear();tkAdd(md(e.text),'tk-b a')}
+        else if(e.t==='message'){TK_LAST=e.text;clear();tkAdd(md(e.text),'tk-b a')}
         else if(e.t==='note'){tkAdd(esc(e.text),'tk-route')}
         else if(e.t==='open'){open(e.project)}
         else if(e.t==='refresh'){if(e.project===CUR)kick()}
@@ -1020,6 +1054,119 @@ async function tkSend(text,confirm,redo,keepBubble){if(TKBUSY)return;if(!text&&c
   }catch(e){clear();tkAdd(esc(e.message),'tk-b a')}
   finally{clear();TKBUSY=false;$('#tkSend').disabled=false;tkRedoBar();status()}}
 $('#talkBtn').onclick=()=>{drawer('talk');fetch('/api/agent/warm',{method:'POST'}).catch(()=>{});if(!tkLog().children.length)tkHistory();setTimeout(()=>$('#tkIn').focus(),300)};
+
+/* ---------- simple composer: the few settings that matter; More shows the rest ---------- */
+const OPTS=$('#opts');
+function moreUI(on){OPTS.classList.toggle('more',on);$('#moreBtn').setAttribute('aria-expanded',on);$('#moreBtn').textContent=on?'Less':'More'}
+$('#moreBtn').onclick=()=>{const on=!OPTS.classList.contains('more');moreUI(on);try{localStorage.setItem('ghost.more',on?'1':'')}catch(e){}};
+try{if(localStorage.getItem('ghost.more'))moreUI(true)}catch(e){}
+const MOODV={warm:'warm',excited:'excited',emotional:'calm',funny:'excited',calm:'calm',angry:'news',serious:'news',devotional:'devotional'};
+$('#mood').addEventListener('change',()=>{$('#vstyle').value=MOODV[$('#mood').value]||'warm'});
+
+/* ---------- Ghost sets the settings from what you type ("15 sec Malayalam video with music, outdoor") ---------- */
+const LANGS={hindi:'Hindi',hinglish:'Hindi',english:'English',marathi:'Marathi',tamil:'Tamil',telugu:'Telugu',bengali:'Bengali',bangla:'Bengali',gujarati:'Gujarati',kannada:'Kannada',malayalam:'Malayalam',manglish:'Malayalam',punjabi:'Punjabi'};
+let AUTO_LAST={};
+function autoSel(id,v,label){const el=$('#'+id);if(!el||v==null)return null;v=String(v);
+  if(AUTO_LAST[id]===v)return null;  // already set from these words: your own later choice wins
+  if(![...el.options].some(o=>o.value===v))return null;AUTO_LAST[id]=v;if(el.value===v)return null;
+  el.value=v;el.dispatchEvent(new Event('change'));const box=el.closest('.opt');if(box){box.classList.add('flash');setTimeout(()=>box.classList.remove('flash'),1400)}
+  return label||el.options[el.selectedIndex].text}
+const nearest=(list,v)=>list.reduce((a,b)=>Math.abs(b-v)<Math.abs(a-v)?b:a);
+function autoSet(t){const s=' '+t.toLowerCase()+' ',done=[],put=x=>{if(x)done.push(x)};let m;
+  if(/\b(dub|dubbing)\b/.test(s))put(autoSel('kind','dub'));
+  else if((/\b(song|gaana|gana|jingle|lyrics|instrumental)\b/.test(s)||(/\bmusic\b/.test(s)&&!/\b(with|background|bg|no|without|add)\s+music\b/.test(s)))&&!/\b(video|ad|reel|reels|clip)\b/.test(s))put(autoSel('kind','music'));
+  else if(/\b(images?|pictures?|photos?|pics|posters?|banners?|thumbnails?|wallpapers?|chitra|tasveer)\b/.test(s)&&!/\b(video|reel|reels|clip|gif)\b/.test(s))put(autoSel('kind','images'));
+  else if(/\b(video|videos|ad|reel|reels|shorts|commercial|gif|clip)\b/.test(s))put(autoSel('kind','video'));
+  const k=$('#kind').value;
+  if((m=s.match(/\b(\d{1,2})\s*(images?|pictures?|photos?|pics|posters?|banners?)\b/)))put(autoSel('count',nearest([1,2,4,6,8],+m[1])));
+  let secs=(m=s.match(/\b(\d+(?:\.\d+)?)\s*(s|sec|secs|second|seconds)\b/))?+m[1]:null;
+  if((m=s.match(/\b(\d+(?:\.\d+)?)\s*(min|mins|minute|minutes)\b/)))secs=+m[1]*60;
+  if(/\bhalf (a )?minute\b/.test(s))secs=30;if(/\bgif\b/.test(s)&&!secs)secs=15;
+  if(secs){if(k==='music')put(autoSel('mlen',nearest([30,60,90,120,180],secs)));else if(k==='video')put(autoSel('len',nearest([15,30,45,60,90,120],secs)))}
+  for(const [w,L] of Object.entries(LANGS))if(new RegExp('\\b'+w+'\\b').test(s)){put(autoSel('lang',L));break}
+  if(/\b(square|1:1)\b/.test(s))put(autoSel('aspect','1:1'));else if(/\b(youtube|landscape|horizontal|16:9|widescreen)\b/.test(s))put(autoSel('aspect','16:9'));
+  else if(/\b(feed post|4:5|instagram post)\b/.test(s))put(autoSel('aspect','4:5'));else if(/\b(reels?|shorts|story|stories|vertical|9:16|whatsapp status)\b/.test(s))put(autoSel('aspect','9:16'));
+  if(k==='video'){if(/\b(no|without)\s+(background\s+|bg\s+)?music\b/.test(s))put(autoSel('vmusic','','No music'));else if(/\b(with|add|background|bg)\s+music\b|\bbgm\b/.test(s))put(autoSel('vmusic','1','Music on'))}
+  const MW=[['excited',/\b(excit\w*|energetic|high energy|hype|josh|celebrat\w*)\b/],['emotional',/\b(emotional|touching|sad|heart ?touching|nostalgi\w*|bhavuk)\b/],['funny',/\b(funny|comedy|comic|humou?r\w*|hilarious|meme)\b/],
+    ['angry',/\b(angry|anger|frustrat\w*|rage|gussa)\b/],['calm',/\b(calm|peaceful|soothing|relax\w*)\b/],['serious',/\b(serious|trustworthy|professional|corporate)\b/],['devotional',/\b(devotional|bhakti|bhajan|prayer|puja|pooja)\b/],['warm',/\b(warm|cozy|cosy|heartfelt)\b/]];
+  for(const [v,re] of MW)if(re.test(s)){put(autoSel('mood',v));break}
+  if(/\b(indoors?|inside|kitchen|living room|bedroom|office|classroom|at home)\b/.test(s))put(autoSel('place','indoor'));
+  else if(/\b(outdoors?|outside|street|market|park|beach|garden|terrace|balcony|road|village|farm|field|mountains?|forest)\b/.test(s))put(autoSel('place','outdoor'));
+  if(/\b(narrator|voice ?over)\b/.test(s))put(autoSel('voice','narrator'));
+  if(/\b(cartoon|animated|animation|3d)\b/.test(s))put(autoSel('cast','cartoon'));else if(/\btalking (animals?|dogs?|cats?|cows?|parrots?)\b/.test(s))put(autoSel('cast','animals'));
+  if(/\b(cinematic|film look|movie style)\b/.test(s))put(autoSel('style','cinematic'));else if(/\b(interview|podcast)\b/.test(s))put(autoSel('style','interview2'));
+  else if(/\b(newsroom|news style|explainer)\b/.test(s))put(autoSel('style','news'));else if(/\b(ugc|selfie|phone video|handheld|vlog)\b/.test(s))put(autoSel('style','ugc'));
+  if(/\b(male|man'?s|boy'?s) voice\b/.test(s))put(autoSel('vgender','male'));else if(/\b(female|woman'?s|girl'?s|lady) voice\b/.test(s))put(autoSel('vgender','female'));
+  return done}
+let AUTO_T=null;
+prompt_.addEventListener('input',()=>{clearTimeout(AUTO_T);AUTO_T=setTimeout(()=>{const t=prompt_.value;if(!t.trim()){AUTO_LAST={};return}if(EXACT)return;
+  const done=autoSet(t);if(done.length){const n=$('#autoNote');n.textContent='Ghost set: '+done.join(' · ');n.classList.add('on');clearTimeout(n._t);n._t=setTimeout(()=>n.classList.remove('on'),3500)}},350)});
+
+/* ---------- ✨ Ghost Agent: one word -> three ready ideas with their settings ---------- */
+function closeIdeas(){const b=$('#ideas');if(!b)return;b.classList.add('hidden');b.innerHTML='';$('#sugs').classList.remove('hidden')}
+function ideaTags(x){return [x.kind==='images'?`${x.count||4} images`:x.kind==='music'?'Song':`Video · ${x.seconds} s`,x.mood,x.place,x.kind==='video'?(x.music?'music':'no music'):'',x.aspect].filter(Boolean).join(' · ')}
+function useIdea(x){if(EXACT)$('#exact').click();AUTO_LAST={};
+  const set=(id,v)=>{const el=$('#'+id);if(el&&v!=null&&[...el.options].some(o=>o.value===String(v))){el.value=String(v);el.dispatchEvent(new Event('change'))}};
+  set('kind',x.kind);kindUI();set('len',x.seconds);set('count',x.count);set('mood',x.mood);set('place',x.place||'');set('vmusic',x.music?'1':'');set('aspect',x.aspect);set('style',x.style);if(x.language)set('lang',x.language);
+  prompt_.value=x.idea;grow();ready();closeIdeas();toast('Idea and settings are ready: press ↑ to make it, or change anything first');prompt_.focus()}
+async function suggest(){const b=$('#agentBtn');if(b.classList.contains('busy'))return;b.classList.add('busy');const box=$('#ideas');
+  box.classList.remove('hidden');$('#sugs').classList.add('hidden');box.innerHTML='<div class="need">Ghost is working out what you need…</div>';
+  try{const r=await api('/api/agent/suggest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:prompt_.value.trim(),language:$('#lang').value})});
+    box.innerHTML=(r.need?`<div class="need">${esc(r.need)}</div>`:'')+r.ideas.map((x,i)=>`<button class="idea" data-i="${i}"><b>${esc(x.title)}</b><p>${esc(x.idea)}</p><small>${esc(ideaTags(x))}${x.why?' — '+esc(x.why):''}</small></button>`).join('')+
+      '<button class="linkbtn" id="ideasX" style="justify-self:center;font-size:13px;color:var(--mute)">Close ideas</button>';
+    box.querySelectorAll('.idea').forEach(el=>el.onclick=()=>useIdea(r.ideas[+el.dataset.i]));$('#ideasX').onclick=closeIdeas}
+  catch(e){box.innerHTML=`<div class="need">${esc(e.message)}</div>`}
+  finally{b.classList.remove('busy')}}
+$('#agentBtn').onclick=e=>{e.stopPropagation();suggest()};
+
+/* ---------- 🎙 Voice assistant: speak, Ghost does it and answers aloud, then listens again ---------- */
+const VLANG={Hindi:'hi-IN',English:'en-IN',Marathi:'mr-IN',Tamil:'ta-IN',Telugu:'te-IN',Bengali:'bn-IN',Gujarati:'gu-IN',Kannada:'kn-IN',Malayalam:'ml-IN',Punjabi:'pa-IN'};
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+const VA={on:false,rec:null,audio:null,idle:0,media:null};
+function vaShow(state,txt,cls){const v=$('#va');v.classList.remove('hidden','listen','speak');if(cls)v.classList.add(cls);$('#vaState').textContent=state;$('#vaTxt').textContent=txt||''}
+function vaStop(){VA.on=false;try{VA.rec&&VA.rec.abort()}catch(e){}VA.rec=null;try{VA.media&&VA.media.state!=='inactive'&&VA.media.stop()}catch(e){}
+  try{speechSynthesis.cancel()}catch(e){}if(VA.audio){VA.audio.pause();VA.audio=null}$('#va').classList.add('hidden');$('#micBtn').classList.remove('on');$('#tkMic').classList.remove('on');$('#vaStop').textContent='Stop'}
+$('#vaStop').onclick=()=>{if(VA.media&&VA.media.state==='recording'){VA.media.stop();return}vaStop()};
+function vaStart(){if(VA.on){vaStop();return}VA.on=true;VA.idle=0;$('#micBtn').classList.add('on');$('#tkMic').classList.add('on');
+  if(!$('#talk').classList.contains('open'))$('#talkBtn').click();vaListen()}
+$('#micBtn').onclick=e=>{e.stopPropagation();vaStart()};$('#tkMic').onclick=()=>vaStart();
+function vaListen(){if(!VA.on)return;
+  if(!SR)return vaRecord();
+  const r=new SR();VA.rec=r;r.lang=VLANG[$('#lang').value]||'en-IN';r.interimResults=true;r.continuous=false;let heard='';
+  r.onresult=e=>{heard=[...e.results].map(x=>x[0].transcript).join('');vaShow('Listening…',heard,'listen')};
+  r.onerror=e=>{if(e.error==='not-allowed'||e.error==='service-not-allowed'){vaShow('Microphone is blocked','Allow the microphone for this page in your browser, then press 🎙 again');VA.on=false;setTimeout(vaStop,5000)}
+    else if(e.error==='network'){VA.on=false;vaShow('Speech service unreachable','Trying Ghost’s own listening instead…');setTimeout(()=>{VA.on=true;vaRecord()},800)}};
+  r.onend=()=>{VA.rec=null;if(!VA.on)return;const t=heard.trim();
+    if(t){VA.idle=0;vaHeard(t)}else if(++VA.idle>=4){vaShow('Stopped listening','Press 🎙 when you want to talk again');setTimeout(()=>{if(!VA.rec)vaStop()},2500)}else setTimeout(vaListen,250)};
+  vaShow('Listening…',`Speak now · ${$('#lang').value} or English`,'listen');try{r.start()}catch(e){setTimeout(vaListen,600)}}
+async function vaRecord(){  // browsers without built-in listening: record, then Ghost turns it into text on this computer
+  try{const st=await navigator.mediaDevices.getUserMedia({audio:true});const mr=new MediaRecorder(st);VA.media=mr;const parts=[];
+    mr.ondataavailable=e=>parts.push(e.data);
+    mr.onstop=async()=>{st.getTracks().forEach(t=>t.stop());VA.media=null;$('#vaStop').textContent='Stop';if(!VA.on)return;vaShow('Understanding…','','');
+      try{const fd=new FormData();fd.append('audio',new Blob(parts,{type:mr.mimeType||'audio/webm'}),'voice.webm');const r=await api('/api/voice/hear',{method:'POST',body:fd});
+        if(r.text)vaHeard(r.text);else vaShow('Didn’t catch that','Press 🎙 and try again'),setTimeout(vaStop,2500)}catch(e){vaShow('Can’t listen here',e.message);setTimeout(vaStop,6000)}};
+    mr.start();$('#vaStop').textContent='Done';vaShow('Listening…','Speak, then press Done (stops by itself after 10 s)','listen');setTimeout(()=>{if(mr.state==='recording')mr.stop()},10000)}
+  catch(e){vaShow('Microphone is blocked','Allow the microphone for this page, then press 🎙 again');setTimeout(vaStop,5000)}}
+const YES_RE=/^\s*(yes|yeah|yep|ok|okay|go|go ahead|do it|sure|haan|han|ha|theek hai|ശരി|हाँ|हां|ठीक है)\b/i,NO_RE=/^\s*(no|nope|cancel|don'?t|nahi|nahin|वेंडा|नहीं|വേണ്ട)\b/i;
+const BYE_RE=/^\s*(stop|bye|goodbye|that'?s all|thank you|thanks|band karo|bas|ബൈ|बस)\b/i;
+async function vaHeard(t){vaShow('Thinking…',t,'');
+  if(BYE_RE.test(t)&&t.split(/\s+/).length<=4){await vaSay('Okay. Press the mic whenever you need me.');return vaStop()}
+  if(TK_CONFIRM&&(YES_RE.test(t)||NO_RE.test(t))){await tkSend('',YES_RE.test(t))}else await tkSend(t);
+  let say=TK_LAST||'';
+  if(TK_CONFIRM)say=(say?say+' ':'')+'I want to: '+TK_CONFIRM.join('; ')+'. Shall I go ahead? Say yes or no.';
+  else if(!say&&TK_ACTS.length)say=TK_ACTS.join('. ');
+  await vaSay(say||'Done.');if(VA.on)vaListen()}
+function vaClean(t){t=String(t||'').replace(/```[\s\S]*?```/g,' ').replace(/\[(\d+)\]/g,'').replace(/https?:\/\/\S+/g,'').replace(/[*_#>`|]/g,'').replace(/\s+/g,' ').trim();
+  if(t.length>420){const cut=t.slice(0,420);t=cut.slice(0,Math.max(cut.lastIndexOf('. '),cut.lastIndexOf('। '),200)+1)+' The rest is on the screen.'}return t}
+function scriptLang(t){return /[ഀ-ൿ]/.test(t)?'ml':/[஀-௿]/.test(t)?'ta':/[ఀ-౿]/.test(t)?'te':/[ಀ-೿]/.test(t)?'kn':/[ঀ-৿]/.test(t)?'bn':/[઀-૿]/.test(t)?'gu':/[਀-੿]/.test(t)?'pa':/[ऀ-ॿ]/.test(t)?'hi':'en'}
+const LNAME={ml:'Malayalam',ta:'Tamil',te:'Telugu',kn:'Kannada',bn:'Bengali',gu:'Gujarati',pa:'Punjabi',hi:'Hindi',en:'English'};
+function vaSay(text){return new Promise(done=>{const t=vaClean(text);if(!t||!VA.on&&!text)return done();vaShow('Ghost',t,'speak');
+  const code=scriptLang(t),vs=(window.speechSynthesis&&speechSynthesis.getVoices())||[];
+  const v=vs.find(x=>x.lang.toLowerCase().replace('_','-')===(code==='en'?'en-in':code+'-in'))||vs.find(x=>x.lang.toLowerCase().startsWith(code));
+  if(v){const u=new SpeechSynthesisUtterance(t);u.voice=v;u.lang=v.lang;u.rate=1.02;u.onend=u.onerror=()=>done();speechSynthesis.cancel();speechSynthesis.speak(u);return}
+  fetch('/api/voice/say',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t,language:LNAME[code]})})
+    .then(r=>r.ok?r.blob():Promise.reject()).then(b=>{const a=new Audio(URL.createObjectURL(b));VA.audio=a;a.onended=a.onerror=()=>{VA.audio=null;done()};a.play().catch(()=>done())}).catch(()=>done())})}
+try{speechSynthesis.getVoices();speechSynthesis.onvoiceschanged=()=>speechSynthesis.getVoices()}catch(e){}
 $('#tkSend').onclick=()=>{const t=$('#tkIn').value.trim();if(!t)return;$('#tkIn').value='';$('#tkIn').style.height='';tkSend(t)};
 $('#tkIn').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();$('#tkSend').click()}};
 $('#tkIn').oninput=e=>{const t=e.target;t.style.height='auto';t.style.height=Math.min(140,t.scrollHeight)+'px'};
@@ -1061,7 +1208,7 @@ $('#upGo').onclick=async()=>{let cur=null;try{cur=(await api('/api/status')).cur
 /* draft: what you are typing and choosing is saved as you go, and comes back after an update or reload */
 const DKEY='gs-draft';
 function saveDraft(){const open=$('#clipSheet').classList.contains('on')&&EDIT>=0;
-  lsSet(DKEY,{review:REVIEW,style:$('#style').value,kind:$('#kind').value,count:$('#count').value,lock:$('#lock').value,mstyle:$('#mstyle').value,mvocal:$('#mvocal').value,mlen:$('#mlen').value,vmusic:$('#vmusic').value,prompt:prompt_.value,len:$('#len').value,aspect:$('#aspect').value,voice:$('#voice').value,lang:$('#lang').value,exact:EXACT,qual:QUAL,pid:CUR,
+  lsSet(DKEY,{mood:$('#mood').value,place:$('#place').value,review:REVIEW,style:$('#style').value,kind:$('#kind').value,count:$('#count').value,lock:$('#lock').value,mstyle:$('#mstyle').value,mvocal:$('#mvocal').value,mlen:$('#mlen').value,vmusic:$('#vmusic').value,prompt:prompt_.value,len:$('#len').value,aspect:$('#aspect').value,voice:$('#voice').value,lang:$('#lang').value,exact:EXACT,qual:QUAL,pid:CUR,
     sheet:open?{i:EDIT,line:$('#csLine').value,prompt:$('#csPrompt').value,move:$('.mv.on')?.dataset.m||'',shake:$('#csShake').value,amt:$('#csAmt').value}:null})}
 let _dt=0;const draftSoon=()=>{clearTimeout(_dt);_dt=setTimeout(saveDraft,250)};
 ['input','change'].forEach(t=>document.addEventListener(t,draftSoon,true));document.addEventListener('click',()=>setTimeout(draftSoon,60),true);
@@ -1070,7 +1217,7 @@ async function saveAtt(){try{const db=await idb();await new Promise(r=>{const tx
 async function loadAtt(){try{const db=await idb();return await new Promise(r=>{const q=db.transaction('att').objectStore('att').get('cur');q.onsuccess=()=>r(q.result);q.onerror=()=>r(null)})}catch(e){return null}}
 function setSel(id,v){const el=$('#'+id);if(v&&[...el.options].some(o=>o.value===v))el.value=v}
 async function restore(){const d=lsGet(DKEY);
-  if(d){prompt_.value=d.prompt||'';grow();setSel('len',d.len);setSel('aspect',d.aspect);setSel('voice',d.voice);setSel('lang',d.lang);if(d.review&&!REVIEW){REVIEW=true;$('#review').classList.add('on')}setSel('kind',d.kind);setSel('style',d.style);setSel('count',d.count);setSel('lock',d.lock);setSel('mstyle',d.mstyle);setSel('mvocal',d.mvocal);setSel('mlen',d.mlen);setSel('vmusic',d.vmusic);kindUI();$('#lang').dataset.set=1;
+  if(d){prompt_.value=d.prompt||'';grow();setSel('len',d.len);setSel('aspect',d.aspect);setSel('voice',d.voice);setSel('lang',d.lang);if(d.review&&!REVIEW){REVIEW=true;$('#review').classList.add('on')}setSel('kind',d.kind);setSel('style',d.style);setSel('count',d.count);setSel('lock',d.lock);setSel('mstyle',d.mstyle);setSel('mvocal',d.mvocal);setSel('mlen',d.mlen);setSel('vmusic',d.vmusic);setSel('mood',d.mood);setSel('place',d.place);if(d.mood)$('#vstyle').value=MOODV[d.mood]||'warm';kindUI();$('#lang').dataset.set=1;
     if(d.exact&&!EXACT){EXACT=true;$('#exact').classList.add('on')}if(d.qual){QUAL=d.qual==='draft'?'draft':'final';$('#modeTxt').textContent=QN[QUAL]}}
   const a=await loadAtt();if(a&&(a.ref||(a.pics||[]).length||a.music)){A.ref=a.ref||null;A.pics=a.pics||[];A.music=a.music||null;chips()}
   const pid=location.hash.length>1?location.hash.slice(1):d&&d.pid;
