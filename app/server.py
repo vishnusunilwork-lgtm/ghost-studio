@@ -529,7 +529,13 @@ def brain_compare(body: Private):
 def chatgpt_signin(request: Request):
     """Continue with ChatGPT: the address of OpenAI's sign-in page (the page opens it in a new tab)."""
     from . import chatgpt_auth
-    return {"url": chatgpt_auth.start(request.url.port or 7860)}
+    import webbrowser
+    url = chatgpt_auth.start(request.url.port or 7860)
+    try:
+        webbrowser.open(url, new=2)  # your default browser, like Sign in with Google (the page also shows the link)
+    except Exception:
+        pass
+    return {"url": url}
 
 
 @app.get("/auth/callback")
