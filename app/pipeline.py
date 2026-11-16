@@ -579,6 +579,7 @@ class Runner:
         plan_scenes = {int(x.get("i", -1)): x for x in pl.get("scenes") or [] if isinstance(x, dict)}
         over = {int(x.get("i", -1)): str(x.get("line") or "") for x in pl.get("lines_over_reused") or [] if isinstance(x, dict)}
         clips, (gw, gh) = [], sizes(p)[0]
+        keys = {str(x.get("key")) for x in people if x.get("key")} | {str(x.get("key")) for x in ref.get("people") or [] if x.get("key")}
         _, (ow, oh), _ = sizes(p)
         for i, sc in enumerate(scenes):
             a, b = float(sc["start"]), float(sc["end"])
@@ -590,7 +591,8 @@ class Runner:
                                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-c:a", "aac", "-shortest", str(out)], check=True, timeout=300)
                 line = over.get(i, str(sc.get("line") or ""))
                 clips.append({"speaker": "narrator", "line": line, "narration": line, "seconds": round(b - a, 2), "video": str(out),
-                              "status": "done", "reused": True, "camera_move": "none", "shake": 0, "seed": random.randint(1, 10**6)})
+                              "status": "done", "reused": True, "camera_move": "none", "shake": 0, "seed": random.randint(1, 10**6),
+                              "voice_of": sc.get("speaker") if sc.get("speaker") in keys else None})
                 continue
             shots = (plan_scenes.get(i) or {}).get("shots") or [{"seconds": b - a, "speaker": sc.get("speaker"), "line": sc.get("line"),
                                                                    "image_prompt": f"{main_look}. {sc.get('place', '')}. {sc.get('framing', '')}",
@@ -605,6 +607,7 @@ class Runner:
                      "camera_move": "none", "shake": 0, "status": "waiting", "seed": random.randint(1, 10**6), "scene": i}
                 if spk in ("narrator", "none") and line:
                     c["narration"] = line  # heard over this shot, nobody on screen speaks
+                    c["voice_of"] = sc.get("speaker") if sc.get("speaker") in keys else None
                 clips.append(c)
         first = next((c for c in clips if not c.get("reused")), None)
         p["plan"] = {"title": pl.get("title") or p.get("title"), "character": {"look": main_look, "voice": (people[0].get("voice") if people else "")},
@@ -623,6 +626,11 @@ class Runner:
             p["log"].append(time.strftime("%H:%M:%S ") + "Changed to keep Ghost's rules: " + str(pl["changed"])[:300])
         if pl.get("note"):
             p["log"].append(pl["note"])
+        seeds = {}
+        for c in clips:  # one seed per speaker: the same voice in every shot they speak in
+            if not c.get("reused") and not c.get("narration"):
+                c["seed"] = seeds.setdefault(c.get("speaker") or "A", c["seed"])
+        p["voice_seeds"] = seeds
         n_new = sum(1 for c in clips if not c.get("reused"))
         p["log"].append(time.strftime("%H:%M:%S ") + f"Remake: {n_new} new shots with new faces, {len(clips) - n_new} reused from the original "
                         f"(screens, end card, faceless footage), {p['seconds']:.0f} s like the original.")
@@ -632,9 +640,51 @@ class Runner:
             return
         self._images(pid)
         self._videos(pid, resume=True)
+        self._voice_shots(pid)
         self._voice(pid)
         self._music_for_ad(pid)
         self._edit(pid)
+
+    def _voice_shots(self, pid):
+        """One voice for each person: words they say off screen (over app screens and cut-aways) are spoken by Veo from
+        that same person's picture with the same seed and voice, and only the sound is used. No separate narrator voice."""
+        from .editor import ffmpeg_bin
+        p = self.store.load(pid)
+        g = self.eng.goog
+        todo = [(i, c) for i, c in enumerate(p["clips"]) if c.get("narration") and c.get("voice_of") and not c.get("narration_file")]
+        if not todo or not g.on or self.eng.mock or self.eng.plan()["video"] != "service":
+            return
+        d = self.store.dir(pid)
+        people = {str(x.get("key")): x for x in (p.get("plan") or {}).get("people") or []}
+        lang = p.get("language") or self.cfg.get("language", "Hindi")
+        self._say(p, "voice", f"Recording {len(todo)} off-screen line(s) in the same person's voice", 84)
+        from concurrent.futures import ThreadPoolExecutor
+
+        def one(ic):
+            i, c = ic
+            who = people.get(str(c["voice_of"])) or {}
+            img = Path(p.get("person_images", {}).get(c["voice_of"]) or p["image"])
+            seed = (p.get("voice_seeds") or {}).get(c["voice_of"], 7)
+            prompt = (f"{who.get('look', '')}. Close-up, he or she talks warmly to the camera. Says in {lang}: \"{c['narration']}\" "
+                      f"(spoken once, natural pace). Voice: {who.get('voice', '')}. Quiet room, no music, no other voices.")
+            vid = d / f"voice{i + 1:02d}.mp4"
+            wav = d / f"voice{i + 1:02d}.wav"
+            self.eng.video(img, prompt, max(4.0, len(c["narration"].split()) / 2.4 + 1), vid, seed=seed, aspect=p.get("aspect") or "9:16",
+                           keep_look=True)
+            subprocess.run([ffmpeg_bin(), "-y", "-v", "error", "-i", str(vid), "-vn", "-af",
+                            "silenceremove=start_periods=1:start_threshold=-45dB,areverse,silenceremove=start_periods=1:start_threshold=-45dB,areverse",
+                            "-ar", "48000", "-ac", "1", str(wav)], check=True, timeout=120)
+            return i, wav
+        with ThreadPoolExecutor(max_workers=4) as ex:
+            for fut in [ex.submit(one, ic) for ic in todo]:
+                try:
+                    i, wav = fut.result()
+                    p["clips"][i]["narration_file"], p["clips"][i]["voice_shot"] = str(wav), True
+                except E.Cancelled:
+                    raise
+                except Exception as e:  # that line falls back to Ghost's narrator voice
+                    p["log"].append(time.strftime("%H:%M:%S ") + f"Off-screen line kept for the narrator voice ({str(e)[:100]})")
+        self.store.save(p)
 
     def _keep_ref_music(self, p):
         """The original's background music without its voice (needs the Song stems add-on)."""
@@ -1003,7 +1053,7 @@ class Runner:
         other = "male" if mine == "female" else "female"
         for i, c in enumerate(p["clips"]):
             text = c.get("narration") or (c.get("line") if mode == "narrator" else "")
-            if not text:
+            if not text or (c.get("voice_shot") and c.get("narration_file") and Path(c["narration_file"]).exists()):
                 continue
             k = order.index(c["speaker"]) if c.get("speaker") in order and not c.get("narration") else 0
             f = d / f"narr{i + 1:02d}.wav"

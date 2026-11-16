@@ -181,7 +181,7 @@ How Ghost uses it (`addons.make_motion` → `workers/motion_worker.py`, its own 
 Limits: text-to-video only in the released Mac build (no starting picture), so the same character can differ a little
 between shots; no lip-sync. Wan2.2 on a Mac without this distilled model took over an hour for 2 seconds.
 
-## Exact remake of a reference ad (v3.36)
+## Exact remake of a reference ad (v3.36, one voice per person v3.37)
 
 A video with a reference attached is a shot-for-shot remake. Gemini (Google sign-in) watches the whole reference
 (downscaled to fit one request) and lists every cut: start/end, kind (talking / broll_face / broll / screen / endcard),
@@ -190,8 +190,9 @@ who, place, framing, camera, action, on-screen text and the exact words heard (`
 each and 1-3 shots of at most 8 s per scene, summing to the scene's exact length; lines that break Ghost's rules (money /
 guaranteed-result claims, news channel branding) are rewritten honestly and logged. `Runner._remake`: scenes with a face
 are re-made (picture -> Veo image-to-video, the speaker says the line with lip-sync); app screens, end cards and
-faceless footage are cut from the original and reused (muted); words heard over cut-aways are narrated in a voice of the
-same gender; the original background music is kept when the Song stems add-on can separate it. What you type with a
+faceless footage are cut from the original and reused (muted); words heard over cut-aways and app screens are spoken in the SAME person's voice:
+Veo makes a voice-only shot from that person's picture with the same seed and voice description as their on-camera
+shots, and only its sound is used (`Runner._voice_shots`; Ghost's narrator only if that fails); the original background music is kept when the Song stems add-on can separate it. What you type with a
 reference is treated as notes for the remake (not as dialogue), and the length follows the original.
 
 ## Real-looking people and voices on Veo (v3.34)

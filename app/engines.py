@@ -420,7 +420,7 @@ class Google:
         ratio = width / max(1, height)
         aspect = min(self.ASPECTS, key=lambda k: abs(self.ASPECTS[k] - ratio))
         parts = [{"inlineData": {"mimeType": "image/jpeg", "data": self._b64(r, 1024)}} for r in (refs or [])[:3]]
-        parts.append({"text": prompt + " Photorealistic photograph, no text, no watermark."})
+        parts.append({"text": prompt + " " + self.REAL_PIC})
         body = {"contents": [{"role": "user", "parts": parts}],
                 "generationConfig": {"responseModalities": ["IMAGE"], "imageConfig": {"aspectRatio": aspect}, "seed": int(seed) % 2**31}}
         r, _ = self._call("image", self.image_models, ["global", self.location], "generateContent", body)
@@ -438,15 +438,19 @@ class Google:
         why = ((r.get("candidates") or [{}])[0].get("finishReason") or (r.get("promptFeedback") or {}).get("blockReason") or "no picture")
         raise RuntimeError(f"Google made no picture ({why}). Try different words.")
 
+    # Every picture: a real photo of real people, balanced colours (it becomes the first frame of the video)
+    REAL_PIC = ("Photorealistic photograph of real people: true skin texture and the person's real skin tone, natural believable "
+                "expression, balanced natural colours with neutral white balance and moderate saturation (no HDR, no teal-orange "
+                "grade, no oversaturation, no colour cast), soft realistic light, sharp but not over-sharpened. No text, no watermark.")
     # Every Veo shot: filmed like a real commercial, not "AI-looking" (waxy skin, HDR colours, frozen grins, robotic voice)
     REAL = ("Shot like a real TV commercial on a cinema camera: true-to-life skin with natural texture and pores, the person's real "
             "skin tone (no orange cast, no waxy or plastic smoothing), natural colours and contrast (no HDR look, no oversaturation, "
-            "no over-sharpening), soft realistic light. Believable, understated acting with natural micro-expressions, relaxed "
+            "no over-sharpening), a balanced natural colour grade with neutral white balance and moderate saturation, soft realistic light. Believable, understated acting with natural micro-expressions, relaxed "
             "natural gestures and blinking, no over-acting and no frozen grin. The dialogue sounds like a real person talking: "
             "conversational rhythm, small pauses and breaths, emotion that fits the words, a clear natural human voice (not "
             "robotic), accurate lip-sync.")
     NEG = ("plastic skin, waxy skin, airbrushed, HDR, oversaturated, over-sharpened, orange skin, cartoon, CGI look, exaggerated "
-           "expression, over-acting, frozen smile, robotic voice, monotone voice, distorted face, extra fingers, text, subtitles, "
+           "expression, over-acting, frozen smile, teal and orange grade, colour cast, robotic voice, monotone voice, distorted face, extra fingers, text, subtitles, "
            "watermark, logo")
     IMAGEN = ["imagen-4.0-generate-001", "imagen-4.0-fast-generate-001"]
     TEXT = ["gemini-2.5-flash", "gemini-2.5-pro"]

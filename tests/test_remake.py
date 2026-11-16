@@ -78,7 +78,13 @@ def test_exact_remake():
     assert [round(c["seconds"], 1) for c in p["clips"]] == [2.5, 2.5, 3.0, 2.0] and abs(p["seconds"] - 10) < 0.2  # the original's timing
     assert p["clips"][1]["narration"] == "फिर मैंने आज़माया" and p["clips"][2]["narration"] == "ये देखो मैजिक शेयर ऐप"
     assert p["voice_gender"] == "male" and p["voice_mode"] == "both" and p["clip_talks"]
-    assert len(asked["veo"]) == 2 and all("lawyer's robe" in v for v in asked["veo"])  # only the shots with a face are re-made
+    shots = [v for v in asked["veo"] if "Close-up, he or she talks" not in v]
+    voices = [v for v in asked["veo"] if "Close-up, he or she talks" in v]
+    assert len(shots) == 2 and all("lawyer's robe" in v for v in asked["veo"])  # only the shots with a face are re-made
+    # the lawyer's off-screen words are spoken in HIS voice (same picture, same seed), not by a separate narrator
+    assert len(voices) == 2 and "फिर मैंने आज़माया" in voices[0] and "मैजिक शेयर" in voices[1]
+    assert all(p["clips"][k].get("voice_shot") for k in (1, 2))
+    assert p["clips"][0]["seed"] == p["voice_seeds"]["A"]
     assert any("removed the money claim" in line for line in p["log"]) and any("2 new shots" in line for line in p["log"])
     assert p["status"] == "done" and abs(probe(p["final"])["duration"] - 10) < 0.6
 

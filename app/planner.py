@@ -214,6 +214,7 @@ Rules: {RULES} {people_note(idea or dialogue) if cast == 'people' else CAST_NOTE
 {('DIRECTION STYLE (follow it exactly): ' + STYLES_DIR[style]['guide']) if style in STYLES_DIR and cast == 'people' else ''}
 Write every spoken line in {lang}'s own script (Hindi in Devanagari, Malayalam in Malayalam script, Tamil in Tamil script…), never in Roman letters, so the voice pronounces it right.
 Split the speech into clips of at most {max_s} s each (about 15 {lang} words), at natural pauses, never mid-phrase.
+EMOTION AND PSYCHOLOGY: plan the viewer's feeling shot by shot (hook in the first 2 s with curiosity or a relatable problem, the emotional turn, proof or a moment they can picture themselves in, a clear simple ending) and show it in faces and body language, not in text.
 ACTING: real everyday people in a good TV ad: natural, understated, believable (even when funny: the humour is in the situation, not in pulling faces). Write the line the way people really speak, with a natural pause where it fits.
 Make EXACTLY {n_clips} clips so the ad really lasts about {seconds} seconds. Give each clip a different shot (close-up, medium, detail, wide…) and a different camera move.
 The title must be a real 2-5 word name for this ad (never "short name").
@@ -662,6 +663,8 @@ def plan_remake(cfg: dict, ref: dict, lang: str, notes: str = "") -> dict:
     prompt = f"""You remake a reference video ad shot for shot with NEW fictional people (new faces), keeping everything else the same:
 the same scenes in the same order and timing, the same kind of person, outfit, place, framing, camera, action, energy and the same words.
 Make it look and sound MORE natural and realistic than the original: real everyday people, understated believable acting, natural conversational delivery.
+Keep the original's emotional arc and persuasion beats exactly (the hook, doubt, turn, proof, call to action) and show each feeling
+in the new person's face, eyes and body language. Colours: balanced and natural (neutral white balance, moderate saturation).
 {('Notes from the person: ' + notes) if notes else ''}
 Rules you must keep (they win over copying): {RULES} If a spoken line or on-screen text breaks a rule (for example money, income or guaranteed-result
 claims, or a news channel name / logo / microphone flag), rewrite only that part into an honest version with the same role in the story, and say so in "changed".

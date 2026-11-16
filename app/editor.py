@@ -94,7 +94,7 @@ GRADES = {
     # clean and crisp
     "news": ("eq=contrast=1.06:saturation=1.05", "unsharp=5:5:0.35"),
     # every ad gets a light polish
-    "natural": ("eq=contrast=1.03:saturation=1.02", ""),
+    "natural": ("eq=contrast=1.02:saturation=1.0", ""),  # balanced: no extra saturation
 }
 
 
