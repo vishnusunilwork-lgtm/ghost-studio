@@ -442,11 +442,36 @@ def brain_edit(body: BrainEdit):
     return _brains_view()
 
 
+GEMINI_KNOWN = ["google/gemini-2.5-flash", "google/gemini-2.5-pro", "google/gemini-2.5-flash-lite"]
+
+
+def _gemini_models() -> list[str]:
+    """Gemini text models your project can use (newest first), from Google's model list; the known ones if that fails."""
+    found = []
+    try:
+        import urllib.request as _u
+        g = RUNNER.eng.goog
+        req = _u.Request("https://aiplatform.googleapis.com/v1beta1/publishers/google/models?pageSize=200&listAllVersions=false",
+                         headers={**g._headers(), "User-Agent": llm.UA})
+        with _u.urlopen(req, timeout=20) as r:
+            for m in json.loads(r.read().decode()).get("publisherModels") or []:
+                name = (m.get("name") or "").rsplit("/", 1)[-1]
+                if name.startswith("gemini") and not re.search(r"embed|image|tts|live|audio|vision|robotics|computer-use", name):
+                    found.append("google/" + name)
+    except Exception:
+        pass
+    rank = lambda n: [-int(x) if x.isdigit() else 0 for x in re.findall(r"\d+", n)][:2]  # noqa: E731
+    out = sorted(set(found), key=lambda n: (rank(n), "lite" in n, n))
+    return out + [m for m in GEMINI_KNOWN if m not in out]
+
+
 @app.get("/api/settings/brains/{bid}/models")
 def brain_models(bid: str):
     e = next((x for x in llm.CHAIN if x["id"] == bid), None)
     if not e:
         raise HTTPException(404, "Not found")
+    if e.get("auth") == "google":  # Vertex AI's OpenAI-style address has no model list: ask Google's model garden instead
+        return {"models": _gemini_models(), "model": e["model"]}
     try:
         return {"models": llm.cloud_models(e)[:400], "model": e["model"]}
     except Exception as err:
