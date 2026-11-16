@@ -58,7 +58,9 @@ def test_brief_and_pictures():
     assert not (Path(p["image"]).parent / "frame_main_imagen.png").exists()
     assert p["plan"]["character"]["look"] == SEEN and p["plan"]["people"][0]["look"] == SEEN
     c = p["clips"][0]
-    assert SEEN in c["video_prompt"] and LOOK not in c["video_prompt"] and c["video_prompt"].count("Same character") == 1
+    assert LOOK not in c["video_prompt"] and "Same character" not in c["video_prompt"]  # the old look is gone from the stored prompt
+    sent = r._clip_prompt(p, c)
+    assert SEEN in sent and LOOK not in sent and sent.count("Same character") == 1  # the new sheet is added when the shot is made
     assert any("Imagen" in line for line in p["log"]) and any("Character sheet" in line for line in p["log"])
 
 

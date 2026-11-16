@@ -340,7 +340,10 @@ class Runner:
                           photo=self.eng.plan()["video"] != "service" and p.get("make_with") != "flow")
         p["plan"] = {k: v for k, v in pl.items() if k != "clips"}
         p["title"] = p.get("title") if p.get("title") not in (None, "", "New ad") else pl.get("title") or "New ad"
-        p["clips"] = [{**c, "status": "waiting", "seed": random.randint(1, 10**6)} for c in pl.get("clips", [])]
+        seeds: dict = {}  # one seed per speaker: the video model keeps the same voice and face more steadily
+        p["clips"] = [{**c, "status": "waiting", "seed": seeds.setdefault(c.get("speaker") or "A", random.randint(1, 10**6))}
+                      for c in pl.get("clips", [])]
+        p["voice_seeds"] = seeds
         if pl.get("note"):
             p["log"].append(pl["note"])
         self._done(p, "plan")
@@ -376,7 +379,8 @@ class Runner:
                 out.append({"n": i + 1, "caption": st.get("caption", ""), "prompt": f"Create a photorealistic {orient} image: {body}{same} No text, no logos, no watermark."})
             return out
         for i, c in enumerate(p.get("clips") or []):
-            look = knowledge.apply(c.get("image_prompt") or (p.get("plan") or {}).get("image_prompt", ""))
+            look = knowledge.apply(planner.with_look(c.get("image_prompt") or (p.get("plan") or {}).get("image_prompt", ""),
+                                                     planner.look_of(p.get("plan") or {}, c.get("speaker"))))
             if app == "flow":
                 say = ""
                 if c.get("line") and p.get("voice_mode") != "narrator":
@@ -910,6 +914,7 @@ class Runner:
                 for i, out, start in ex.map(mk, todo):
                     p["clips"][i]["video"], p["clips"][i]["status"] = str(out), "done"
                     self._check_look(p, i, Path(start), out)
+            self._fit_to_speech(p)
             self.store.save(p)
             self._done(p, "videos")
             return
@@ -960,8 +965,52 @@ class Runner:
 
     @staticmethod
     def _clip_prompt(p, c) -> str:
-        """The shot's video prompt with the full character look in it (never just "the woman")."""
-        return planner.with_look(c.get("video_prompt") or "", planner.look_of(p.get("plan") or {}, c.get("speaker")))
+        """The shot's video prompt with the full character look in it (never just "the woman"), and the same voice in every
+        shot the person speaks in."""
+        pl = p.get("plan") or {}
+        pr = planner.with_look(c.get("video_prompt") or "", planner.look_of(pl, c.get("speaker")))
+        voice = next((x.get("voice") for x in pl.get("people") or [] if x.get("key") == c.get("speaker") and x.get("voice")), None) \
+            or (pl.get("character") or {}).get("voice")
+        if voice and c.get("line") and not c.get("narration") and "Voice:" not in pr:
+            pr += f" Voice (the same in every shot): {voice}."
+        return pr
+
+    @staticmethod
+    def _speech_end(video: Path) -> float | None:
+        """When the last word ends in a clip (from its sound), so a shot is never cut mid-sentence."""
+        from .editor import ffmpeg_bin, probe
+        try:
+            dur = float(probe(video)["duration"] or 0)
+            r = subprocess.run([ffmpeg_bin(), "-v", "info", "-i", str(video), "-vn", "-af", "silencedetect=noise=-32dB:d=0.35", "-f", "null", "-"],
+                               capture_output=True, text=True, timeout=60)
+            starts = [float(x) for x in re.findall(r"silence_start: ([\d.]+)", r.stderr)]
+            ends = [float(x) for x in re.findall(r"silence_end: ([\d.]+)", r.stderr)]
+            if starts and starts[-1] < 0.2 and (len(ends) < len(starts) or ends[-1] >= dur - 0.1):
+                return None  # no speech at all
+            if starts and (len(ends) < len(starts) or ends[-1] >= dur - 0.1):  # silent till the end: speech stopped there
+                return min(dur, starts[-1])
+            return dur
+        except Exception:
+            return None
+
+    def _fit_to_speech(self, p):
+        """Each spoken shot lasts until its last word (+ a breath), up to the clip's real length.
+        (A remake keeps the original's exact timing instead.)"""
+        from .editor import probe
+        if p.get("remake"):
+            return
+        for c in p["clips"]:
+            if not c.get("video") or c.get("reused") or not c.get("line") or c.get("narration"):
+                continue
+            end = self._speech_end(Path(c["video"]))
+            if end:
+                try:
+                    dur = float(probe(c["video"])["duration"] or 0)
+                except Exception:
+                    continue
+                want = min(dur, end + 0.35)
+                if want > float(c["seconds"]) + 0.1:
+                    c["seconds"] = round(want, 2)
 
     def _shot_stills(self, p, todo, gw, gh, draft):
         """One first-frame picture per shot, all of the same person (main picture as reference + LOCK), made in parallel."""
@@ -1021,7 +1070,8 @@ class Runner:
         shots, n = [], len(todo)
         for i in todo:
             c = p["clips"][i]
-            shot = c.get("image_prompt") or p["plan"].get("image_prompt", "")
+            shot = planner.with_look(c.get("image_prompt") or p["plan"].get("image_prompt", ""),
+                                     planner.look_of(p.get("plan") or {}, c.get("speaker")))
             if i > 0:
                 shot = f"{self.FRAMINGS[i % len(self.FRAMINGS)]}. {shot}"
             move = re.sub(r"\b(Says|Speaks?)\b.*?(\.|$)", "", c.get("video_prompt") or "")[:300]

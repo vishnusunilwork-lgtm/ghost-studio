@@ -33,7 +33,9 @@ def test_planner_locks_look():
     c = d["clips"][0]
     assert d["people"][0]["look"] == LOOK
     assert "shake" not in c["image_prompt"] and "camera" not in c["image_prompt"] and "Warm light" in c["image_prompt"]
-    assert c["video_prompt"].count("pastel green cotton kurti") == 1 and c["image_prompt"].count(LOOK[:40]) == 1
+    # the look is added when a prompt is used (never stored twice): exactly once, and a newer look replaces an older one
+    assert "Same character" not in c["video_prompt"] and planner.with_look(c["video_prompt"], LOOK).count("pastel green cotton kurti") == 1
+    assert planner.with_look(planner.with_look(c["image_prompt"], LOOK), "A man, red shirt").count("Same character") == 1
 
 
 def test_service_same_person_no_shake():

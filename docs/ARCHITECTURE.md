@@ -181,6 +181,19 @@ How Ghost uses it (`addons.make_motion` → `workers/motion_worker.py`, its own 
 Limits: text-to-video only in the released Mac build (no starting picture), so the same character can differ a little
 between shots; no lip-sync. Wan2.2 on a Mac without this distilled model took over an hour for 2 seconds.
 
+## One person, one place, one voice; Script details (v3.38)
+
+Measured on a 45 s idea ad: two different descriptions of the same man reached the video model (the character sheet
+read from the picture, plus the script's own older description inside every prompt), so shots showed different men and
+places; each shot had its own random seed (a different voice each time); shots were cut at the planned length even
+when Veo's sentence ran longer; the direction asked for strong emotions (bulging eyes). Now: the character sheet is
+added to a prompt only when it is used (`planner.with_look`; stored prompts carry no look, old tags are stripped) and
+the script is told not to describe appearance in shot prompts; one seed and one voice description per speaker; every
+spoken shot lasts until its last word (`Runner._fit_to_speech`, from the clip's sound; remakes keep the original timing);
+continuity rule (one person, one place, one light unless the idea moves) and subtle acting in the script and in Veo's
+avoid-list. **📄 Script** on a project opens everything Ghost decided and sent, shot by shot
+(`/api/projects/{id}/script`, also as a file), to see where an ad went wrong.
+
 ## Exact remake of a reference ad (v3.36, one voice per person v3.37)
 
 A video with a reference attached is a shot-for-shot remake. Gemini (Google sign-in) watches the whole reference

@@ -214,12 +214,13 @@ Rules: {RULES} {people_note(idea or dialogue) if cast == 'people' else CAST_NOTE
 {('DIRECTION STYLE (follow it exactly): ' + STYLES_DIR[style]['guide']) if style in STYLES_DIR and cast == 'people' else ''}
 Write every spoken line in {lang}'s own script (Hindi in Devanagari, Malayalam in Malayalam script, Tamil in Tamil script…), never in Roman letters, so the voice pronounces it right.
 Split the speech into clips of at most {max_s} s each (about 15 {lang} words), at natural pauses, never mid-phrase.
-EMOTION AND PSYCHOLOGY: plan the viewer's feeling shot by shot (hook in the first 2 s with curiosity or a relatable problem, the emotional turn, proof or a moment they can picture themselves in, a clear simple ending) and show it in faces and body language, not in text.
+EMOTION AND PSYCHOLOGY: plan the viewer's feeling shot by shot (hook in the first 2 s with curiosity or a relatable problem, the emotional turn, proof or a moment they can picture themselves in, a clear simple ending). Show it SUBTLY, the way real people do: a small change in the eyes or mouth, a pause, a breath, posture. Never wide-open or bulging eyes, raised eyebrows, open-mouthed shock, crying faces or big grins.
+CONTINUITY: it is one continuous scene with ONE person in ONE place with the same light and the same clothes, unless the idea clearly moves somewhere else. Between shots only the framing, the pose and the action change, like cuts in one real take. Describe the place once and reuse the same words for it in every shot.
 ACTING: real everyday people in a good TV ad: natural, understated, believable (even when funny: the humour is in the situation, not in pulling faces). Write the line the way people really speak, with a natural pause where it fits.
 Make EXACTLY {n_clips} clips so the ad really lasts about {seconds} seconds. Give each clip a different shot (close-up, medium, detail, wide…) and a different camera move.
 The title must be a real 2-5 word name for this ad (never "short name").
-CHARACTER CONSISTENCY (most important): describe the main character once in "character.look" in full — age, face shape, skin tone, hair style and colour, the exact outfit with its colours, jewellery — and copy that SAME description word for word into every clip's image_prompt and video_prompt. Never write just "the woman" / "the man" and never "same as above": always the full look. The outfit never changes between clips.
-For every clip write a video prompt as one rich paragraph: who (the full character look, word for word), exact action and micro-expressions second by second, where, light, camera framing and move, then the speech as: He/She says in {lang}: "<line>" (spoken once, natural pace, ends before the clip ends), then ambient sound. No music, no subtitles, no text.
+CHARACTER CONSISTENCY (most important): describe the main character once in "character.look" in full — age, face shape, skin tone, hair style and colour, the exact outfit with its colours, jewellery — Ghost puts that exact sheet in front of every picture and video prompt itself, so inside image_prompt and video_prompt do NOT describe the person's appearance or clothes again (a second description makes the video model mix two people): call them "the man" / "the woman" / their role, and describe only what changes (pose, action, expression, framing). The outfit never changes between clips.
+For every clip write a video prompt as one rich paragraph: who ("the man" / "the woman" / their role; no appearance, Ghost adds the sheet), exact action and micro-expressions second by second, where, light, camera framing and move, then the speech as: He/She says in {lang}: "<line>" (spoken once, natural pace, ends before the clip ends), then ambient sound. No music, no subtitles, no text.
 Pick a camera_move per clip from {MOVES} (steady camera; no handheld shake). Keep camera directions out of image_prompt (a photo has no camera move).
 Return JSON only:
 {{"title":"short name","character":{{"look":"full description of the main fictional character","voice":"voice description"}},
@@ -307,27 +308,37 @@ def look_of(data: dict, speaker: str | None = None) -> str:
     return ((data.get("character") or {}).get("look") or "").strip()
 
 
+LOOK_TAG = "Same character in every shot: "
+_OLD_TAG = re.compile(r"^(?:\s*Same character in every shot: .*?\.(?:\s+|$))+", re.S)
+
+
+def strip_look(prompt: str) -> str:
+    """Remove look sentences Ghost put in front of a prompt before (older projects stored them; the look can change)."""
+    return _OLD_TAG.sub("", prompt or "").strip()
+
+
 def with_look(prompt: str, look: str) -> str:
-    """Put the same character description in front of a prompt (once)."""
+    """The current character sheet in front of a prompt, exactly once (added when the prompt is used, never stored)."""
+    prompt = strip_look(prompt)
     look = (look or "").strip().rstrip(".")
-    if not look or look[:40].lower() in (prompt or "").lower():
-        return prompt or ""
-    return f"Same character in every shot: {look}. {prompt or ''}".strip()
+    if not look or look[:40].lower() in prompt.lower():
+        return prompt
+    return f"{LOOK_TAG}{look}. {prompt}".strip()
 
 
 def lock_looks(data: dict) -> dict:
-    """Character consistency: vague people looks get the real one, and every shot prompt carries the full look."""
+    """Character consistency: vague people looks get the real one. The look itself is added to every picture / video
+    prompt at the moment it is used (with_look), so a later, better character sheet reaches every shot."""
     main = ((data.get("character") or {}).get("look") or "").strip()
     for pp in data.get("people") or []:
         if main and (not pp.get("look") or VAGUE.match(pp["look"]) or len(pp["look"]) < 25):
             pp["look"] = main
         if pp.get("single_prompt"):
-            pp["single_prompt"] = with_look(pp["single_prompt"], pp.get("look") or main)
+            pp["single_prompt"] = strip_look(pp["single_prompt"])
     for c in data.get("clips") or []:
-        lk = look_of(data, c.get("speaker"))
         for k in ("image_prompt", "video_prompt"):
             if c.get(k):
-                c[k] = with_look(c[k], lk)
+                c[k] = strip_look(c[k])
     return data
 
 
@@ -685,13 +696,13 @@ REFERENCE (from watching it): {_json.dumps({k: ref.get(k) for k in ('summary', '
 SCENES TO REMAKE WITH NEW FACES (index, timing and content): {_json.dumps(redo, ensure_ascii=False)[:9000]}
 ALL SCENES (for the story and the lines over reused footage): {_json.dumps([{k: s.get(k) for k in ('start', 'end', 'kind', 'speaker', 'line')} for s in scenes], ensure_ascii=False)[:6000]}
 For each scene to remake give 1 shot, or 2-3 consecutive shots when it lasts longer than 8 s (each shot at most 8 s, together exactly the scene's length,
-the line split at natural pauses). Each person keeps ONE fixed full look in every shot (copy their look word for word).
+the line split at natural pauses). Each person keeps ONE fixed full look, written once in "people"; Ghost adds it to every shot, so do not describe appearance or clothes inside the shot prompts (call them "the woman", "the lawyer"...).
 Return JSON only:
 {{"title": "2-5 words", "people": [{{"key": "A", "look": "full new look: age, face, skin tone, hair, the same outfit and colours as the original role", "voice": "..."}}],
 "changed": "what you had to change to keep the rules, or empty",
 "scenes": [{{"i": 0, "shots": [{{"seconds": 4.0, "speaker": "A or narrator or none", "line": "words heard in this shot (may be empty)",
-"image_prompt": "photo of THIS moment: the person's full look, place, light, framing, real photo, no text, no logos",
-"video_prompt": "one paragraph: who (full look), exact action and micro-expressions second by second, place, light, framing, camera; if the speaker is on screen: He/She says in {lang}: \\"<line>\\" (natural pace, ends before the shot ends); if narrator or none: nobody on screen speaks; ambient sound. No music, no subtitles, no text.",
+"image_prompt": "photo of THIS moment: who (role only), pose and action, place, light, framing, real photo, no text, no logos",
+"video_prompt": "one paragraph: who (role only), exact action and micro-expressions second by second, place, light, framing, camera; if the speaker is on screen: He/She says in {lang}: \\"<line>\\" (natural pace, ends before the shot ends); if narrator or none: nobody on screen speaks; ambient sound. No music, no subtitles, no text.",
 "camera_move": "none"}}]}}],
 "lines_over_reused": [{{"i": 3, "line": "the (possibly rewritten) words heard over reused scene 3"}}]}}"""
     fast, careful = "", cfg["models"]["llm"]

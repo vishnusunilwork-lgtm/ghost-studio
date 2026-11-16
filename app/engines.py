@@ -445,12 +445,12 @@ class Google:
     # Every Veo shot: filmed like a real commercial, not "AI-looking" (waxy skin, HDR colours, frozen grins, robotic voice)
     REAL = ("Shot like a real TV commercial on a cinema camera: true-to-life skin with natural texture and pores, the person's real "
             "skin tone (no orange cast, no waxy or plastic smoothing), natural colours and contrast (no HDR look, no oversaturation, "
-            "no over-sharpening), a balanced natural colour grade with neutral white balance and moderate saturation, soft realistic light. Believable, understated acting with natural micro-expressions, relaxed "
+            "no over-sharpening), a balanced natural colour grade with neutral white balance and moderate saturation, soft realistic light. Believable, understated acting: small natural micro-expressions, relaxed eyes (never wide-open or bulging), relaxed "
             "natural gestures and blinking, no over-acting and no frozen grin. The dialogue sounds like a real person talking: "
             "conversational rhythm, small pauses and breaths, emotion that fits the words, a clear natural human voice (not "
             "robotic), accurate lip-sync.")
     NEG = ("plastic skin, waxy skin, airbrushed, HDR, oversaturated, over-sharpened, orange skin, cartoon, CGI look, exaggerated "
-           "expression, over-acting, frozen smile, teal and orange grade, colour cast, robotic voice, monotone voice, distorted face, extra fingers, text, subtitles, "
+           "expression, over-acting, wide-open eyes, bulging eyes, raised eyebrows, grimace, frozen smile, morphing face, teal and orange grade, colour cast, robotic voice, monotone voice, distorted face, extra fingers, text, subtitles, "
            "watermark, logo")
     IMAGEN = ["imagen-4.0-generate-001", "imagen-4.0-fast-generate-001"]
     TEXT = ["gemini-2.5-flash", "gemini-2.5-pro"]

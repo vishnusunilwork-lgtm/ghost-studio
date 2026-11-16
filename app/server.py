@@ -721,6 +721,64 @@ def edit_clip(pid: str, i: int, body: ClipEdit):
     return {"ok": True, "needs_new_video": bool({"line", "video_prompt", "seconds"} & set(changed))}
 
 
+@app.get("/api/projects/{pid}/script")
+def project_script(pid: str, format: str = "html"):
+    """📄 Script details: everything Ghost decided and sent for this project, shot by shot, to check where it went wrong."""
+    import html as _h
+    from .pipeline import Runner
+    p = _get(pid)
+    pl = p.get("plan") or {}
+    g = RUNNER.eng.goog
+    lines = [f"# {p.get('title', '')}", "",
+             f"Made from: {'remake of a reference ad' if p.get('remake') else 'a reference ad' if p.get('reference') else 'an idea'} · "
+             f"{p.get('kind', 'video')} · {p.get('seconds', '')} s · {p.get('language', '')} · quality {p.get('quality', '')} · "
+             f"mood {p.get('mood') or 'auto'} · place {p.get('place') or 'auto'} · voice {p.get('voice_mode', '')} · "
+             f"video {(p.get('engine_plan') or {}).get('video', '')}" + (f" (Veo {g.tier}, {g.resolution})" if g.on else ""), ""]
+    for k, label in (("idea", "Idea"), ("notes", "Notes"), ("dialogue", "Dialogue you gave")):
+        if p.get(k):
+            lines += [f"## {label}", str(p[k]), ""]
+    ref = p.get("ref_analysis") or {}
+    if ref.get("scenes"):
+        lines += ["## Reference, as Gemini saw it", f"{ref.get('summary', '')}"]
+        for s_ in ref["scenes"]:
+            lines.append(f"- {float(s_.get('start', 0)):.1f}–{float(s_.get('end', 0)):.1f} s · {s_.get('kind')} · {s_.get('speaker')} · "
+                         f"{s_.get('place', '')} · {s_.get('action', '')} · “{s_.get('line', '')}”")
+        lines.append("")
+    ch = pl.get("character") or {}
+    lines += ["## Character sheet (added to every picture and video prompt)", f"Look: {ch.get('look', '')}", f"Voice: {ch.get('voice', '')}"]
+    for x in pl.get("people") or []:
+        lines.append(f"- {x.get('key')}: {x.get('look', '')} · voice: {x.get('voice', '')}")
+    lines += ["", "## First picture (prompt)", str(pl.get("image_prompt", "")), "", "## Shots"]
+    t = 0.0
+    for i, c in enumerate(p.get("clips") or []):
+        secs = float(c.get("seconds") or 0)
+        lines += [f"### Shot {i + 1} · {t:.1f}–{t + secs:.1f} s · {'REUSED from the original' if c.get('reused') else 'new'}"
+                  + (f" · speaker {c.get('speaker')}" if c.get("speaker") else "") + (f" · seed {c.get('seed')}" if c.get("seed") else "")
+                  + (f" · looks {c['match']}% like its picture" if c.get("match") is not None else ""),
+                  f"Line (on camera): {c.get('line', '') if not c.get('narration') else '—'}"]
+        if c.get("narration"):
+            lines.append(f"Heard over it: {c['narration']}" + (" (same person's voice)" if c.get("voice_shot") else " (narrator voice)"))
+        if not c.get("reused"):
+            img = planner.with_look(c.get("image_prompt") or "", planner.look_of(pl, c.get("speaker")))
+            lines += [f"Picture prompt: {img}", f"Video prompt sent: {Runner._clip_prompt(p, c)}"]
+        lines.append("")
+        t += secs
+    lines += ["Every video prompt also ends with Ghost's realism direction and avoid-list:", E.Google.REAL, "Avoid: " + E.Google.NEG, "",
+              "## What happened (log)"]
+    lines += [x for x in p.get("log") or [] if "Composing…" not in x and "Starting the music engine" not in x]
+    text = "\n".join(str(x) for x in lines)
+    if format == "txt":
+        from fastapi.responses import PlainTextResponse
+        return PlainTextResponse(text, headers={"Content-Disposition": f'attachment; filename="script-{pid}.md"'})
+    body = _h.escape(text)
+    return HTMLResponse(f"""<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
+<title>Script details · {_h.escape(p.get('title', ''))}</title>
+<style>:root{{--bg:#fff;--ink:#1b1b1e;--mute:#666}}@media (prefers-color-scheme:dark){{:root{{--bg:#0f0f11;--ink:#ededee;--mute:#9a9aa0}}}}
+body{{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 -apple-system,system-ui,sans-serif;padding:16px}}
+main{{max-width:860px;margin:0 auto}}pre{{white-space:pre-wrap;word-wrap:break-word;font:14px/1.6 -apple-system,system-ui,sans-serif}}
+a{{color:inherit}}</style><main><p><a href="?format=txt">Download as a file</a></p><pre>{body}</pre></main>""")
+
+
 @app.post("/api/projects/{pid}/clips/{i}/redo")
 def redo(pid: str, i: int):
     _get(pid)
