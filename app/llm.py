@@ -32,6 +32,52 @@ class CloudDown(Exception):
     pass
 
 
+class Skip(Exception):
+    """This brain can't do this kind of request (e.g. tool calls on a ChatGPT plan): the next one takes it."""
+
+
+def _responses_input(messages: list[dict]) -> tuple[str, list[dict]]:
+    """Chat messages -> (instructions, Responses API input items)."""
+    sys_, items = [], []
+    for m in _to_openai(messages):
+        if m["role"] == "system":
+            sys_.append(m.get("content") or "")
+        elif m["role"] == "tool":
+            items.append({"role": "user", "content": "[tool result] " + (m.get("content") or "")})
+        elif m.get("content"):
+            items.append({"role": "user" if m["role"] == "user" else "assistant", "content": m["content"]})
+    return "\n\n".join(sys_), items or [{"role": "user", "content": "."}]
+
+
+def _responses_stream(e: dict, messages: list[dict], timeout: int = 300):
+    """Streams text from the Responses API (how a ChatGPT plan is used: store=false, stream=true, no temperature)."""
+    instructions, items = _responses_input(messages)
+    body = {"model": e["model"], "input": items, "store": False, "stream": True}
+    if instructions:
+        body["instructions"] = instructions
+    done = False
+    with _req(e, "/responses", body, timeout=timeout, stream=True) as r:
+        for raw in r:
+            line = raw.decode("utf-8", "ignore").strip()
+            if not line.startswith("data:"):
+                continue
+            try:
+                d = json.loads(line[5:].strip())
+            except Exception:
+                continue
+            t = d.get("type", "")
+            if t == "response.output_text.delta" and d.get("delta"):
+                yield d["delta"]
+            elif t == "response.completed":
+                done = True
+                break
+            elif t in ("response.failed", "response.incomplete", "error"):
+                err = (d.get("response") or {}).get("error") or d.get("error") or {}
+                raise ConnectionError(f"{t}: {err.get('code') or ''} {err.get('message') or ''}".strip())
+    if not done:
+        raise ConnectionError("the answer stopped half-way")
+
+
 def _st(e: dict) -> dict:
     s = STATE.setdefault(e["id"], {"cool_until": 0.0, "why": "", "day": "", "n": 0, "ms": 0})
     today = _time.strftime("%Y-%m-%d", _time.gmtime())
@@ -83,12 +129,17 @@ def _why(e: dict, err: Exception) -> str:
     """Decide what an error means for this brain; returns 'skip' (only this request) or sets a cool-down."""
     s = _st(e)
     now = _time.time()
+    if isinstance(err, Skip):
+        return "skip"
     if isinstance(err, urllib.error.HTTPError):
         try:
             txt = err.read().decode("utf-8", "ignore")[:600].lower()
         except Exception:
             txt = ""
         code = err.code
+        if code == 429 and "subscription_sharing" in txt:
+            s.update(cool_until=now + 3600, why="your ChatGPT plan's share for Ghost is used up for now (Manage usage in ChatGPT)")
+            return "cool"
         if code == 429:
             if re.search(r"per day|daily|rpd|tpd|quota|exhaust|free-models-per-day", txt):
                 s.update(cool_until=_midnight_utc(), why="daily free limit reached (back after midnight UTC)")
@@ -133,6 +184,9 @@ def _run(fn, label: str = ""):
 
 
 def cloud_models(e: dict) -> list[str]:
+    if e.get("auth") == "chatgpt":
+        from . import chatgpt_auth
+        return chatgpt_auth.models()
     d = _req(e, "/models", timeout=20)
     return sorted(m.get("id", "").removeprefix("models/") for m in d.get("data", []) if m.get("id"))
 
@@ -162,6 +216,10 @@ def _to_openai(messages: list[dict]) -> list[dict]:
 
 def _cloud_chat(messages, tools=None, temperature=0.3, json_mode=False) -> dict:
     def one(e):
+        if e.get("api") == "responses":
+            if tools:
+                raise Skip("tools")
+            return {"content": "".join(_responses_stream(e, messages))}
         body = {"model": e["model"], "messages": _to_openai(messages), "temperature": temperature}
         if tools:
             body["tools"] = tools
@@ -319,6 +377,12 @@ def ask_json(model: str, prompt: str, images: list[bytes] | None = None, tempera
 
 def _ask_one(e: dict, prompt: str, temperature: float = 0.6) -> dict:
     """One JSON answer from one particular brain."""
+    if e.get("api") == "responses":
+        t0 = _time.time()
+        text = "".join(_responses_stream(e, [{"role": "user", "content": prompt}]))
+        st = _st(e)
+        st.update(n=st["n"] + 1, ms=int((_time.time() - t0) * 1000), why="")
+        return _json_from(text)
     body = {"model": e["model"], "messages": [{"role": "user", "content": prompt}], "temperature": temperature,
             "response_format": {"type": "json_object"}}
     t0 = _time.time()
@@ -337,7 +401,7 @@ def _ask_one(e: dict, prompt: str, temperature: float = 0.6) -> dict:
 def pair() -> list[dict]:
     """Two ready brains from different services, the strongest kinds first (Google Gemini, OpenAI / ChatGPT)."""
     out, seen = [], set()
-    for e in sorted(ready(), key=lambda e: 0 if e.get("provider") in ("google", "openai") else 1):
+    for e in sorted(ready(), key=lambda e: 0 if e.get("provider") in ("google", "openai", "chatgpt") else 1):
         if e.get("provider") not in seen:
             seen.add(e.get("provider"))
             out.append(e)
@@ -437,6 +501,15 @@ def chat_stream(model: str, messages: list[dict], temperature: float = 0.5, time
             t0 = _time.time()
             finished = False
             try:
+                if e.get("api") == "responses":
+                    for piece in _responses_stream(e, msgs, timeout):
+                        got.append(piece)
+                        yield piece
+                    finished = True
+                    s = _st(e)
+                    s.update(n=s["n"] + 1, ms=int((_time.time() - t0) * 1000), why="")
+                    CLOUD.update(base=e["base"], model=e["model"], name=e.get("name", ""))
+                    return
                 with _req(e, "/chat/completions", body, timeout=timeout, stream=True) as r:
                     for raw in r:
                         line = raw.decode("utf-8", "ignore").strip()

@@ -40,6 +40,30 @@ STORE = Store(ROOT / CFG["paths"]["projects"])
 RUNNER = Runner(CFG, STORE)
 app = FastAPI(title="Ghost Studio")
 
+def _chatgpt_sync(add: bool = False):
+    """ChatGPT plan brain (Continue with ChatGPT): signed in = an entry in the chain, right after Gemini."""
+    from . import chatgpt_auth
+    llm.AUTH["chatgpt"] = (chatgpt_auth.signed_in, chatgpt_auth.headers)
+    have = next((e for e in llm.CHAIN if e.get("auth") == "chatgpt"), None)
+    if not chatgpt_auth.signed_in():
+        if have:
+            llm.CHAIN.remove(have)
+            _save_chain()
+        return
+    if have or not add:
+        return
+    model = ""
+    try:
+        ms = chatgpt_auth.models()
+        model = next((m for m in ms if "mini" not in m and "nano" not in m), ms[0] if ms else "")
+    except Exception:
+        pass
+    at = 1 if llm.CHAIN and llm.CHAIN[0].get("auth") == "google" else 0
+    llm.CHAIN.insert(at, {"id": "chatgpt", "provider": "chatgpt", "name": "ChatGPT (your plan)", "key": "plan",
+                          "base": chatgpt_auth.RESOURCE, "model": model or "gpt-5", "auth": "chatgpt", "api": "responses"})
+    _save_chain()
+
+
 GEMINI_TEXT = "google/gemini-2.5-flash"  # the script brain on your Google Cloud sign-in (OpenAI-compatible Vertex endpoint)
 
 
@@ -346,6 +370,7 @@ def _save_chain():
 
 
 _google_brain_sync()
+_chatgpt_sync()
 
 
 def _brains_view():
@@ -354,13 +379,15 @@ def _brains_view():
     for e in llm.CHAIN:
         st = llm._st(e)
         out.append({"id": e["id"], "name": e.get("name"), "provider": e.get("provider"), "model": e.get("model"),
-                    "key_end": "" if e.get("auth") else (e.get("key") or "")[-4:], "signin": bool(e.get("auth")), "today": st["n"], "ms": st["ms"],
+                    "key_end": "" if e.get("auth") else (e.get("key") or "")[-4:], "signin": bool(e.get("auth")), "plan": e.get("auth") == "chatgpt", "today": st["n"], "ms": st["ms"],
                     "ready": st["cool_until"] <= now, "why": st["why"] if st["cool_until"] > now else "",
                     "back_in": max(0, int(st["cool_until"] - now))})
+    from . import chatgpt_auth
     g = RUNNER.eng.goog
     pr = [e.get("name") for e in llm.pair()]
     return {"private": llm.PRIVATE["on"], "compare": llm.COMPARE["on"], "pair": pr if len(pr) == 2 else [],
-            "google_can_add": bool(g.configured and g.project and not any(e.get("auth") == "google" for e in llm.CHAIN)), "chain": out, "last": llm.CLOUD.get("name") or "",
+            "google_can_add": bool(g.configured and g.project and not any(e.get("auth") == "google" for e in llm.CHAIN)),
+            "chatgpt": {"on": chatgpt_auth.signed_in(), "email": chatgpt_auth.account()}, "chain": out, "last": llm.CLOUD.get("name") or "",
             "providers": {k: {kk: v[kk] for kk in ("name", "free", "keys")} for k, v in PROVIDERS.items()}}
 
 
@@ -495,6 +522,44 @@ def brain_compare(body: Private):
     """Compare two brains: both write every script / picture prompt / idea, the better one is used."""
     llm.COMPARE["on"] = body.on
     _save_chain()
+    return _brains_view()
+
+
+@app.post("/api/chatgpt/signin")
+def chatgpt_signin(request: Request):
+    """Continue with ChatGPT: the address of OpenAI's sign-in page (the page opens it in a new tab)."""
+    from . import chatgpt_auth
+    return {"url": chatgpt_auth.start(request.url.port or 7860)}
+
+
+@app.get("/auth/callback")
+def chatgpt_callback(request: Request):
+    """OpenAI sends you back here after you approve Ghost (127.0.0.1 only)."""
+    from . import chatgpt_auth
+    import html as _h
+    try:
+        email = chatgpt_auth.finish(dict(request.query_params))
+        _chatgpt_sync(add=True)
+        msg, ok = f"Connected to ChatGPT{(' as ' + _h.escape(email)) if email else ''}. Ghost now uses your ChatGPT plan as a brain.", True
+    except Exception as e:
+        msg, ok = _h.escape(str(e)[:300]), False
+    return HTMLResponse(f"""<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>Ghost Studio</title>
+<body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#0a0a0b;color:#ededee;font:16px/1.5 -apple-system,system-ui,sans-serif;padding:16px">
+<div style="max-width:440px;text-align:center"><div style="font-size:40px">{'✓' if ok else '!'}</div><p>{msg}</p>
+<p style="color:#8d8d93;font-size:14px">You can close this tab and go back to Ghost.</p></div><script>setTimeout(()=>window.close(),2500)</script>""")
+
+
+@app.post("/api/chatgpt/add")
+def chatgpt_add():
+    _chatgpt_sync(add=True)
+    return _brains_view()
+
+
+@app.post("/api/chatgpt/signout")
+def chatgpt_signout():
+    from . import chatgpt_auth
+    chatgpt_auth.signout()
+    _chatgpt_sync()
     return _brains_view()
 
 

@@ -181,6 +181,21 @@ How Ghost uses it (`addons.make_motion` → `workers/motion_worker.py`, its own 
 Limits: text-to-video only in the released Mac build (no starting picture), so the same character can differ a little
 between shots; no lip-sync. Wan2.2 on a Mac without this distilled model took over an hour for 2 seconds.
 
+## Continue with ChatGPT: your ChatGPT plan as a brain (v3.33)
+
+OpenAI's "Sign in with ChatGPT" lets open-source apps that run locally use a person's ChatGPT Plus / Pro plan
+(`app/chatgpt_auth.py`). ⚙ → Smarter brain → **Continue with ChatGPT** opens
+`https://auth.openai.com/api/accounts/authorize` (client `dynamic_agent_client` + `agent_name_hint=Ghost Studio` +
+a stable `ext_agent_host_id` the first time, the issued `oaiapp_…` client id afterwards; PKCE S256, state, nonce,
+scope `openid profile email offline_access resource.invoke chatgpt.tokens.use.direct`,
+`resource=https://api.openai.com/v1`) and OpenAI returns to `http://127.0.0.1:<port>/auth/callback`. Tokens live only
+in `.ghost/chatgpt.json` (mode 600); access tokens are refreshed by themselves (refresh tokens rotate).
+The brain entry ("ChatGPT (your plan)", `api: responses`) calls the Responses API with `store: false, stream: true`
+and no temperature; text answers only (scripts, prompts, ideas, Talk to Ghost answers, comparisons). Requests with
+tool calls are passed to the next brain. When OpenAI says the plan's share for Ghost is used up (429
+`subscription_sharing_usage_limit_exceeded`) the brain rests for an hour; set the share in ChatGPT → Settings → Usage
+("Manage usage"). Pictures and voice from OpenAI are not part of plan usage (they still need an API key).
+
 ## 🎙 Live voice with Gemini Live (v3.32)
 
 When you are signed in with Google, the mic button starts a real-time spoken conversation (`app/voice_live.py`,
