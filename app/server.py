@@ -1323,6 +1323,76 @@ AGENT = Agent(CFG, GhostBackend())
 AGENT.media = lambda: (RUNNER.eng, RUNNER.eng.goog)
 
 
+from fastapi import WebSocket  # noqa: E402
+
+
+def _live_tool(sid: str, project: str | None):
+    """What Gemini Live calls to get things done: Ghost's own agent (same as Talk to Ghost), confirmations included."""
+    def run(request: str, confirmed: bool):
+        events: list = []
+        AGENT.turn(sid, request, project, events.append)
+        plan = next((e for e in events if e.get("t") == "confirm"), None)
+        if plan:
+            if not confirmed:
+                return "Not done yet: Ghost needs the person's yes for this plan: " + "; ".join(plan.get("plan") or []) + \
+                       ". Ask them, then call again with confirmed=true.", []
+            AGENT.turn(sid, "", project, events.append, True)
+        said = [e.get("text", "") for e in events if e.get("t") in ("end", "message") and e.get("text")]
+        acts = [("done: " if e.get("ok") else "problem: ") + str(e.get("text") or e.get("name")) for e in events if e.get("t") == "result"]
+        keep = [e for e in events if e.get("t") in ("open", "refresh", "action", "result")]
+        return ("\n".join(acts + said[-1:]) or "Done."), keep
+    return run
+
+
+@app.websocket("/api/voice/live")
+async def voice_live(ws: WebSocket):
+    """🎙 Live voice (Gemini Live on your Google sign-in). Only Ghost's own page on this computer may connect."""
+    from . import voice_live as VL
+    host, origin = ws.headers.get("host", ""), ws.headers.get("origin", "")
+    if not _is_local(host) or (origin and not _is_local(origin)):
+        await ws.close(code=1008)
+        return
+    await ws.accept()
+    try:
+        start = json.loads(await ws.receive_text())
+        g = RUNNER.eng.goog
+        if not (g.on and g.project):
+            await ws.send_text(json.dumps({"type": "error", "text": "Live voice needs Sign in with Google (⚙ → Google Cloud)."}))
+            return
+        sid = re.sub(r"[^A-Za-z0-9_-]", "", str(start.get("session") or "default"))[:40] or "default"
+        project = start.get("project") or None
+        p = None
+        if project:
+            try:
+                p = STORE.load(project)
+            except Exception:
+                project = None
+        lang = str(start.get("language") or CFG.get("language", "Hindi"))[:30]
+        extra = (f"The person usually works in {lang}. Right now it is {time.strftime('%A %d %B %Y, %H:%M')}. "
+                 + agent_context.describe(p))
+
+        def save_turn(you: str, ghost: str):
+            s = agent_context.load(sid)
+            if you:
+                s["messages"].append({"role": "user", "content": "🎙 " + you})
+            if ghost:
+                s["messages"].append({"role": "assistant", "content": ghost})
+            agent_context.compact(s)
+            agent_context.save(s)
+        await VL.bridge(ws, g, _live_tool(sid, project), save_turn, voice="male" if start.get("voice") == "male" else "female",
+                        extra=extra, spend=E.Spend.add)
+    except Exception as e:
+        try:
+            await ws.send_text(json.dumps({"type": "error", "text": str(e)[:300]}))
+        except Exception:
+            pass
+    finally:
+        try:
+            await ws.close()
+        except Exception:
+            pass
+
+
 @app.post("/api/agent/upload")
 async def agent_upload(session: str = Form("default"), file: UploadFile = File(...)):
     """📎 A picture, video or PDF for Talk to Ghost: kept with that chat; the message carries a ghost-file:// reference."""

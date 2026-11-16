@@ -414,7 +414,7 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
           </button>
           <textarea id="prompt" rows="1" placeholder="Describe the ad, or drop a reference video…" aria-label="Describe your ad"></textarea>
           <button class="cbtn" id="agentBtn" title="Ghost Agent: type one word (e.g. Diwali) and get 3 ready ideas with settings" aria-label="Ghost Agent: suggest ideas"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg></button>
-          <button class="cbtn" id="micBtn" title="Voice assistant: speak to Ghost, it answers back" aria-label="Voice assistant"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+          <button class="cbtn" id="micBtn" title="Voice: talk with Ghost (Gemini Live when you are signed in with Google)" aria-label="Voice assistant"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
           <button class="mode" id="modeBtn" aria-haspopup="true"><span id="modeTxt">Quality</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></button>
           <button class="send" id="send" aria-label="Make my ad" title="Make my ad (Enter)">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
@@ -1139,10 +1139,57 @@ const VA={on:false,rec:null,audio:null,idle:0,media:null};
 function vaShow(state,txt,cls){const v=$('#va');v.classList.remove('hidden','listen','speak');if(cls)v.classList.add(cls);$('#vaState').textContent=state;$('#vaTxt').textContent=txt||''}
 function vaStop(){VA.on=false;try{VA.rec&&VA.rec.abort()}catch(e){}VA.rec=null;try{VA.media&&VA.media.state!=='inactive'&&VA.media.stop()}catch(e){}
   try{speechSynthesis.cancel()}catch(e){}if(VA.audio){VA.audio.pause();VA.audio=null}$('#va').classList.add('hidden');$('#micBtn').classList.remove('on');$('#tkMic').classList.remove('on');$('#vaStop').textContent='Stop'}
-$('#vaStop').onclick=()=>{if(VA.media&&VA.media.state==='recording'){VA.media.stop();return}vaStop()};
+$('#vaStop').onclick=()=>{if(LIVE.on){liveStop();return}if(VA.media&&VA.media.state==='recording'){VA.media.stop();return}vaStop()};
 function vaStart(){if(VA.on){vaStop();return}VA.on=true;VA.idle=0;$('#micBtn').classList.add('on');$('#tkMic').classList.add('on');
   if(!$('#talk').classList.contains('open'))$('#talkBtn').click();vaListen()}
-$('#micBtn').onclick=e=>{e.stopPropagation();vaStart()};$('#tkMic').onclick=()=>vaStart();
+$('#micBtn').onclick=e=>{e.stopPropagation();talkVoice()};$('#tkMic').onclick=()=>talkVoice();
+function talkVoice(){if(LIVE.on||VA.on){liveStop();vaStop();return}if(ST&&ST.google&&ST.google.on)liveStart();else vaStart()}
+
+/* ---------- 🎙 Live voice: Gemini Live (natural voice, answers in about half a second, interrupt any time) ---------- */
+const LIVE={on:false,ws:null,ctx:null,stream:null,node:null,src:null,next:0,playing:[],you:null,ghost:null,speakT:null};
+const CAP_JS=`class Cap extends AudioWorkletProcessor{constructor(o){super();this.r=sampleRate/16000;this.p=0;this.out=new Int16Array(640);this.n=0}
+ process(ins){const ch=ins[0]&&ins[0][0];if(!ch)return true;
+  while(this.p<ch.length){const i=Math.floor(this.p),f=this.p-i,a=ch[i],b=i+1<ch.length?ch[i+1]:a;let v=a+(b-a)*f;v=Math.max(-1,Math.min(1,v));
+   this.out[this.n++]=v<0?v*32768:v*32767;if(this.n===640){this.port.postMessage(this.out.buffer.slice(0));this.n=0}this.p+=this.r}
+  this.p-=ch.length;return true}}
+registerProcessor('ghost-cap',Cap)`;
+function liveUI(state,txt,cls){vaShow(state,txt,cls)}
+async function liveStart(){if(LIVE.on)return;LIVE.on=true;$('#micBtn').classList.add('on');$('#tkMic').classList.add('on');
+  if(!$('#talk').classList.contains('open'))$('#talkBtn').click();liveUI('Connecting to Gemini Live…','Allow the microphone if your browser asks','');
+  try{LIVE.stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true,channelCount:1}})}
+  catch(e){liveUI('Microphone is blocked','Allow the microphone for this page, then press 🎙 again');setTimeout(liveStop,5000);return}
+  try{LIVE.ctx=new (window.AudioContext||window.webkitAudioContext)();await LIVE.ctx.resume();
+    const url=URL.createObjectURL(new Blob([CAP_JS],{type:'application/javascript'}));await LIVE.ctx.audioWorklet.addModule(url);
+    LIVE.src=LIVE.ctx.createMediaStreamSource(LIVE.stream);LIVE.node=new AudioWorkletNode(LIVE.ctx,'ghost-cap');LIVE.src.connect(LIVE.node);
+    const mute=LIVE.ctx.createGain();mute.gain.value=0;LIVE.node.connect(mute).connect(LIVE.ctx.destination)}
+  catch(e){liveUI('Live voice can’t start in this browser','Using the simple voice instead');liveStop();setTimeout(vaStart,600);return}
+  const ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/api/voice/live');ws.binaryType='arraybuffer';LIVE.ws=ws;
+  ws.onopen=()=>ws.send(JSON.stringify({session:tkSid(),project:CUR||null,language:$('#lang').value,voice:$('#vgender').value}));
+  LIVE.node.port.onmessage=e=>{if(ws.readyState!==1||!LIVE.ready)return;let out=e.data;
+    if(LIVE.ctx&&LIVE.next>LIVE.ctx.currentTime){  // Ghost is talking: only a clearly louder voice (you interrupting) gets through, not its own echo
+      const a=new Int16Array(e.data);let sum=0;for(let k=0;k<a.length;k++)sum+=a[k]*a[k];if(Math.sqrt(sum/a.length)<2600)out=new ArrayBuffer(e.data.byteLength)}
+    ws.send(out)};
+  ws.onmessage=e=>{if(typeof e.data!=='string')return livePlay(e.data);let d;try{d=JSON.parse(e.data)}catch(x){return}
+    if(d.type==='ready'){LIVE.ready=true;tkLog().querySelector('.tk-empty')?.remove();liveUI('Live · just talk','Gemini Live is listening. Interrupt any time.','listen')}
+    else if(d.type==='you'){if(!LIVE.you)LIVE.you=tkAdd('','tk-b u');LIVE.you.textContent=d.text}
+    else if(d.type==='ghost'){if(!LIVE.ghost)LIVE.ghost=tkAdd('','tk-b a');LIVE.ghost.textContent=d.text;$('#vaTxt').textContent=d.text.slice(-120)}
+    else if(d.type==='turn'){LIVE.you=null;LIVE.ghost=null}
+    else if(d.type==='interrupted'){liveFlush();LIVE.ghost=null}
+    else if(d.type==='working'){LIVE.work=tkAdd(`<i></i><span>${esc(d.text)}</span>`,'tk-act')}
+    else if(d.type==='event'){const v=d.event||{};if(v.t==='result'){const el=LIVE.work||tkAdd('<i></i><span></span>','tk-act');LIVE.work=null;el.classList.add(v.ok?'ok':'bad');el.querySelector('i').textContent=v.ok?'✓':'!';el.querySelector('span').textContent=v.text||v.name||''}
+      else if(v.t==='open'&&v.project)open(v.project);else if(v.t==='refresh')refresh(true)}
+    else if(d.type==='reconnect'){liveStop();setTimeout(liveStart,300)}
+    else if(d.type==='error'){liveUI('Live voice stopped',d.text);LIVE.err=true}};
+  ws.onclose=()=>{if(LIVE.on&&!LIVE.err){liveUI('Live voice ended','Press 🎙 to talk again')}const was=LIVE.on;liveStop(true);if(was)setTimeout(()=>{if(!LIVE.on&&!VA.on)$('#va').classList.add('hidden')},LIVE.err?7000:2500);LIVE.err=false}}
+function livePlay(buf){const c=LIVE.ctx;if(!c)return;const i16=new Int16Array(buf);if(!i16.length)return;const b=c.createBuffer(1,i16.length,24000),ch=b.getChannelData(0);
+  for(let k=0;k<i16.length;k++)ch[k]=i16[k]/32768;const s=c.createBufferSource();s.buffer=b;s.connect(c.destination);
+  const t=Math.max(LIVE.next,c.currentTime+0.04);s.start(t);LIVE.next=t+b.duration;LIVE.playing.push(s);s.onended=()=>{LIVE.playing=LIVE.playing.filter(x=>x!==s)};
+  $('#va').classList.add('speak');$('#va').classList.remove('listen');$('#vaState').textContent='Ghost is speaking · talk to interrupt';
+  clearTimeout(LIVE.speakT);LIVE.speakT=setTimeout(()=>{if(LIVE.on){$('#va').classList.remove('speak');$('#va').classList.add('listen');$('#vaState').textContent='Live · just talk'}},(LIVE.next-c.currentTime)*1000+150)}
+function liveFlush(){LIVE.playing.forEach(s=>{try{s.stop()}catch(e){}});LIVE.playing=[];LIVE.next=0}
+function liveStop(keepBar){const was=LIVE.on;LIVE.on=false;LIVE.ready=false;liveFlush();try{LIVE.ws&&LIVE.ws.readyState<2&&LIVE.ws.close()}catch(e){}LIVE.ws=null;
+  try{LIVE.stream&&LIVE.stream.getTracks().forEach(t=>t.stop())}catch(e){}LIVE.stream=null;try{LIVE.ctx&&LIVE.ctx.close()}catch(e){}LIVE.ctx=null;LIVE.you=LIVE.ghost=null;
+  $('#micBtn').classList.remove('on');$('#tkMic').classList.remove('on');if(!keepBar&&was)$('#va').classList.add('hidden')}
 function vaListen(){if(!VA.on)return;
   if(!SR)return vaRecord();
   const r=new SR();VA.rec=r;r.lang=VLANG[$('#lang').value]||'en-IN';r.interimResults=true;r.continuous=false;let heard='';
