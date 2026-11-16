@@ -654,6 +654,16 @@ screen = a phone/app screen recording or product UI; endcard = logo / download c
 even if the speaker is not on screen (then speaker = the person whose voice it is, or narrator)."""
 
 
+# A remake keeps the original's hook and story, including a person's own testimonial ("I tried it for 21 days, on day 22 a
+# big client came"): that is one person's experience. What changes is only a promise TO THE VIEWER that they will get
+# money / income / results ("money will start coming to you too"), and news-channel branding (a real-looking channel name,
+# logo or mic flag), which would make a staged interview pass for real news.
+REMAKE_RULES = ("Keep first-person testimonial lines exactly as one person's own experience, including their numbers and timeline. "
+                "Do not promise the viewer money, income, a cure or a guaranteed result (a line like 'money will start coming to you "
+                "too' becomes an invitation such as 'you can try it too'). No real news channel name, logo or microphone flag "
+                "(a plain microphone is fine). Every person is a fictional adult and must not resemble any real or famous person.")
+
+
 def plan_remake(cfg: dict, ref: dict, lang: str, notes: str = "") -> dict:
     """Shot-for-shot remake: same scenes, timing, framing, places, words and story; new fictional people.
     Scenes without a face (app screens, end card, hands/objects) are reused from the original by the pipeline."""
@@ -666,8 +676,8 @@ Make it look and sound MORE natural and realistic than the original: real everyd
 Keep the original's emotional arc and persuasion beats exactly (the hook, doubt, turn, proof, call to action) and show each feeling
 in the new person's face, eyes and body language. Colours: balanced and natural (neutral white balance, moderate saturation).
 {('Notes from the person: ' + notes) if notes else ''}
-Rules you must keep (they win over copying): {RULES} If a spoken line or on-screen text breaks a rule (for example money, income or guaranteed-result
-claims, or a news channel name / logo / microphone flag), rewrite only that part into an honest version with the same role in the story, and say so in "changed".
+Rules you must keep (they win over copying): {REMAKE_RULES} If a line or on-screen text breaks one of these, change only that part, keep its
+role in the story and as many of its words as possible, and say what you changed in "changed".
 {LITERAL}
 Spoken language: {lang}. Write every line in {lang}'s own script.
 REFERENCE (from watching it): {_json.dumps({k: ref.get(k) for k in ('summary', 'people', 'music')}, ensure_ascii=False)}
