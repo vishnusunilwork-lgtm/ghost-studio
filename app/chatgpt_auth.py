@@ -221,7 +221,8 @@ def finish(params: dict) -> str:
         prev = LOG.read_text(encoding="utf-8") if LOG.exists() else ""
         LOG.write_text(prev + f"  callback had {sorted(k for k in params if k != 'code')}, code length {len(params.get('code', ''))}, "
                               f"client {client[:12]}…, redirect {p['redirect']}, {int(time.time() - p['at'])} s after start\n", encoding="utf-8")
-        raise RuntimeError(f"ChatGPT sign-in failed at the last step ({e}).") from None
+        raise RuntimeError(f"ChatGPT sign-in failed at the last step ({e}). Using your plan in other apps needs a paid ChatGPT plan "
+                           "(Go, Plus or Pro): sign in with the account that has it. A free ChatGPT account can't be used.") from None
     c = _claims(t.get("id_token", ""))
     if c.get("nonce") and c["nonce"] != p["nonce"]:
         raise RuntimeError("The sign-in answer didn't match (nonce). Press Continue with ChatGPT again.")

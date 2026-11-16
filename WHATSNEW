@@ -1,3 +1,4 @@
+3.34.4: Continue with ChatGPT explains that a paid ChatGPT plan (Go, Plus or Pro) is needed; free ChatGPT accounts can't share usage with apps.
 3.34.3: Continue with ChatGPT now follows OpenAI's own sign-in kit exactly (keeps Ghost's registration between tries, reads the answer the same way) and records OpenAI's request id if it still fails.
 3.34.2: Continue with ChatGPT now receives OpenAI's answer on the same local address OpenAI's own apps use (127.0.0.1:1455), which should fix “invalid_grant” at the last step.
 3.34.1: Continue with ChatGPT: fixes for the “HTTP Error 400” at the last sign-in step, and a clear message (with details saved) if it still fails.
