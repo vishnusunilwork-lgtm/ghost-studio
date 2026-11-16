@@ -77,6 +77,82 @@ def account() -> str:
     return _load().get("email", "")
 
 
+def raw_params(query: str) -> dict:
+    """Query parameters exactly as sent (a '+' inside the one-time code stays a '+', unlike form decoding)."""
+    out = {}
+    for part in (query or "").split("&"):
+        if part:
+            k, _, v = part.partition("=")
+            out[urllib.parse.unquote(k)] = urllib.parse.unquote(v)
+    return out
+
+
+def page(ok: bool, msg: str) -> str:
+    import html as _h
+    return (f"""<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>Ghost Studio</title>
+<body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#0a0a0b;color:#ededee;font:16px/1.5 -apple-system,system-ui,sans-serif;padding:16px">
+<div style="max-width:440px;text-align:center"><div style="font-size:40px">{'✓' if ok else '!'}</div><p>{_h.escape(msg)}</p>
+<p style="color:#8d8d93;font-size:14px">You can close this tab and go back to Ghost.</p></div>""" + ("<script>setTimeout(()=>window.close(),2500)</script>" if ok else ""))
+
+
+def callback(params: dict, on_done=None) -> tuple[bool, str]:
+    try:
+        email = finish(params)
+        if on_done:
+            on_done()
+        return True, f"Connected to ChatGPT{(' as ' + email) if email else ''}. Ghost now uses your ChatGPT plan as a brain."
+    except Exception as e:
+        return False, str(e)[:400]
+
+
+PORT = 1455  # the loopback port OpenAI's own tools and other sign-in apps use
+_LISTEN: dict = {"srv": None}
+
+
+def listen(on_done=None) -> int | None:
+    """A one-time receiver on 127.0.0.1:1455 for OpenAI's answer (closes itself afterwards). None if the port is busy."""
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    old = _LISTEN.get("srv")
+    if old is not None:
+        try:
+            old.shutdown()
+            old.server_close()
+        except Exception:
+            pass
+        _LISTEN["srv"] = None
+
+    class H(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_GET(self):
+            u = urllib.parse.urlsplit(self.path)
+            if u.path != "/auth/callback":
+                self.send_response(404)
+                self.end_headers()
+                return
+            ok, msg = callback(raw_params(u.query), on_done)
+            b = page(ok, msg).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(b)))
+            self.end_headers()
+            self.wfile.write(b)
+            srv_ = self.server
+            threading.Thread(target=lambda: (srv_.shutdown(), srv_.server_close()), daemon=True).start()
+    try:
+        srv = HTTPServer(("127.0.0.1", PORT), H)
+    except OSError:
+        return None
+    _LISTEN["srv"] = srv
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    t = threading.Timer(900, lambda: (srv.shutdown(), srv.server_close()))  # gone after 15 minutes either way
+    t.daemon = True
+    t.start()
+    return PORT
+
+
 def start(port: int) -> str:
     """The sign-in address to open in the browser."""
     d = _load()

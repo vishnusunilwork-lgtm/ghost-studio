@@ -1,3 +1,4 @@
+3.34.2: Continue with ChatGPT now receives OpenAI's answer on the same local address OpenAI's own apps use (127.0.0.1:1455), which should fix “invalid_grant” at the last step.
 3.34.1: Continue with ChatGPT: fixes for the “HTTP Error 400” at the last sign-in step, and a clear message (with details saved) if it still fails.
 3.34.0: More real people in video ads: every Veo shot now starts from Ghost's realistic picture (true skin texture and colour), with direction for natural, understated acting and natural dialogue (pauses, breaths, a human voice), and Veo is told to avoid waxy skin, HDR colours, over-acting and robotic voices. Full-screen preview now shows the whole video instead of cropping it.
 3.33.1: Fix: Continue with ChatGPT didn't open the sign-in page (the browser blocked it). Ghost now opens it in your browser itself, and shows an “Open the ChatGPT sign-in page” link too.

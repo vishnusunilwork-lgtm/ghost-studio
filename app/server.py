@@ -530,7 +530,8 @@ def chatgpt_signin(request: Request):
     """Continue with ChatGPT: the address of OpenAI's sign-in page (the page opens it in a new tab)."""
     from . import chatgpt_auth
     import webbrowser
-    url = chatgpt_auth.start(request.url.port or 7860)
+    port = chatgpt_auth.listen(lambda: _chatgpt_sync(add=True)) or request.url.port or 7860
+    url = chatgpt_auth.start(port)
     try:
         webbrowser.open(url, new=2)  # your default browser, like Sign in with Google (the page also shows the link)
     except Exception:
@@ -540,19 +541,10 @@ def chatgpt_signin(request: Request):
 
 @app.get("/auth/callback")
 def chatgpt_callback(request: Request):
-    """OpenAI sends you back here after you approve Ghost (127.0.0.1 only)."""
+    """OpenAI sends you back here after you approve Ghost (used when port 1455 is busy)."""
     from . import chatgpt_auth
-    import html as _h
-    try:
-        email = chatgpt_auth.finish(dict(request.query_params))
-        _chatgpt_sync(add=True)
-        msg, ok = f"Connected to ChatGPT{(' as ' + _h.escape(email)) if email else ''}. Ghost now uses your ChatGPT plan as a brain.", True
-    except Exception as e:
-        msg, ok = _h.escape(str(e)[:300]), False
-    return HTMLResponse(f"""<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>Ghost Studio</title>
-<body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#0a0a0b;color:#ededee;font:16px/1.5 -apple-system,system-ui,sans-serif;padding:16px">
-<div style="max-width:440px;text-align:center"><div style="font-size:40px">{'✓' if ok else '!'}</div><p>{msg}</p>
-<p style="color:#8d8d93;font-size:14px">You can close this tab and go back to Ghost.</p></div><script>setTimeout(()=>window.close(),2500)</script>""")
+    ok, msg = chatgpt_auth.callback(chatgpt_auth.raw_params(request.url.query), lambda: _chatgpt_sync(add=True))
+    return HTMLResponse(chatgpt_auth.page(ok, msg))
 
 
 @app.post("/api/chatgpt/add")
