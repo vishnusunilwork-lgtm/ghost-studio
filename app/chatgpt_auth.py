@@ -78,13 +78,8 @@ def account() -> str:
 
 
 def raw_params(query: str) -> dict:
-    """Query parameters exactly as sent (a '+' inside the one-time code stays a '+', unlike form decoding)."""
-    out = {}
-    for part in (query or "").split("&"):
-        if part:
-            k, _, v = part.partition("=")
-            out[urllib.parse.unquote(k)] = urllib.parse.unquote(v)
-    return out
+    """The callback's query parameters."""
+    return dict(urllib.parse.parse_qsl(query or "", keep_blank_values=True))  # decoded like OpenAI's DevKit does
 
 
 def page(ok: bool, msg: str) -> str:
@@ -190,6 +185,7 @@ def _post(url: str, fields: dict) -> dict:
             return json.loads(body)
     except urllib.error.HTTPError as e:  # keep OpenAI's own explanation (error + description), not just "400 Bad Request"
         raw = e.read().decode("utf-8", "ignore")[:800]
+        rid = e.headers.get("x-request-id") or e.headers.get("cf-ray") or ""
         try:
             j = json.loads(raw)
             err = j.get("error")
@@ -199,7 +195,8 @@ def _post(url: str, fields: dict) -> dict:
                 code_, desc = err or "", j.get("error_description") or j.get("detail") or j.get("message") or ""
         except Exception:
             code_, desc = "", raw[:300]
-        LOG.write_text(time.strftime("%Y-%m-%d %H:%M:%S ") + f"{url} -> {e.code} {code_}: {desc}\n", encoding="utf-8")
+        LOG.write_text(time.strftime("%Y-%m-%d %H:%M:%S ") + f"{url} -> {e.code} {code_}: {desc} (request id {rid}) body={raw[:300]}\n",
+                       encoding="utf-8")
         raise AuthError(e.code, str(code_), str(desc)[:300]) from None
 
 
@@ -214,27 +211,17 @@ def finish(params: dict) -> str:
     client = params.get("client_id") or p["client"]
     if client == "dynamic_agent_client" or (p["client"] != "dynamic_agent_client" and client != p["client"]):
         raise RuntimeError("OpenAI didn't return Ghost's app registration. Press Continue with ChatGPT again.")
-    base = {"grant_type": "authorization_code", "client_id": client, "code": params.get("code", ""),
-            "code_verifier": p["verifier"], "redirect_uri": p["redirect"], "resource": RESOURCE}
-    # The documented exchange first. OpenAI answers any mismatch with a bare "invalid_grant", so a few close variants
-    # are tried before giving up (the code is only spent by a successful exchange).
-    tries = [base, {**base, "ext_agent_host_id": _load().get("host_id", "")},
-             {k: v for k, v in base.items() if k != "resource"}, {**base, "client_id": "dynamic_agent_client"}]
-    errs, t = [], None
-    for f in tries:
-        try:
-            t = _post(TOKEN, f)
-            break
-        except AuthError as e:
-            errs.append(e)
-            if e.code != 400:
-                break
-    if t is None:
-        LOG.write_text(time.strftime("%Y-%m-%d %H:%M:%S ") + "sign-in exchange failed: " + "; ".join(str(e) for e in errs) +
-                       f" | callback had: {sorted(k for k in params if k != 'code')}, client_id={str(params.get('client_id'))[:12]}…, "
-                       f"scope={params.get('scope', '')}, redirect={p['redirect']}\n", encoding="utf-8")
-        raise RuntimeError(f"ChatGPT sign-in failed at the last step ({errs[0] if errs else 'no answer'}). Press Continue with "
-                           "ChatGPT again; if it repeats, the details are in .ghost/chatgpt-error.txt.")
+    d0 = _load()
+    d0["client_id"] = client  # keep Ghost's registration even if the one-time code fails (no new app on the next try)
+    _save(d0)
+    try:
+        t = _post(TOKEN, {"grant_type": "authorization_code", "client_id": client, "code": params.get("code", ""),
+                          "code_verifier": p["verifier"], "redirect_uri": p["redirect"], "resource": RESOURCE})
+    except AuthError as e:
+        prev = LOG.read_text(encoding="utf-8") if LOG.exists() else ""
+        LOG.write_text(prev + f"  callback had {sorted(k for k in params if k != 'code')}, code length {len(params.get('code', ''))}, "
+                              f"client {client[:12]}…, redirect {p['redirect']}, {int(time.time() - p['at'])} s after start\n", encoding="utf-8")
+        raise RuntimeError(f"ChatGPT sign-in failed at the last step ({e}).") from None
     c = _claims(t.get("id_token", ""))
     if c.get("nonce") and c["nonce"] != p["nonce"]:
         raise RuntimeError("The sign-in answer didn't match (nonce). Press Continue with ChatGPT again.")
