@@ -214,6 +214,7 @@ Rules: {RULES} {people_note(idea or dialogue) if cast == 'people' else CAST_NOTE
 {('DIRECTION STYLE (follow it exactly): ' + STYLES_DIR[style]['guide']) if style in STYLES_DIR and cast == 'people' else ''}
 Write every spoken line in {lang}'s own script (Hindi in Devanagari, Malayalam in Malayalam script, Tamil in Tamil script…), never in Roman letters, so the voice pronounces it right.
 Split the speech into clips of at most {max_s} s each (about 15 {lang} words), at natural pauses, never mid-phrase.
+ACTING: real everyday people in a good TV ad: natural, understated, believable (even when funny: the humour is in the situation, not in pulling faces). Write the line the way people really speak, with a natural pause where it fits.
 Make EXACTLY {n_clips} clips so the ad really lasts about {seconds} seconds. Give each clip a different shot (close-up, medium, detail, wide…) and a different camera move.
 The title must be a real 2-5 word name for this ad (never "short name").
 CHARACTER CONSISTENCY (most important): describe the main character once in "character.look" in full — age, face shape, skin tone, hair style and colour, the exact outfit with its colours, jewellery — and copy that SAME description word for word into every clip's image_prompt and video_prompt. Never write just "the woman" / "the man" and never "same as above": always the full look. The outfit never changes between clips.

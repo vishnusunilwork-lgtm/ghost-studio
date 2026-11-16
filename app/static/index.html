@@ -171,6 +171,7 @@ h1.ask span{display:inline-block;animation:word .9s var(--ease) both}
 .screen{--ar:9/16;width:min(380px,100%);aspect-ratio:var(--ar);border-radius:22px;overflow:hidden;background:#000;border:1px solid var(--line);position:relative;margin:0 auto}
 .screen.wide{width:min(640px,100%)}
 .screen video,.screen img{width:100%;height:100%;object-fit:cover;display:block}
+video:fullscreen,video:-webkit-full-screen,.screen video:fullscreen,.screen video:-webkit-full-screen{object-fit:contain!important;background:#000}
 .screen .veil{position:absolute;inset:0;display:grid;place-items:center;color:var(--mute);font-size:13px;background:radial-gradient(circle at 50% 45%,rgba(255,255,255,.06),transparent 60%)}
 .screen.busy::after{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 30%,rgba(255,255,255,.06) 50%,transparent 70%);background-size:250% 100%;animation:sheen 2.2s linear infinite}
 @keyframes sheen{from{background-position:120% 0}to{background-position:-120% 0}}
@@ -565,7 +566,7 @@ details.log pre{background:var(--glass);-webkit-backdrop-filter:var(--frost);bac
         <div id="gVeo" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:4px 0 10px">
           <label class="note" style="padding:0">Model<select class="inp" id="gvTier"><option value="lite">Veo 3.1 Lite (cheapest)</option><option value="fast">Veo 3.1 Fast</option><option value="standard">Veo 3.1 (best)</option></select></label>
           <label class="note" style="padding:0">Resolution<select class="inp" id="gvRes"><option value="720p">720p</option><option value="1080p">1080p</option><option value="4k">4K (Fast / best only)</option></select></label>
-          <label class="note" style="padding:0">Task<select class="inp" id="gvMode"><option value="image">Image-to-video (same person in every shot)</option><option value="text">Text-to-video</option></select></label>
+          <label class="note" style="padding:0">Task<select class="inp" id="gvMode"><option value="image">Image-to-video (same person in every shot)</option><option value="text">Text-to-video (only when there is no picture)</option></select></label>
           <label class="note" style="padding:0">Video length<select class="inp" id="gvLen"><option value="0">Fit each line (4, 6 or 8 s)</option><option value="4">4 seconds</option><option value="6">6 seconds</option><option value="8">8 seconds</option></select></label>
           <label class="note" style="padding:0">Results per shot<select class="inp" id="gvTakes"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></label>
           <label class="note" style="padding:0;display:flex;align-items:center;gap:8px;margin-top:18px"><input type="checkbox" id="gvAudio"> Generate audio</label>

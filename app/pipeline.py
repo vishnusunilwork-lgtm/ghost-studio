@@ -549,7 +549,8 @@ class Runner:
                     except E.Cancelled:
                         raise
                     except Exception as e:
-                        p["log"].append(time.strftime("%H:%M:%S ") + f"A second picture was skipped ({str(e)[:90]})")
+                        why = "not enabled in your Google Cloud project" if "404" in str(e) or "not found" in str(e).lower() else str(e)[:90]
+                        p["log"].append(time.strftime("%H:%M:%S ") + f"A second picture was skipped ({why})")
             if len(cands) < 2:
                 return
             names = ", ".join(f"{i + 1} = {n}" for i, (n, _) in enumerate(cands))
@@ -711,7 +712,7 @@ class Runner:
                 start = c.get("image") or p.get("person_images", {}).get(c.get("speaker")) or p["image"]
                 out = d / f"clip{i + 1:02d}_{c['seed']}{'_r%d' % c['rev'] if c.get('rev') else ''}{'_draft' if draft else ''}.mp4"
                 self.eng.video(Path(start), self._clip_prompt(p, c), float(c["seconds"]), out, seed=c["seed"],
-                               width=gw, height=gh, steps=steps, aspect=p.get("aspect") or "9:16", keep_look=many)
+                               width=gw, height=gh, steps=steps, aspect=p.get("aspect") or "9:16", keep_look=True)
                 return i, out, start
             with ThreadPoolExecutor(max_workers=4) as ex:
                 for i, out, start in ex.map(mk, todo):
@@ -730,7 +731,7 @@ class Runner:
             start = c.get("image") or p.get("person_images", {}).get(c.get("speaker")) or p["image"]
             out = d / f"clip{i + 1:02d}_{c['seed']}{'_r%d' % c['rev'] if c.get('rev') else ''}{'_draft' if draft else ''}.mp4"
             self.eng.video(Path(start), self._clip_prompt(p, c), float(c["seconds"]), out, seed=c["seed"],
-                           width=gw, height=gh, steps=steps, aspect=p.get("aspect") or "9:16", keep_look=len(p["clips"]) > 1)
+                           width=gw, height=gh, steps=steps, aspect=p.get("aspect") or "9:16", keep_look=True)
             c["video"], c["status"] = str(out), "done"
             self.store.save(p)
         if only is None:

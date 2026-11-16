@@ -181,6 +181,18 @@ How Ghost uses it (`addons.make_motion` → `workers/motion_worker.py`, its own 
 Limits: text-to-video only in the released Mac build (no starting picture), so the same character can differ a little
 between shots; no lip-sync. Wan2.2 on a Mac without this distilled model took over an hour for 2 seconds.
 
+## Real-looking people and voices on Veo (v3.34)
+
+Measured on a Diwali draft: Ghost's main picture (Gemini) looked like a real person, but Veo with "text-to-video"
+never saw it and invented an over-processed one (HDR colours, waxy orange skin, a frozen grin, robotic Hindi).
+So: every Veo shot Ghost makes now starts from its picture (image-to-video; the console's text-to-video setting only
+applies when there is no picture), every Veo prompt ends with a realism direction (`Google.REAL`: true skin texture
+and tone, natural colour and contrast, understated acting, natural conversational delivery with pauses and breaths,
+clear human voice, lip-sync) and a negative prompt against plastic / waxy / HDR / over-acting / robotic voice
+(`Google.NEG`). The script AI is told to direct natural, understated acting. Veo 3.1 Lite is the cheapest and
+weakest at faces and voices; Fast is the better choice for ads people will see.
+Full-screen preview shows the whole frame (`object-fit: contain` in full screen; the small player still fills its box).
+
 ## Continue with ChatGPT: your ChatGPT plan as a brain (v3.33)
 
 OpenAI's "Sign in with ChatGPT" lets open-source apps that run locally use a person's ChatGPT Plus / Pro plan

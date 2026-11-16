@@ -438,6 +438,16 @@ class Google:
         why = ((r.get("candidates") or [{}])[0].get("finishReason") or (r.get("promptFeedback") or {}).get("blockReason") or "no picture")
         raise RuntimeError(f"Google made no picture ({why}). Try different words.")
 
+    # Every Veo shot: filmed like a real commercial, not "AI-looking" (waxy skin, HDR colours, frozen grins, robotic voice)
+    REAL = ("Shot like a real TV commercial on a cinema camera: true-to-life skin with natural texture and pores, the person's real "
+            "skin tone (no orange cast, no waxy or plastic smoothing), natural colours and contrast (no HDR look, no oversaturation, "
+            "no over-sharpening), soft realistic light. Believable, understated acting with natural micro-expressions, relaxed "
+            "natural gestures and blinking, no over-acting and no frozen grin. The dialogue sounds like a real person talking: "
+            "conversational rhythm, small pauses and breaths, emotion that fits the words, a clear natural human voice (not "
+            "robotic), accurate lip-sync.")
+    NEG = ("plastic skin, waxy skin, airbrushed, HDR, oversaturated, over-sharpened, orange skin, cartoon, CGI look, exaggerated "
+           "expression, over-acting, frozen smile, robotic voice, monotone voice, distorted face, extra fingers, text, subtitles, "
+           "watermark, logo")
     IMAGEN = ["imagen-4.0-generate-001", "imagen-4.0-fast-generate-001"]
     TEXT = ["gemini-2.5-flash", "gemini-2.5-pro"]
     IMAGEN_ASPECTS = {"1:1": 1, "3:4": 0.75, "4:3": 1.333, "9:16": 0.5625, "16:9": 1.778}
@@ -483,15 +493,15 @@ class Google:
             dur = 8  # Google makes 1080p / 4K only as 8-second clips (the editor trims to the shot)
         cost = dur * self.price * self.takes
         self.check_budget(cost)
-        inst = {"prompt": prompt}
-        # image-to-video keeps the same person and place in every shot. "Text to video" is used only for single shots:
-        # in a multi-shot ad it would invent a different person each time.
+        inst = {"prompt": prompt.rstrip() + " " + self.REAL}
+        # image-to-video starts from Ghost's chosen picture: a real-looking person, true skin and light, the same person in
+        # every shot. "Text to video" (no picture) is only used when there is no picture or you turned keep_look off.
         if (self.mode != "text" or keep_look) and image and Path(image).exists():
             inst["image"] = {"bytesBase64Encoded": self._b64(image), "mimeType": "image/jpeg"}
         body = {"instances": [inst],
                 "parameters": {"aspectRatio": "16:9" if aspect == "16:9" else "9:16", "durationSeconds": dur, "generateAudio": self.audio,
                                "resolution": res, "sampleCount": self.takes, "personGeneration": "allow_all",
-                               "seed": int(seed) % 2**32, "negativePrompt": "text, subtitles, watermark, logo, distorted face, extra fingers"}}
+                               "seed": int(seed) % 2**32, "negativePrompt": self.NEG}}
         try:
             op, pre = self._call("video", self.video_models, [self.location], "predictLongRunning", body)
         except RuntimeError as e:

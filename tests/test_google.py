@@ -73,6 +73,8 @@ def test_google():
     sub = [b for p, b, k in SEEN if p.endswith(":predictLongRunning")][0]
     assert sub["parameters"]["durationSeconds"] == 6 and sub["parameters"]["generateAudio"] is True
     assert sub["instances"][0]["image"]["mimeType"] == "image/jpeg"
+    assert sub["instances"][0]["prompt"].startswith("the dog walks") and "natural texture and pores" in sub["instances"][0]["prompt"]
+    assert "plastic skin" in sub["parameters"]["negativePrompt"] and "robotic voice" in sub["parameters"]["negativePrompt"]
     assert abs(E.Spend.month()["usd"] - (0.04 + 0.30)) < 1e-6
     try:
         g.video(d / "a.png", "x", 8, d / "w.mp4")  # 0.34 + 0.40 is fine; push past the $5 limit
@@ -96,6 +98,9 @@ def test_google():
     assert "veo-3.1-fast" in [p for p, b, k in SEEN if p.endswith(":predictLongRunning")][0]
     assert pr["durationSeconds"] == 8 and pr["resolution"] == "1080p" and pr["generateAudio"] is False and pr["sampleCount"] == 2
     assert "image" not in body["instances"][0] and abs(E.Spend.month()["usd"] - 8 * 0.10 * 2) < 1e-6
+    SEEN.clear()
+    g3.video(d / "a.png", "train at night", 5, d / "t2.mp4", keep_look=True)  # Ghost's own shots always start from its picture
+    assert [b for p, b, k in SEEN if p.endswith(":predictLongRunning")][0]["instances"][0]["image"]["mimeType"] == "image/jpeg"
     # a key from a project where Vertex AI is off: Ghost explains the fix and makes pictures on this computer instead
     g2 = E.Google({"api": {"google_key": "k" * 39, "google_project": "my-proj-1"}})
     err = E.GoogleError(403, "Agent Platform API has not been used in project 78328758841 before or it is disabled. Enable it by visiting x")
