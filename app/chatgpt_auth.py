@@ -15,6 +15,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import secrets
 import time
 import urllib.error
@@ -30,6 +31,7 @@ RESOURCE = "https://api.openai.com/v1"
 SCOPE = "openid profile email offline_access resource.invoke chatgpt.tokens.use.direct"
 APP = "Ghost Studio"
 FILE = Path(__file__).resolve().parent.parent / ".ghost" / "chatgpt.json"
+LOG = FILE.with_name("chatgpt-error.txt")  # the last sign-in error from OpenAI (no tokens in it)
 PENDING: dict = {}
 UA = "GhostStudio/3 (+https://github.com/vishnusunilwork-lgtm/ghost-studio)"
 
@@ -97,12 +99,32 @@ def start(port: int) -> str:
     return AUTH + "?" + urllib.parse.urlencode(q)
 
 
+class AuthError(RuntimeError):
+    def __init__(self, code: int, error: str, detail: str):
+        super().__init__(f"OpenAI said {code} {error}: {detail}".strip(" :"))
+        self.code, self.error, self.detail = code, error, detail
+
+
 def _post(url: str, fields: dict) -> dict:
     req = urllib.request.Request(url, data=urllib.parse.urlencode(fields).encode(), method="POST",
-                                 headers={"Content-Type": "application/x-www-form-urlencoded", "User-Agent": UA})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        body = r.read().decode() or "{}"
-        return json.loads(body)
+                                 headers={"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json", "User-Agent": UA})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            body = r.read().decode() or "{}"
+            return json.loads(body)
+    except urllib.error.HTTPError as e:  # keep OpenAI's own explanation (error + description), not just "400 Bad Request"
+        raw = e.read().decode("utf-8", "ignore")[:800]
+        try:
+            j = json.loads(raw)
+            err = j.get("error")
+            if isinstance(err, dict):
+                code_, desc = err.get("code") or err.get("type") or "", err.get("message") or ""
+            else:
+                code_, desc = err or "", j.get("error_description") or j.get("detail") or j.get("message") or ""
+        except Exception:
+            code_, desc = "", raw[:300]
+        LOG.write_text(time.strftime("%Y-%m-%d %H:%M:%S ") + f"{url} -> {e.code} {code_}: {desc}\n", encoding="utf-8")
+        raise AuthError(e.code, str(code_), str(desc)[:300]) from None
 
 
 def finish(params: dict) -> str:
@@ -116,8 +138,27 @@ def finish(params: dict) -> str:
     client = params.get("client_id") or p["client"]
     if client == "dynamic_agent_client" or (p["client"] != "dynamic_agent_client" and client != p["client"]):
         raise RuntimeError("OpenAI didn't return Ghost's app registration. Press Continue with ChatGPT again.")
-    t = _post(TOKEN, {"grant_type": "authorization_code", "client_id": client, "code": params.get("code", ""),
-                      "code_verifier": p["verifier"], "redirect_uri": p["redirect"], "resource": RESOURCE})
+    base = {"grant_type": "authorization_code", "client_id": client, "code": params.get("code", ""),
+            "code_verifier": p["verifier"], "redirect_uri": p["redirect"], "resource": RESOURCE}
+    # The documented exchange first. OpenAI answers any mismatch with a bare "invalid_grant", so a few close variants
+    # are tried before giving up (the code is only spent by a successful exchange).
+    tries = [base, {**base, "ext_agent_host_id": _load().get("host_id", "")},
+             {k: v for k, v in base.items() if k != "resource"}, {**base, "client_id": "dynamic_agent_client"}]
+    errs, t = [], None
+    for f in tries:
+        try:
+            t = _post(TOKEN, f)
+            break
+        except AuthError as e:
+            errs.append(e)
+            if e.code != 400:
+                break
+    if t is None:
+        LOG.write_text(time.strftime("%Y-%m-%d %H:%M:%S ") + "sign-in exchange failed: " + "; ".join(str(e) for e in errs) +
+                       f" | callback had: {sorted(k for k in params if k != 'code')}, client_id={str(params.get('client_id'))[:12]}…, "
+                       f"scope={params.get('scope', '')}, redirect={p['redirect']}\n", encoding="utf-8")
+        raise RuntimeError(f"ChatGPT sign-in failed at the last step ({errs[0] if errs else 'no answer'}). Press Continue with "
+                           "ChatGPT again; if it repeats, the details are in .ghost/chatgpt-error.txt.")
     c = _claims(t.get("id_token", ""))
     if c.get("nonce") and c["nonce"] != p["nonce"]:
         raise RuntimeError("The sign-in answer didn't match (nonce). Press Continue with ChatGPT again.")
