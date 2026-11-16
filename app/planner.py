@@ -633,3 +633,65 @@ Answer as JSON: {{"lines": ["<line 1 in {target}>", "<line 2>", ...]}} with exac
             got = (got + chunk)[:len(chunk)]  # keep timing honest: untranslated lines stay as they were
         out += got
     return out
+
+
+# ---------------------------------------------------------------- exact remake of a reference ad (new faces, same everything else)
+WATCH_REF = """Watch this video ad closely (picture and sound). It will be remade shot for shot with NEW fictional faces,
+keeping everything else the same. Return JSON only:
+{"summary": "one line", "language": "spoken language",
+ "people": [{"key": "A", "role": "e.g. lawyer being interviewed", "look": "age, build, hair, outfit and colours, accessories (the face will change)",
+             "voice": "gender, age, tone, pace, accent"}],
+ "music": "background music: genre, mood, tempo, or none",
+ "scenes": [{"start": 0.0, "end": 3.2, "kind": "talking | broll_face | broll | screen | endcard",
+             "has_face": true, "who": "A or null", "speaker": "A, narrator or none",
+             "place": "where, time of day, light", "framing": "shot size, angle, lens feel", "camera": "static / handheld / push in...",
+             "action": "what happens, gestures, expression, eye-line", "on_screen_text": "exact text shown, if any",
+             "line": "the exact words spoken during this scene, in the original script (Devanagari for Hindi)"}]}
+Rules: list EVERY cut in order with exact start/end seconds covering the whole video. kind: talking = a person speaks on camera;
+broll_face = cut-away footage that shows a person's face; broll = footage without a visible face (hands, objects, money, places);
+screen = a phone/app screen recording or product UI; endcard = logo / download card. The line is what is heard during that scene
+even if the speaker is not on screen (then speaker = the person whose voice it is, or narrator)."""
+
+
+def plan_remake(cfg: dict, ref: dict, lang: str, notes: str = "") -> dict:
+    """Shot-for-shot remake: same scenes, timing, framing, places, words and story; new fictional people.
+    Scenes without a face (app screens, end card, hands/objects) are reused from the original by the pipeline."""
+    import json as _json
+    scenes = ref.get("scenes") or []
+    redo = [dict(s, i=i) for i, s in enumerate(scenes) if needs_new_face(s)]
+    prompt = f"""You remake a reference video ad shot for shot with NEW fictional people (new faces), keeping everything else the same:
+the same scenes in the same order and timing, the same kind of person, outfit, place, framing, camera, action, energy and the same words.
+Make it look and sound MORE natural and realistic than the original: real everyday people, understated believable acting, natural conversational delivery.
+{('Notes from the person: ' + notes) if notes else ''}
+Rules you must keep (they win over copying): {RULES} If a spoken line or on-screen text breaks a rule (for example money, income or guaranteed-result
+claims, or a news channel name / logo / microphone flag), rewrite only that part into an honest version with the same role in the story, and say so in "changed".
+{LITERAL}
+Spoken language: {lang}. Write every line in {lang}'s own script.
+REFERENCE (from watching it): {_json.dumps({k: ref.get(k) for k in ('summary', 'people', 'music')}, ensure_ascii=False)}
+SCENES TO REMAKE WITH NEW FACES (index, timing and content): {_json.dumps(redo, ensure_ascii=False)[:9000]}
+ALL SCENES (for the story and the lines over reused footage): {_json.dumps([{k: s.get(k) for k in ('start', 'end', 'kind', 'speaker', 'line')} for s in scenes], ensure_ascii=False)[:6000]}
+For each scene to remake give 1 shot, or 2-3 consecutive shots when it lasts longer than 8 s (each shot at most 8 s, together exactly the scene's length,
+the line split at natural pauses). Each person keeps ONE fixed full look in every shot (copy their look word for word).
+Return JSON only:
+{{"title": "2-5 words", "people": [{{"key": "A", "look": "full new look: age, face, skin tone, hair, the same outfit and colours as the original role", "voice": "..."}}],
+"changed": "what you had to change to keep the rules, or empty",
+"scenes": [{{"i": 0, "shots": [{{"seconds": 4.0, "speaker": "A or narrator or none", "line": "words heard in this shot (may be empty)",
+"image_prompt": "photo of THIS moment: the person's full look, place, light, framing, real photo, no text, no logos",
+"video_prompt": "one paragraph: who (full look), exact action and micro-expressions second by second, place, light, framing, camera; if the speaker is on screen: He/She says in {lang}: \\"<line>\\" (natural pace, ends before the shot ends); if narrator or none: nobody on screen speaks; ambient sound. No music, no subtitles, no text.",
+"camera_move": "none"}}]}}],
+"lines_over_reused": [{{"i": 3, "line": "the (possibly rewritten) words heard over reused scene 3"}}]}}"""
+    fast, careful = "", cfg["models"]["llm"]
+    data, note = llm.ask_best(careful, prompt, "remake plan", temperature=0.4)
+    if note:
+        data["note"] = note
+    return data
+
+
+def needs_new_face(s: dict) -> bool:
+    """Scenes that show a person get new fictional faces; app screens, end cards and faceless footage are reused as they are."""
+    k = str(s.get("kind") or "").lower()
+    if k in ("screen", "endcard"):
+        return False
+    if k == "broll" and not s.get("has_face"):
+        return False
+    return True

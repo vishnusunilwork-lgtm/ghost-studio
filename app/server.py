@@ -215,6 +215,14 @@ async def create(idea: str = Form(""), dialogue: str = Form(""), seconds: int = 
                   voice_style=voice_style if voice_style in ("warm", "excited", "calm", "news", "devotional") else "warm",
                   cast=cast if cast in ("auto", "people", "animals", "cartoon") else "auto", style=style if style in ("auto", "interview2", "cinematic", "news", "ugc") else "auto",
                   mood=mood if mood in MOOD_VOICE else "", place=place if place in ("indoor", "outdoor") else "")
+    if reference and p["kind"] == "video":
+        # A reference ad = an exact remake: same scenes, timing, words and music; new faces. What you typed are notes for it,
+        # unless it is clearly a script of its own (several lines in an Indian script).
+        script_like = bool(re.search(r"[\u0900-\u0DFF]", p["dialogue"])) and len(p["dialogue"].split()) >= 8
+        p["remake"] = True
+        p["notes"] = " ".join(x for x in (p["idea"], "" if script_like else p["dialogue"]) if x).strip()
+        if not script_like:
+            p["dialogue"] = ""
     if p["mood"]:  # the voice follows the mood
         p["voice_style"] = MOOD_VOICE[p["mood"]]
     d = STORE.dir(p["id"])

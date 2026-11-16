@@ -16,6 +16,7 @@ from pathlib import Path
 
 from . import engines as E
 from . import planner
+from .planner import still_prompt
 from .editor import render
 from .reference import key_frames
 
@@ -307,9 +308,13 @@ class Runner:
             p["ref_frames"], p["ref_text"] = frames, text
             if not text:
                 p["log"].append(time.strftime("%H:%M:%S ") + "Could not hear the reference's speech (install Script AI to copy its words). Writing a fresh script.")
+            watched = self._watch_reference(p) if p.get("remake") else None
             try:
                 from . import llm
-                ref = planner.analyse_reference(self.cfg, frames, text) if llm.available() else {"summary": "reference ad", "scenes": frames}
+                if watched:
+                    ref = watched
+                else:
+                    ref = planner.analyse_reference(self.cfg, frames, text) if llm.available() else {"summary": "reference ad", "scenes": frames}
             except Exception as e:
                 ref = {"summary": "reference ad (vision model unavailable: %s)" % e}
             if isinstance(ref, dict):
@@ -318,6 +323,8 @@ class Runner:
             self._done(p, "analyse")
         else:
             p["steps"]["analyse"] = "skipped"
+        if p.get("kind") == "video" and p.get("remake") and isinstance(ref, dict) and ref.get("watched"):
+            return self._remake(pid)
         if p.get("kind") == "images":
             self._images_only(pid, ref)
             return
@@ -515,6 +522,138 @@ class Runner:
         p["log"].append(time.strftime("%H:%M:%S ") + "Ready for your check: edit anything, then press Make it.")
         self.store.save(p)
         return True
+
+    # ------------------------------------------------------------ exact remake: same ad, new faces
+    def _watch_reference(self, p) -> dict | None:
+        """Gemini watches the whole reference (picture + sound) and lists every cut with its words. None without Google."""
+        from . import links, llm
+        g = self.eng.goog
+        if not g.on or self.eng.mock:
+            p["log"].append(time.strftime("%H:%M:%S ") + "Exact remake needs Sign in with Google (Gemini watches the reference). "
+                            "Copying its look and words instead.")
+            return None
+        self._say(p, "analyse", "Gemini is watching the reference ad, cut by cut", 5)
+        from .editor import ffmpeg_bin
+        small = self.store.dir(p["id"]) / "ref_small.mp4"
+        try:
+            for h, crf in ((640, 30), (480, 34), (360, 38)):  # small enough for one request (about 18 MB)
+                subprocess.run([ffmpeg_bin(), "-y", "-v", "error", "-i", p["reference"], "-vf", f"scale=-2:{h},fps=15", "-c:v", "libx264",
+                                "-preset", "veryfast", "-crf", str(crf), "-c:a", "aac", "-b:a", "64k", "-ac", "1", str(small)], check=True, timeout=300)
+                if small.stat().st_size <= links.INLINE:
+                    break
+            ans = links._gemini_media(g, small.read_bytes(), "video/mp4", planner.WATCH_REF)
+            ref = llm._json_from(ans)
+            scenes = [s for s in ref.get("scenes") or [] if float(s.get("end", 0)) > float(s.get("start", 0))]
+            if not scenes:
+                raise ValueError("no scenes")
+            ref["scenes"], ref["watched"] = scenes, True
+            ref["transcript"] = " ".join(str(s.get("line") or "") for s in scenes).strip() or p.get("ref_text", "")
+            kinds = {}
+            for s in scenes:
+                kinds[s.get("kind")] = kinds.get(s.get("kind"), 0) + 1
+            p["log"].append(time.strftime("%H:%M:%S ") + f"Reference: {len(scenes)} cuts, {float(scenes[-1]['end']):.0f} s — " +
+                            ", ".join(f"{n} {k}" for k, n in kinds.items()))
+            return ref
+        except E.Cancelled:
+            raise
+        except Exception as e:
+            p["log"].append(time.strftime("%H:%M:%S ") + f"Gemini couldn't watch the reference ({str(e)[:120]}); copying its look and words instead.")
+            return None
+        finally:
+            small.unlink(missing_ok=True)
+
+    def _remake(self, pid):
+        """Shot for shot: scenes with people get new fictional faces (Veo); app screens, end cards and faceless footage are
+        reused from the original; the words, timing and order stay; the original background music is kept when it can be
+        separated (Song stems add-on)."""
+        from .editor import ffmpeg_bin
+        p = self.store.load(pid)
+        d = self.store.dir(pid)
+        ref = p["ref_analysis"]
+        scenes = ref["scenes"]
+        lang = p.get("language") or self.cfg.get("language", "Hindi")
+        self._say(p, "plan", "Planning the remake shot by shot", 10)
+        pl = planner.plan_remake(self.cfg, ref, lang, p.get("notes", ""))
+        people = pl.get("people") or []
+        main_look = (people[0].get("look") if people else "") or ""
+        plan_scenes = {int(x.get("i", -1)): x for x in pl.get("scenes") or [] if isinstance(x, dict)}
+        over = {int(x.get("i", -1)): str(x.get("line") or "") for x in pl.get("lines_over_reused") or [] if isinstance(x, dict)}
+        clips, (gw, gh) = [], sizes(p)[0]
+        _, (ow, oh), _ = sizes(p)
+        for i, sc in enumerate(scenes):
+            a, b = float(sc["start"]), float(sc["end"])
+            if not planner.needs_new_face(sc):
+                out = d / f"reuse{i + 1:02d}.mp4"
+                subprocess.run([ffmpeg_bin(), "-y", "-v", "error", "-ss", f"{a:.3f}", "-to", f"{b:.3f}", "-i", p["reference"],
+                                "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo", "-map", "0:v:0", "-map", "1:a:0",
+                                "-vf", f"scale={ow}:{oh}:force_original_aspect_ratio=increase,crop={ow}:{oh},setsar=1",
+                                "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-c:a", "aac", "-shortest", str(out)], check=True, timeout=300)
+                line = over.get(i, str(sc.get("line") or ""))
+                clips.append({"speaker": "narrator", "line": line, "narration": line, "seconds": round(b - a, 2), "video": str(out),
+                              "status": "done", "reused": True, "camera_move": "none", "shake": 0, "seed": random.randint(1, 10**6)})
+                continue
+            shots = (plan_scenes.get(i) or {}).get("shots") or [{"seconds": b - a, "speaker": sc.get("speaker"), "line": sc.get("line"),
+                                                                   "image_prompt": f"{main_look}. {sc.get('place', '')}. {sc.get('framing', '')}",
+                                                                   "video_prompt": f"{main_look}. {sc.get('action', '')}"}]
+            total = sum(float(x.get("seconds") or 0) for x in shots) or (b - a)
+            for x in shots:
+                secs = round(float(x.get("seconds") or 0) * (b - a) / total, 2)  # exactly the original scene's length
+                spk = str(x.get("speaker") or "none")
+                line = str(x.get("line") or "")
+                c = {"speaker": spk if spk not in ("narrator", "none") else "A", "line": line, "seconds": max(1.0, secs),
+                     "image_prompt": still_prompt(x.get("image_prompt") or ""), "video_prompt": x.get("video_prompt") or "",
+                     "camera_move": "none", "shake": 0, "status": "waiting", "seed": random.randint(1, 10**6), "scene": i}
+                if spk in ("narrator", "none") and line:
+                    c["narration"] = line  # heard over this shot, nobody on screen speaks
+                clips.append(c)
+        first = next((c for c in clips if not c.get("reused")), None)
+        p["plan"] = {"title": pl.get("title") or p.get("title"), "character": {"look": main_look, "voice": (people[0].get("voice") if people else "")},
+                     "people": people, "image_prompt": (first or {}).get("image_prompt") or main_look, "style": "remake", "cast": "people"}
+        planner.lock_looks({"character": p["plan"]["character"], "people": people, "clips": [c for c in clips if not c.get("reused")]})
+        p["clips"] = clips
+        p["title"] = p.get("title") if p.get("title") not in (None, "", "New ad") else p["plan"]["title"]
+        p["seconds"] = round(sum(float(c["seconds"]) for c in clips), 1)
+        p["clip_talks"], p["voice_mode"] = True, "both"
+        v = " ".join(str(x.get("voice") or "") + " " + str(x.get("look") or "") for x in (ref.get("people") or [])[:1]).lower()
+        if re.search(r"\bfemale|woman|girl|lady\b", v):
+            p["voice_gender"] = "female"
+        elif re.search(r"\bmale|\bman\b|boy|gentleman", v):
+            p["voice_gender"] = "male"  # the narrator's voice matches the original speaker
+        if pl.get("changed"):
+            p["log"].append(time.strftime("%H:%M:%S ") + "Changed to keep Ghost's rules: " + str(pl["changed"])[:300])
+        if pl.get("note"):
+            p["log"].append(pl["note"])
+        n_new = sum(1 for c in clips if not c.get("reused"))
+        p["log"].append(time.strftime("%H:%M:%S ") + f"Remake: {n_new} new shots with new faces, {len(clips) - n_new} reused from the original "
+                        f"(screens, end card, faceless footage), {p['seconds']:.0f} s like the original.")
+        self._done(p, "plan")
+        self._keep_ref_music(p)
+        if self._review_stop(p):
+            return
+        self._images(pid)
+        self._videos(pid, resume=True)
+        self._voice(pid)
+        self._music_for_ad(pid)
+        self._edit(pid)
+
+    def _keep_ref_music(self, p):
+        """The original's background music without its voice (needs the Song stems add-on)."""
+        from . import addons
+        if not addons.stems_installed(self.cfg):
+            p["log"].append(time.strftime("%H:%M:%S ") + "Tip: install Song stems (⚙ → Add-ons) to keep the original's background music.")
+            self.store.save(p)
+            return
+        try:
+            self._say(p, "music", "Keeping the original background music (removing its voice)", 12)
+            found = addons.split_stems(Path(p["reference"]), self.store.dir(p["id"]) / "ref_stems", two=True)
+            if found.get("no_vocals"):
+                p["music"], p["music_from_ref"] = found["no_vocals"], True
+                p["log"].append(time.strftime("%H:%M:%S ") + "Original background music kept.")
+        except E.Cancelled:
+            raise
+        except Exception as e:
+            p["log"].append(time.strftime("%H:%M:%S ") + "Original music couldn't be separated: " + str(e)[:120])
+        self.store.save(p)
 
     def _best_of_two(self, p, main: Path, w: int, h: int):
         """The main picture decides the whole ad's look: Gemini's, Imagen's and (with an OpenAI key) ChatGPT's are made,
@@ -970,7 +1109,7 @@ class Runner:
         style = p.get("style_used") or p.get("style") or "auto"
         grade = (planner.STYLES_DIR.get(style) or {}).get("grade", "natural") if style in planner.STYLES_DIR else "natural"
         render(clips, out, fps=int(q["fps"]), crf=int(q["export_crf"]) + (4 if draft else 0), narration=narr,
-               music=p.get("music"), log=lambda m: None, size=(ow, oh), grade=grade,
+               music=p.get("music"), music_volume=0.55 if p.get("music_from_ref") else 0.18, log=lambda m: None, size=(ow, oh), grade=grade,
                letterbox=(style == "cinematic" and p.get("aspect") == "16:9" and p.get("letterbox", True)),
                preset="veryfast" if draft else "medium")
         p["final"] = str(out)
