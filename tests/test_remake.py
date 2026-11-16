@@ -89,6 +89,29 @@ def test_exact_remake():
     assert p["status"] == "done" and abs(probe(p["final"])["duration"] - 10) < 0.6
 
 
+def test_timing_and_safety():
+    # Gemini answered in minutes.seconds (0.38 = 38 s): Ghost reads it in real seconds and snaps to the real cuts
+    got = planner.fix_timing([{"start": 0, "end": 0.032}, {"start": 0.032, "end": 0.138}, {"start": 0.138, "end": 0.382}], 37.97,
+                             [0, 3.2, 13.8, 37.97])
+    assert [(x["start"], x["end"]) for x in got] == [(0.0, 3.2), (3.2, 13.8), (13.8, 37.97)]
+    assert planner.fix_timing([{"start": 0, "end": 5}, {"start": 5, "end": 10}], 10.0) == [{"start": 0.0, "end": 5.0}, {"start": 5.0, "end": 10.0}]
+    # a shot blocked by Google's safety check is tried again with another seed instead of stopping the whole ad
+    r = runner(Path(tempfile.mkdtemp()))
+    calls = []
+
+    def video(image_, prompt, seconds, out, seed=0, **kw):
+        calls.append(seed)
+        if len(calls) == 1:
+            raise RuntimeError("Google's safety check stopped this shot (filtered)")
+        return out
+    r.eng.video = video
+    p = {"id": "x", "language": "Hindi", "log": [], "plan": {"character": {"look": "a woman in her 30s"}},
+         "clips": [{"seed": 5, "seconds": 4, "line": "नमस्ते", "speaker": "A", "image_prompt": "office", "video_prompt": "she smiles"}]}
+    r._veo_safe(p, 0, Path("a.png"), Path("o.mp4"), 360, 640, None)
+    assert calls == [5, 106] and "trying again" in p["log"][0]
+
+
 if __name__ == "__main__":
+    test_timing_and_safety()
     test_exact_remake()
     print("ok remake")

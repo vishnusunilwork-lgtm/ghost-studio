@@ -648,7 +648,8 @@ keeping everything else the same. Return JSON only:
              "place": "where, time of day, light", "framing": "shot size, angle, lens feel", "camera": "static / handheld / push in...",
              "action": "what happens, gestures, expression, eye-line", "on_screen_text": "exact text shown, if any",
              "line": "the exact words spoken during this scene, in the original script (Devanagari for Hindi)"}]}
-Rules: list EVERY cut in order with exact start/end seconds covering the whole video. kind: talking = a person speaks on camera;
+Rules: list EVERY cut in order with exact start/end times in SECONDS from the start of the video (e.g. 12.4; never
+minutes:seconds, never fractions of the video), covering the whole video. kind: talking = a person speaks on camera;
 broll_face = cut-away footage that shows a person's face; broll = footage without a visible face (hands, objects, money, places);
 screen = a phone/app screen recording or product UI; endcard = logo / download card. The line is what is heard during that scene
 even if the speaker is not on screen (then speaker = the person whose voice it is, or narrator)."""
@@ -698,6 +699,36 @@ Return JSON only:
     if note:
         data["note"] = note
     return data
+
+
+def fix_timing(scenes: list[dict], duration: float, cuts: list[float] | None = None) -> list[dict]:
+    """Scene times in real seconds. Models sometimes answer in minutes.seconds (0.38 = 38 s), in hundreds of seconds or as
+    fractions of the video: pick the reading whose end matches the video's length, then snap to the detected cuts."""
+    if not scenes or duration <= 0:
+        return scenes
+    end = max(float(x.get("end") or 0) for x in scenes)
+
+    def mss(v):
+        m = int(v)
+        return m * 60 + (v - m) * 100
+    readings = {"seconds": lambda v: v, "minutes.seconds": mss, "hundreds": lambda v: v * 100,
+                "fraction": lambda v: v * duration / end if end else v, "minutes": lambda v: v * 60}
+    best = min(readings, key=lambda k: abs(readings[k](end) - duration))
+    f = readings[best]
+    out = []
+    for x in scenes:
+        a, b = round(f(float(x.get("start") or 0)), 2), round(f(float(x.get("end") or 0)), 2)
+        if cuts:  # snap to a real cut within half a second
+            a = min(cuts, key=lambda c: abs(c - a)) if min(abs(c - a) for c in cuts) < 0.5 else a
+            b = min(cuts, key=lambda c: abs(c - b)) if min(abs(c - b) for c in cuts) < 0.5 else b
+        out.append({**x, "start": max(0.0, min(a, duration)), "end": max(0.0, min(b, duration))})
+    out = [x for x in out if x["end"] - x["start"] >= 0.2]
+    if out:
+        out[0]["start"] = 0.0
+        out[-1]["end"] = max(out[-1]["end"], round(duration, 2)) if duration - out[-1]["end"] < 1.5 else out[-1]["end"]
+        for i in range(1, len(out)):  # no gaps or overlaps between cuts
+            out[i]["start"] = out[i - 1]["end"]
+    return [x for x in out if x["end"] - x["start"] >= 0.2]
 
 
 def needs_new_face(s: dict) -> bool:

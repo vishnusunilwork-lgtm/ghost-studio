@@ -543,7 +543,11 @@ class Runner:
                     break
             ans = links._gemini_media(g, small.read_bytes(), "video/mp4", planner.WATCH_REF)
             ref = llm._json_from(ans)
+            from .editor import probe
+            dur = float(probe(p["reference"]).get("duration") or 0)
+            cuts = sorted({float(f.get("start", 0)) for f in p.get("ref_frames") or []} | {float(f.get("end", 0)) for f in p.get("ref_frames") or []})
             scenes = [s for s in ref.get("scenes") or [] if float(s.get("end", 0)) > float(s.get("start", 0))]
+            scenes = planner.fix_timing(scenes, dur, cuts)
             if not scenes:
                 raise ValueError("no scenes")
             ref["scenes"], ref["watched"] = scenes, True
@@ -900,8 +904,7 @@ class Runner:
                 c = p["clips"][i]
                 start = c.get("image") or p.get("person_images", {}).get(c.get("speaker")) or p["image"]
                 out = d / f"clip{i + 1:02d}_{c['seed']}{'_r%d' % c['rev'] if c.get('rev') else ''}{'_draft' if draft else ''}.mp4"
-                self.eng.video(Path(start), self._clip_prompt(p, c), float(c["seconds"]), out, seed=c["seed"],
-                               width=gw, height=gh, steps=steps, aspect=p.get("aspect") or "9:16", keep_look=True)
+                self._veo_safe(p, i, Path(start), out, gw, gh, steps)
                 return i, out, start
             with ThreadPoolExecutor(max_workers=4) as ex:
                 for i, out, start in ex.map(mk, todo):
@@ -925,6 +928,35 @@ class Runner:
             self.store.save(p)
         if only is None:
             self._done(p, "videos")
+
+    def _veo_safe(self, p, i, start: Path, out: Path, gw, gh, steps):
+        """One shot. If Google's safety check blocks it (it sometimes does for harmless shots), try again with another
+        seed, then a plainer prompt; as a last resort the shot becomes its picture with a gentle move, so the ad still finishes."""
+        c = p["clips"][i]
+        prompts = [self._clip_prompt(p, c), self._clip_prompt(p, c), self._plain_prompt(p, c)]
+        last = None
+        for k, pr in enumerate(prompts):
+            try:
+                return self.eng.video(start, pr, float(c["seconds"]), out, seed=int(c["seed"]) + 101 * k, width=gw, height=gh, steps=steps,
+                                      aspect=p.get("aspect") or "9:16", keep_look=True)
+            except RuntimeError as e:
+                if "safety" not in str(e).lower():
+                    raise
+                last = e
+                p["log"].append(time.strftime("%H:%M:%S ") + f"Shot {i + 1}: Google's safety check blocked it, trying again ({k + 1}/3)")
+        p["log"].append(time.strftime("%H:%M:%S ") + f"Shot {i + 1}: still blocked ({str(last)[:80]}); using its picture with a gentle move")
+        self.eng.photo_clip(start, float(c["seconds"]), out, gw, gh)
+        c["camera_move"], c["by_hand"] = "push_in", True
+        if c.get("line") and not c.get("narration"):
+            c["narration"] = c["line"]  # the words are still heard
+        return out
+
+    @staticmethod
+    def _plain_prompt(p, c) -> str:
+        """A short, neutral version of the shot: who, where, a simple action, and the line."""
+        look = planner.look_of(p.get("plan") or {}, c.get("speaker"))
+        say = f' Says in {p.get("language") or "Hindi"}: "{c["line"]}".' if c.get("line") and not c.get("narration") else ""
+        return f"{look}. {planner.still_prompt(c.get('image_prompt') or '')} Natural, calm, talks to the camera.{say} Ambient sound, no music, no text."
 
     @staticmethod
     def _clip_prompt(p, c) -> str:
